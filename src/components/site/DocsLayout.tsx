@@ -4,6 +4,7 @@ import { MarkdownYamlParser } from '@/lib/fs/parser'
 import { InMemoryContentCache } from '@/lib/cache/store'
 import { NavigationOperations } from '@/lib/content/navigation'
 import { DocsSidebar } from './DocsSidebar'
+import { DocsMobileNav } from './DocsMobileNav'
 
 async function getDocsNav() {
   const config = await loadConfig()
@@ -36,6 +37,7 @@ export async function DocsLayout({ children }: { children: React.ReactNode }) {
 
         {/* Content */}
         <div className="min-w-0">
+          <DocsMobileNav items={items} />
           {children}
         </div>
       </div>
