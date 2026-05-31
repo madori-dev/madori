@@ -17,7 +17,7 @@ Visit `http://localhost:3000/cp` to access the control panel.
 
 **Default credentials:**
 - Email: `admin@example.com`
-- Password: `changeme`
+- Password: `password`
 
 ## Features
 
