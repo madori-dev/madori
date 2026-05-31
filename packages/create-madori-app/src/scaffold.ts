@@ -2,7 +2,7 @@ import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { execSync } from 'node:child_process'
 
-const REPO = 'madori-dev/cms'
+const REPO = 'madori-dev/madori'
 const BRANCH = 'main'
 
 /** Items to strip from the cloned template */

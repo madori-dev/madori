@@ -23,7 +23,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/madori-dev/cms"
+    "url": "https://github.com/madori-dev/madori"
   },
   "license": "MIT",
   "devDependencies": {

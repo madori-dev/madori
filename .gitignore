@@ -42,3 +42,5 @@ next-env.d.ts
 
 # madori
 .sessions
+packages/*/node_modules
+packages/*/dist
