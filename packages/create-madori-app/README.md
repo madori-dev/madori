@@ -54,4 +54,4 @@ See the [MADORI repository](https://github.com/madori-dev/madori) for full docum
 
 ## License
 
-MIT
+See [LICENSE.md](https://github.com/madori-dev/madori/blob/main/LICENSE.md) for details.

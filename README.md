@@ -105,4 +105,4 @@ pnpm test
 
 ## License
 
-MIT
+See [LICENSE.md](LICENSE.md) for details.
