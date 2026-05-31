@@ -1,3 +1,4 @@
+import type { Metadata } from 'next'
 import { marked } from 'marked'
 import { loadConfig, resolveConfigPaths } from '@/lib/config/loader'
 import { BlueprintRegistry } from '@/lib/blueprints/registry'
@@ -35,6 +36,18 @@ async function getPageEntry() {
 interface Block {
   _type: string
   [key: string]: unknown
+}
+
+export async function generateMetadata(): Promise<Metadata> {
+  const entry = await getPageEntry()
+  if (!entry) return {}
+  return {
+    title: (entry.data?.meta_title as string) || entry.title,
+    description: (entry.data?.meta_description as string) || undefined,
+    openGraph: entry.data?.og_image
+      ? { images: [{ url: entry.data.og_image as string }] }
+      : undefined,
+  }
 }
 
 export default async function Home() {

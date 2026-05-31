@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import type { Metadata } from 'next'
 import { marked } from 'marked'
 import { loadConfig, resolveConfigPaths } from '@/lib/config/loader'
 import { BlueprintRegistry } from '@/lib/blueprints/registry'
@@ -36,11 +37,28 @@ async function getContentEngine() {
   )
 }
 
-export default async function DynamicPage({
-  params,
-}: {
+interface PageProps {
   params: Promise<{ slug: string[] }>
-}) {
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params
+  const slugStr = slug.join('/')
+  const engine = await getContentEngine()
+  const entry = await engine.getEntry('pages', slugStr)
+
+  if (!entry) return {}
+
+  return {
+    title: (entry.data?.meta_title as string) || `${entry.title} — MADORI`,
+    description: (entry.data?.meta_description as string) || undefined,
+    openGraph: entry.data?.og_image
+      ? { images: [{ url: entry.data.og_image as string }] }
+      : undefined,
+  }
+}
+
+export default async function DynamicPage({ params }: PageProps) {
   const { slug } = await params
   const slugStr = slug.join('/')
 

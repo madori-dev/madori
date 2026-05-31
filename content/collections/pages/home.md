@@ -6,6 +6,8 @@ createdAt: 2026-06-03T08:15:33.462Z
 updatedAt: 2026-06-03T12:00:00.000Z
 template: home
 order: 1
+meta_title: "MADORI — The flat-file CMS for React"
+meta_description: "A Statamic-inspired content management system for React/Next.js. Flat-file storage, visual control panel, GraphQL API. No database required."
 blocks:
   - _type: hero
     title: The flat-file CMS for React applications

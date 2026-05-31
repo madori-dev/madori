@@ -31,7 +31,17 @@ tabs:
       - handle: meta_title
         field:
           type: text
-          required: true
+          display: Meta Title
+      - handle: meta_description
+        field:
+          type: text
+          display: Meta Description
+      - handle: og_image
+        field:
+          type: asset
+          display: Open Graph Image
+          options:
+            max_files: 1
   sidebar:
     fields:
       - handle: template

@@ -4,6 +4,8 @@ slug: getting-started
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
 updatedAt: 2026-05-31T20:00:00.000Z
+meta_title: "Getting Started — MADORI"
+meta_description: "Create a new MADORI project in under two minutes. Install, configure, and start building content immediately."
 ---
 
 # Getting Started with MADORI
