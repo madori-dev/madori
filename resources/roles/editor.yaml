@@ -1,0 +1,17 @@
+handle: editor
+display: Editor
+permissions:
+  - resource: collections
+    actions: [view]
+  - resource: entries
+    actions: [view, create, edit, publish]
+  - resource: taxonomies
+    actions: [view]
+  - resource: assets
+    actions: [view, create, edit, delete]
+  - resource: globals
+    actions: [view, edit]
+  - resource: forms
+    actions: [view]
+  - resource: navigation
+    actions: [view]

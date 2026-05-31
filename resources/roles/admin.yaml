@@ -1,0 +1,21 @@
+handle: admin
+display: Administrator
+permissions:
+  - resource: collections
+    actions: [view, create, edit, delete, publish]
+  - resource: entries
+    actions: [view, create, edit, delete, publish]
+  - resource: taxonomies
+    actions: [view, create, edit, delete]
+  - resource: assets
+    actions: [view, create, edit, delete]
+  - resource: globals
+    actions: [view, edit]
+  - resource: forms
+    actions: [view, create, edit, delete]
+  - resource: navigation
+    actions: [view, create, edit, delete]
+  - resource: users
+    actions: [view, create, edit, delete]
+  - resource: settings
+    actions: [view, edit]

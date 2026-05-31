@@ -1,0 +1,31 @@
+fields:
+  - handle: title
+    field:
+      type: text
+      display: Title
+      required: true
+
+  - handle: text
+    field:
+      type: text
+      display: Text
+
+  - handle: primary_button_text
+    field:
+      type: text
+      display: Primary Button Text
+
+  - handle: primary_button_link
+    field:
+      type: text
+      display: Primary Button Link
+
+  - handle: secondary_button_text
+    field:
+      type: text
+      display: Secondary Button Text
+
+  - handle: secondary_button_link
+    field:
+      type: text
+      display: Secondary Button Link

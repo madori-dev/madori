@@ -1,0 +1,43 @@
+tabs:
+  main:
+    label: Main
+    fields:
+      - handle: title
+        field:
+          type: text
+          required: true
+
+      - handle: slug
+        field:
+          type: slug
+
+      - handle: blocks
+        field:
+          type: replicator
+          display: Blocks
+          options:
+            sets:
+              - hero
+              - basic_cta
+              - features_grid
+              - about_the_creator
+
+      - handle: content
+        field:
+          type: tiptap
+  seo:
+    label: SEO
+    fields:
+      - handle: meta_title
+        field:
+          type: text
+          required: true
+  sidebar:
+    fields:
+      - handle: template
+        field:
+          type: text
+
+      - handle: parent
+        field:
+          type: entries

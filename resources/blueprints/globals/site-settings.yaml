@@ -1,0 +1,36 @@
+tabs:
+  main:
+    fields:
+      - handle: site_name
+        field:
+          type: text
+          display: Site Name
+          required: true
+      - handle: icon
+        field:
+          type: asset
+          display: Icon
+          options:
+            max_files: 1
+      - handle: icon_dark
+        field:
+          type: asset
+          display: Icon (Dark)
+          options:
+            max_files: 1
+      - handle: icon_light
+        field:
+          type: asset
+          display: Icon (Light)
+          options:
+            max_files: 1
+  tab_2:
+    display: external apps
+    fields:
+      - handle: social_media
+        field:
+          type: replicator
+          display: Social Media
+          options:
+            sets:
+              - social

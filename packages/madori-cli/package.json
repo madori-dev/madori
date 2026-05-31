@@ -1,0 +1,22 @@
+{
+  "name": "madori",
+  "version": "0.1.0",
+  "description": "MADORI CMS command-line tools",
+  "type": "module",
+  "bin": {
+    "madori": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts"
+  },
+  "files": ["dist"],
+  "dependencies": {
+    "@inquirer/prompts": "^7.0.0",
+    "commander": "^13.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.22.3",
+    "typescript": "^5.0.0"
+  }
+}

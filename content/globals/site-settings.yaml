@@ -1,0 +1,14 @@
+social_media:
+  - _type: social
+    name: Facebook
+    url: https://facebook.com
+  - _type: social
+    name: X
+    url: https://x.com
+  - _type: social
+    name: GitHub
+    url: https://github.com
+site_name: Madori
+icon: /assets/MADORI M.png
+icon_dark: /assets/MADORI M_white.png
+icon_light: /assets/MADORI M_black.png

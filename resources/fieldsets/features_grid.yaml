@@ -1,0 +1,18 @@
+fields:
+  - handle: title
+    field:
+      type: text
+      display: Title
+
+  - handle: subtitle
+    field:
+      type: text
+      display: Subtitle
+
+  - handle: features
+    field:
+      type: replicator
+      display: Features
+      options:
+        sets:
+          - feature_item

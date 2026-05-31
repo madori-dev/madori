@@ -1,0 +1,15 @@
+fields:
+  - handle: name
+    field:
+      type: text
+      display: Name
+      required: true
+  - handle: url
+    field:
+      type: text
+      display: URL
+      required: true
+  - handle: icon
+    field:
+      type: text
+      display: Icon

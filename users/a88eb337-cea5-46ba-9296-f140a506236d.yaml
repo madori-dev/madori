@@ -1,0 +1,8 @@
+id: a88eb337-cea5-46ba-9296-f140a506236d
+email: michael@stokoe.dev
+name: Michael
+roles:
+  - admin
+password_hash: scrypt:059f63bf2992f3a0474216eb96c83f9cf3a097c5d835bd625e296cc4710b50d3:6668e0680b958452cc24af01dbe3da3c368d13dade625b53453af12261d088fa3c1d52376e02aae4265f771973260f7b6865eacdc61cadf44c48d3e162c1c06a
+created_at: 2026-06-01T13:57:45.311Z
+last_login: 2026-06-03T09:09:33.874Z

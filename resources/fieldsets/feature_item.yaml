@@ -1,0 +1,18 @@
+fields:
+  - handle: feature_name
+    field:
+      type: text
+      display: Feature Name
+      required: true
+
+  - handle: feature_description
+    field:
+      type: text
+      display: Feature Description
+
+  - handle: feature_icon
+    field:
+      type: text
+      display: Icon Name
+      options:
+        placeholder: "e.g. Layers, Zap, Shield, Code"
