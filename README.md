@@ -1,36 +1,108 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MADORI
 
-## Getting Started
+A flat-file CMS for React/Next.js applications. Inspired by Statamic, powered by TypeScript.
 
-First, run the development server:
+No database. No complex hosting. Just content as files — Markdown, YAML, and JSON — versioned alongside your code.
+
+## Quick Start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm dlx create-madori-app@latest my-site
+cd my-site
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Visit `http://localhost:3000/cp` to access the control panel.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+**Default credentials:**
+- Email: `admin@example.com`
+- Password: `changeme`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Features
 
-## Learn More
+- **Control Panel** — A polished admin interface for content editors, built with React and shadcn/ui
+- **Flat-file storage** — All content stored as Markdown and YAML. Version control friendly, no database needed
+- **Blueprints** — Define flexible content schemas with a visual editor or YAML configuration
+- **Collections** — Organize content into structured collections with custom blueprints and fields
+- **Taxonomies** — Tag and categorize content with hierarchical taxonomy systems
+- **Globals** — Site-wide configuration and content sets
+- **Forms** — Collect submissions with configurable form blueprints
+- **Navigation** — Manage site navigation structures
+- **Asset management** — Upload, organise, and browse files with drag-and-drop, folders, and bulk operations
+- **GraphQL API** — Auto-generated schema from your blueprints. Query content with type safety
+- **Authentication & roles** — Built-in user management with role-based permissions
+- **Rich text editing** — TipTap-powered editor with images, tables, code blocks, and more
+- **Replicator fields** — Flexible page-building with repeatable block sets (fieldsets)
 
-To learn more about Next.js, take a look at the following resources:
+## Project Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+my-site/
+├── content/                  # Your content (Markdown + YAML frontmatter)
+│   ├── collections/          # Collection entries
+│   ├── globals/              # Global data sets
+│   ├── forms/                # Form submissions
+│   ├── navigation/           # Navigation structures
+│   └── taxonomies/           # Taxonomy terms
+├── resources/                # Schema definitions
+│   ├── blueprints/           # Field schemas for collections, globals, taxonomies
+│   ├── collections/          # Collection definitions
+│   ├── fieldsets/            # Reusable field groups for replicators
+│   ├── roles/                # Permission roles
+│   └── taxonomies/           # Taxonomy definitions
+├── public/assets/            # Uploaded files
+├── users/                    # User accounts (YAML)
+├── src/                      # Application source
+│   ├── app/(cp)/             # Control panel routes
+│   ├── app/api/              # API routes (GraphQL)
+│   ├── components/           # UI components
+│   └── lib/                  # Core CMS library
+└── madori.config.ts          # Project configuration
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Configuration
 
-## Deploy on Vercel
+`madori.config.ts` controls paths and feature toggles:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```ts
+const config = {
+  contentPath: './content',
+  resourcesPath: './resources',
+  usersPath: './users',
+  assetsPath: './public/assets',
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+  cp: {
+    enabled: true,
+    path: '/cp',
+  },
+
+  graphql: {
+    enabled: true,
+    path: '/api/graphql',
+    introspection: process.env.NODE_ENV !== 'production',
+  },
+}
+```
+
+## Requirements
+
+- Node.js 18+
+- pnpm (recommended)
+
+## Development
+
+```bash
+pnpm install
+pnpm dev
+```
+
+Run tests:
+
+```bash
+pnpm test
+```
+
+## License
+
+MIT
