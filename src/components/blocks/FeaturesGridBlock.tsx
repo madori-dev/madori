@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import * as LucideIcons from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -6,6 +7,7 @@ interface FeatureItem {
   feature_name: string
   feature_description?: string
   feature_icon?: string
+  feature_link?: string
 }
 
 interface FeaturesGridBlockProps {
@@ -16,13 +18,17 @@ interface FeaturesGridBlockProps {
 
 function getIcon(name?: string): LucideIcon | null {
   if (!name) return null
+  const icons = LucideIcons as unknown as Record<string, LucideIcon>
+
+  // Try exact match first (handles PascalCase like "FileText")
+  if (icons[name]) return icons[name]
+
   // Normalize: "layers" -> "Layers", "file-text" -> "FileText"
   const normalized = name
     .split(/[-_\s]/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join('')
 
-  const icons = LucideIcons as unknown as Record<string, LucideIcon>
   return icons[normalized] ?? null
 }
 
@@ -57,12 +63,8 @@ export function FeaturesGridBlock({
           <div className="mx-auto mt-12 grid max-w-4xl gap-px overflow-hidden rounded-xl border bg-border sm:grid-cols-2 lg:grid-cols-3">
             {items.map((item, index) => {
               const Icon = getIcon(item.feature_icon)
-
-              return (
-                <div
-                  key={index}
-                  className="flex flex-col gap-3 bg-background p-8"
-                >
+              const content = (
+                <>
                   <div className="flex items-center gap-2">
                     {Icon && (
                       <Icon
@@ -79,6 +81,27 @@ export function FeaturesGridBlock({
                       {item.feature_description}
                     </p>
                   )}
+                </>
+              )
+
+              if (item.feature_link) {
+                return (
+                  <Link
+                    key={index}
+                    href={item.feature_link}
+                    className="flex flex-col gap-3 bg-background p-8 transition-colors hover:bg-muted/50 cursor-pointer"
+                  >
+                    {content}
+                  </Link>
+                )
+              }
+
+              return (
+                <div
+                  key={index}
+                  className="flex flex-col gap-3 bg-background p-8"
+                >
+                  {content}
                 </div>
               )
             })}

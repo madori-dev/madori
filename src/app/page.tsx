@@ -8,6 +8,7 @@ import { InMemoryContentCache } from '@/lib/cache/store'
 import { MadoriContentEngine } from '@/lib/content/engine'
 import { renderTipTapToHtml } from '@/lib/editor/renderer'
 import { BlockRenderer } from '@/components/blocks'
+import { SiteLayout } from '@/components/site/SiteLayout'
 import type { TipTapDocument } from '@/lib/editor/types'
 
 async function getPageEntry() {
@@ -58,19 +59,21 @@ export default async function Home() {
   }
 
   return (
-    <main className="min-h-svh">
-      {/* Render blocks */}
-      {blocks.length > 0 && <BlockRenderer blocks={blocks} />}
+    <SiteLayout>
+      <main className="min-h-svh">
+        {/* Render blocks */}
+        {blocks.length > 0 && <BlockRenderer blocks={blocks} />}
 
-      {/* Fallback: render tiptap/markdown content if no blocks or as additional content */}
-      {html && (
-        <div className="mx-auto max-w-3xl px-6 py-16">
-          <div
-            className="prose dark:prose-invert"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        </div>
-      )}
-    </main>
+        {/* Fallback: render tiptap/markdown content if no blocks or as additional content */}
+        {html && (
+          <div className="mx-auto max-w-3xl px-6 py-16">
+            <div
+              className="prose dark:prose-invert"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          </div>
+        )}
+      </main>
+    </SiteLayout>
   )
 }

@@ -1,0 +1,8 @@
+items:
+  - label: Getting Started
+    url: /getting-started
+  - label: Documentation
+    url: /docs/collections
+  - label: GitHub
+    url: https://github.com/madori-dev/madori
+    external: true

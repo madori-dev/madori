@@ -9,6 +9,7 @@ import { InMemoryContentCache } from '@/lib/cache/store'
 import { MadoriContentEngine } from '@/lib/content/engine'
 import { renderTipTapToHtml } from '@/lib/editor/renderer'
 import { BlockRenderer } from '@/components/blocks'
+import { SiteLayout } from '@/components/site/SiteLayout'
 import type { TipTapDocument } from '@/lib/editor/types'
 
 interface Block {
@@ -60,17 +61,19 @@ export default async function DynamicPage({
   }
 
   return (
-    <main className="min-h-svh">
-      {blocks.length > 0 && <BlockRenderer blocks={blocks} />}
+    <SiteLayout>
+      <main className="min-h-svh">
+        {blocks.length > 0 && <BlockRenderer blocks={blocks} />}
 
-      {html && (
-        <div className="mx-auto max-w-3xl px-6 py-16">
-          <div
-            className="prose dark:prose-invert"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        </div>
-      )}
-    </main>
+        {html && (
+          <div className="mx-auto max-w-3xl px-6 py-16">
+            <div
+              className="prose dark:prose-invert"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          </div>
+        )}
+      </main>
+    </SiteLayout>
   )
 }

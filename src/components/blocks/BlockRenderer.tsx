@@ -48,7 +48,7 @@ export function BlockRenderer({ blocks }: BlockRendererProps) {
               <FeaturesGridBlock
                 title={props.title as string | undefined}
                 subtitle={props.subtitle as string | undefined}
-                features={props.features as Array<{ _type: string; feature_name: string; feature_description?: string; feature_icon?: string }> | undefined}
+                features={props.features as Array<{ _type: string; feature_name: string; feature_description?: string; feature_icon?: string; feature_link?: string }> | undefined}
               />
             )
             break

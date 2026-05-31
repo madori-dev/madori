@@ -23,26 +23,32 @@ blocks:
         feature_name: Collections
         feature_description: Organize your content into structured collections with custom blueprints and fields.
         feature_icon: Layers
+        feature_link: /docs/collections
       - _type: feature_item
         feature_name: Blueprints
         feature_description: Define flexible content schemas with a visual editor or YAML configuration.
         feature_icon: Layout
+        feature_link: /docs/blueprints
       - _type: feature_item
         feature_name: Taxonomies
         feature_description: Tag and categorize content with hierarchical taxonomy systems.
         feature_icon: Tags
+        feature_link: /docs/taxonomies
       - _type: feature_item
         feature_name: Control Panel
         feature_description: A polished admin interface for content editors, built with modern React.
         feature_icon: Settings
+        feature_link: /getting-started
       - _type: feature_item
         feature_name: Flat-File Storage
         feature_description: All content stored as Markdown and YAML. Version control friendly, no database needed.
         feature_icon: FileText
+        feature_link: /docs/configuration
       - _type: feature_item
         feature_name: GraphQL API
         feature_description: Auto-generated GraphQL schema from your blueprints. Query content with type safety.
         feature_icon: Zap
+        feature_link: /docs/graphql
 
   - _type: basic_cta
     title: Ready to build with Madori?
