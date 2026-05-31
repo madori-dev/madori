@@ -36,11 +36,11 @@ export function BlockRenderer({ blocks }: BlockRendererProps) {
 
         switch (_type) {
           case 'hero':
-            content = <HeroBlock {...(props as Record<string, string>)} />
+            content = <HeroBlock {...(props as unknown as React.ComponentProps<typeof HeroBlock>)} />
             break
 
           case 'basic_cta':
-            content = <BasicCtaBlock {...(props as Record<string, string>)} />
+            content = <BasicCtaBlock {...(props as unknown as React.ComponentProps<typeof BasicCtaBlock>)} />
             break
 
           case 'features_grid':

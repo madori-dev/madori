@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { FieldRenderer } from '@/components/cp/fields/FieldRenderer'
+import type { FieldDefinition as TypedFieldDefinition } from '@/lib/blueprints/types'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 
 interface FieldDefinition {
@@ -272,7 +273,7 @@ export default function EntryEditorPage() {
                   {tab.fields.map((fieldDef) => (
                     <FieldRenderer
                       key={fieldDef.handle}
-                      fieldDefinition={fieldDef}
+                      fieldDefinition={fieldDef as TypedFieldDefinition}
                       value={formData[fieldDef.handle]}
                       onChange={(value) => handleFieldChange(fieldDef.handle, value)}
                       error={fieldErrors[fieldDef.handle]}
@@ -329,7 +330,7 @@ export default function EntryEditorPage() {
                 {sidebarFields.map((fieldDef) => (
                   <FieldRenderer
                     key={fieldDef.handle}
-                    fieldDefinition={fieldDef}
+                    fieldDefinition={fieldDef as TypedFieldDefinition}
                     value={formData[fieldDef.handle]}
                     onChange={(value) => handleFieldChange(fieldDef.handle, value)}
                     error={fieldErrors[fieldDef.handle]}

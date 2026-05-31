@@ -128,9 +128,9 @@ function serializeBlockquote(node: TipTapNode): string {
 }
 
 function serializeImage(node: TipTapNode): string {
-  const src = node.attrs?.src || '';
-  const alt = node.attrs?.alt || '';
-  const title = node.attrs?.title;
+  const src = (node.attrs?.src || '') as string;
+  const alt = (node.attrs?.alt || '') as string;
+  const title = node.attrs?.title as string | undefined;
   const encodedSrc = src.replace(/ /g, '%20');
   if (title) {
     return `![${alt}](${encodedSrc} "${title}")\n\n`;

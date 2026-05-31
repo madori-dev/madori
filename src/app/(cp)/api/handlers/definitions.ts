@@ -60,7 +60,7 @@ export function createDefinitionHandlers(loader: DefinitionLoader) {
       const definitions = await loader.loadAll(entityType)
       const data = Array.from(definitions.entries()).map(([handle, def]) => ({
         handle,
-        ...def,
+        ...(def as Record<string, unknown>),
       }))
       return NextResponse.json({ data }, { status: 200 })
     } catch (error) {

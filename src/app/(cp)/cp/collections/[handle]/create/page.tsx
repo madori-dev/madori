@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { FieldRenderer } from '@/components/cp/fields/FieldRenderer'
+import type { FieldDefinition as TypedFieldDefinition } from '@/lib/blueprints/types'
 
 interface FieldDefinition {
   handle: string
@@ -247,7 +248,7 @@ export default function CreateEntryPage() {
           .map((fieldDef) => (
             <FieldRenderer
               key={fieldDef.handle}
-              fieldDefinition={fieldDef}
+              fieldDefinition={fieldDef as TypedFieldDefinition}
               value={formData[fieldDef.handle]}
               onChange={(value) => handleFieldChange(fieldDef.handle, value)}
               error={fieldErrors[fieldDef.handle]}

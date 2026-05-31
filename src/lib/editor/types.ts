@@ -7,7 +7,8 @@
 
 export interface TipTapMark {
   type: 'bold' | 'italic' | 'code' | 'link' | 'strike';
-  attrs?: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  attrs?: Record<string, any>;
 }
 
 export interface TipTapNode {
@@ -15,7 +16,8 @@ export interface TipTapNode {
   content?: TipTapNode[];
   text?: string;
   marks?: TipTapMark[];
-  attrs?: Record<string, unknown>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  attrs?: Record<string, any>;
 }
 
 export interface TipTapDocument {

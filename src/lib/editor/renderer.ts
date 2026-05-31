@@ -32,9 +32,9 @@ function renderNode(node: TipTapNode): string {
     case 'horizontalRule':
       return '<hr>'
     case 'image': {
-      const src = node.attrs?.src ?? ''
-      const alt = node.attrs?.alt ?? ''
-      const title = node.attrs?.title
+      const src = (node.attrs?.src ?? '') as string
+      const alt = (node.attrs?.alt ?? '') as string
+      const title = node.attrs?.title as string | undefined
       const width = node.attrs?.width
       const height = node.attrs?.height
       const alignment = node.attrs?.alignment ?? 'center'
@@ -90,8 +90,8 @@ function renderInline(node: TipTapNode): string {
     return '<br>'
   }
   if (node.type === 'image') {
-    const src = node.attrs?.src ?? ''
-    const alt = node.attrs?.alt ?? ''
+    const src = (node.attrs?.src ?? '') as string
+    const alt = (node.attrs?.alt ?? '') as string
     return `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}">`
   }
   return ''
@@ -118,8 +118,8 @@ function applyMark(text: string, mark: TipTapMark): string {
     case 'code':
       return `<code>${text}</code>`
     case 'link': {
-      const href = mark.attrs?.href ?? ''
-      const target = mark.attrs?.target
+      const href = (mark.attrs?.href ?? '') as string
+      const target = mark.attrs?.target as string | undefined
       return `<a href="${escapeAttr(href)}"${target ? ` target="${escapeAttr(target)}"` : ''}>${text}</a>`
     }
     default:
@@ -137,11 +137,13 @@ function getAlignmentStyle(node: TipTapNode): string {
 
 function cellAttrs(node: TipTapNode): string {
   const parts: string[] = []
-  if (node.attrs?.colspan && node.attrs.colspan > 1) {
-    parts.push(`colspan="${node.attrs.colspan}"`)
+  const colspan = node.attrs?.colspan as number | undefined
+  const rowspan = node.attrs?.rowspan as number | undefined
+  if (colspan && colspan > 1) {
+    parts.push(`colspan="${colspan}"`)
   }
-  if (node.attrs?.rowspan && node.attrs.rowspan > 1) {
-    parts.push(`rowspan="${node.attrs.rowspan}"`)
+  if (rowspan && rowspan > 1) {
+    parts.push(`rowspan="${rowspan}"`)
   }
   return parts.length ? ' ' + parts.join(' ') : ''
 }
