@@ -11,6 +11,7 @@ import { MadoriContentEngine } from '@/lib/content/engine'
 import { renderTipTapToHtml } from '@/lib/editor/renderer'
 import { BlockRenderer } from '@/components/blocks'
 import { SiteLayout } from '@/components/site/SiteLayout'
+import { DocsLayout } from '@/components/site/DocsLayout'
 import type { TipTapDocument } from '@/lib/editor/types'
 
 interface Block {
@@ -78,18 +79,30 @@ export default async function DynamicPage({ params }: PageProps) {
     html = await marked.parse(entry.content)
   }
 
+  const isDocsPage = slug[0] === 'docs' || slugStr === 'getting-started'
+
+  const content = (
+    <>
+      {blocks.length > 0 && <BlockRenderer blocks={blocks} />}
+
+      {html && (
+        <div className={isDocsPage ? '' : 'mx-auto max-w-3xl px-6 py-16'}>
+          <div
+            className="prose dark:prose-invert max-w-none"
+            dangerouslySetInnerHTML={{ __html: html }}
+          />
+        </div>
+      )}
+    </>
+  )
+
   return (
     <SiteLayout>
       <main className="min-h-svh">
-        {blocks.length > 0 && <BlockRenderer blocks={blocks} />}
-
-        {html && (
-          <div className="mx-auto max-w-3xl px-6 py-16">
-            <div
-              className="prose dark:prose-invert"
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
-          </div>
+        {isDocsPage ? (
+          <DocsLayout>{content}</DocsLayout>
+        ) : (
+          content
         )}
       </main>
     </SiteLayout>

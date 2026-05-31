@@ -1,0 +1,31 @@
+items:
+  - label: Getting Started
+    url: /getting-started
+  - label: Configuration
+    url: /docs/configuration
+  - label: Collections
+    url: /docs/collections
+  - label: Blueprints
+    url: /docs/blueprints
+  - label: Field Types
+    url: /docs/field-types
+  - label: Fieldsets
+    url: /docs/fieldsets
+  - label: Taxonomies
+    url: /docs/taxonomies
+  - label: Globals
+    url: /docs/globals
+  - label: Assets
+    url: /docs/assets
+  - label: GraphQL API
+    url: /docs/graphql
+  - label: Authentication
+    url: /docs/authentication
+  - label: Forms
+    url: /docs/forms
+  - label: Navigation
+    url: /docs/navigation
+  - label: CLI
+    url: /docs/cli
+  - label: Deployment
+    url: /docs/deployment
