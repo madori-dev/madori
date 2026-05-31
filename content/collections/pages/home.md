@@ -11,9 +11,9 @@ blocks:
     title: The flat-file CMS for React applications
     subtitle: Built on React, powered by TypeScript. A Statamic-inspired content management system for the JavaScript ecosystem.
     primary_button_text: Get Started
-    primary_button_link: /docs/getting-started
+    primary_button_link: /getting-started
     secondary_button_text: View on GitHub
-    secondary_button_link: https://github.com/madori-cms/madori
+    secondary_button_link: https://github.com/madori-dev/madori
 
   - _type: features_grid
     title: Everything you need to manage content
@@ -47,10 +47,10 @@ blocks:
   - _type: basic_cta
     title: Ready to build with Madori?
     text: Get up and running in minutes. One command to scaffold, one to start.
-    primary_button_text: Read the Docs
-    primary_button_link: /docs
-    secondary_button_text: View Examples
-    secondary_button_link: /examples
+    primary_button_text: Get Started
+    primary_button_link: /getting-started
+    secondary_button_text: View on GitHub
+    secondary_button_link: https://github.com/madori-dev/madori
 
   - _type: about_the_creator
     title: About Madori

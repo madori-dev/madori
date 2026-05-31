@@ -3,6 +3,23 @@
 @import "shadcn/tailwind.css";
 @plugin "@tailwindcss/typography";
 
+/* Remove decorative backticks from inline code in prose */
+.prose :where(code):not(:where([class~="not-prose"],[class~="not-prose"] *))::before,
+.prose :where(code):not(:where([class~="not-prose"],[class~="not-prose"] *))::after {
+  content: "" !important;
+}
+
+.prose :where(code):not(:where(pre code, [class~="not-prose"],[class~="not-prose"] *)) {
+  background-color: oklch(0.95 0 0);
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+
+.dark .prose :where(code):not(:where(pre code, [class~="not-prose"],[class~="not-prose"] *)) {
+  background-color: oklch(0.25 0 0);
+}
+
 @custom-variant dark (&:is(.dark *));
 
 button, a {

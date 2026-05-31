@@ -40,7 +40,7 @@ export function HeroBlock({
               alt="MADORI"
               width={180}
               height={180}
-              className="dark:invert"
+              className=""
               priority
             />
             <span className="font-heading text-3xl font-bold tracking-wide text-foreground">
