@@ -5,7 +5,7 @@ import { execSync } from 'node:child_process'
 const REPO = 'madori-dev/madori'
 const BRANCH = 'main'
 
-/** Items to strip from the cloned template */
+/** Items to always strip from the cloned template */
 const REMOVE_AFTER_CLONE = [
   'packages',
   'pnpm-workspace.yaml',
@@ -25,7 +25,31 @@ const REMOVE_AFTER_CLONE = [
   'users',
 ]
 
-export function scaffold(projectName: string): void {
+/** Additional items to remove when boilerplate site is NOT included */
+const BOILERPLATE_FILES = [
+  'content/collections/pages',
+  'content/navigation',
+  'content/globals/site-settings.yaml',
+  'resources/blueprints/collections/pages.yaml',
+  'resources/blueprints/globals',
+  'resources/collections/pages.yaml',
+  'resources/fieldsets',
+  'resources/globals',
+  'src/components/blocks',
+  'src/components/site',
+  'src/app/[...slug]',
+  'public/madori_logo.svg',
+  'public/assets/logos',
+  'public/assets/MADORI M.png',
+  'public/assets/MADORI M_black.png',
+  'public/assets/MADORI M_white.png',
+]
+
+export interface ScaffoldOptions {
+  includeBoilerplate: boolean
+}
+
+export function scaffold(projectName: string, options: ScaffoldOptions): void {
   const projectDir = path.resolve(process.cwd(), projectName)
 
   if (fs.existsSync(projectDir)) {
@@ -44,7 +68,7 @@ export function scaffold(projectName: string): void {
       `curl -sL "https://github.com/${REPO}/archive/refs/heads/${BRANCH}.tar.gz" | tar -xz --strip-components=1 -C "${projectDir}"`,
       { stdio: 'pipe' }
     )
-  } catch (err) {
+  } catch {
     fs.rmSync(projectDir, { recursive: true, force: true })
     console.error('  ✗ Failed to download template from GitHub.')
     console.error(`    Make sure https://github.com/${REPO} is accessible.`)
@@ -52,13 +76,106 @@ export function scaffold(projectName: string): void {
   }
   console.log('  ✓ Downloaded template')
 
-  // Remove files that end users don't need
+  // Remove workspace/dev files
   for (const item of REMOVE_AFTER_CLONE) {
     const itemPath = path.join(projectDir, item)
     if (fs.existsSync(itemPath)) {
       fs.rmSync(itemPath, { recursive: true, force: true })
     }
   }
+
+  // If no boilerplate, strip the marketing site files
+  if (!options.includeBoilerplate) {
+    for (const item of BOILERPLATE_FILES) {
+      const itemPath = path.join(projectDir, item)
+      if (fs.existsSync(itemPath)) {
+        fs.rmSync(itemPath, { recursive: true, force: true })
+      }
+    }
+
+    // Replace the homepage with a minimal one
+    const pageFile = path.join(projectDir, 'src/app/page.tsx')
+    fs.writeFileSync(
+      pageFile,
+      `export default function Home() {
+  return (
+    <main className="flex min-h-svh items-center justify-center">
+      <div className="text-center space-y-4">
+        <h1 className="text-4xl font-bold">MADORI</h1>
+        <p className="text-muted-foreground">
+          Your CMS is ready. Visit{' '}
+          <a href="/cp" className="underline font-medium">
+            /cp
+          </a>{' '}
+          to start building.
+        </p>
+      </div>
+    </main>
+  )
+}
+`
+    )
+
+    // Create a minimal blog blueprint as a starter
+    const blueprintDir = path.join(projectDir, 'resources/blueprints/collections')
+    fs.mkdirSync(blueprintDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(blueprintDir, 'blog.yaml'),
+      `tabs:
+  main:
+    fields:
+      - handle: title
+        field:
+          type: text
+          display: Title
+          required: true
+      - handle: slug
+        field:
+          type: slug
+      - handle: content
+        field:
+          type: tiptap
+          display: Content
+`
+    )
+
+    // Create a blog collection definition
+    const collectionsDir = path.join(projectDir, 'resources/collections')
+    fs.mkdirSync(collectionsDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(collectionsDir, 'blog.yaml'),
+      `title: Blog
+blueprint: blog
+route: /blog/{slug}
+defaultStatus: draft
+`
+    )
+
+    // Create a sample entry
+    const blogContentDir = path.join(projectDir, 'content/collections/blog')
+    fs.mkdirSync(blogContentDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(blogContentDir, 'hello-world.md'),
+      `---
+title: Hello World
+slug: hello-world
+status: published
+createdAt: ${new Date().toISOString()}
+updatedAt: ${new Date().toISOString()}
+---
+
+# Hello World
+
+Welcome to MADORI. This is your first blog post.
+`
+    )
+
+    console.log('  ✓ Scaffolded blank project with blog collection')
+  } else {
+    console.log('  ✓ Included boilerplate site')
+  }
+
+  // Clean up workspace files
   console.log('  ✓ Cleaned up workspace files')
 
   // Update package.json
@@ -90,24 +207,6 @@ created_at: ${new Date().toISOString()}
 `
   )
   console.log('  ✓ Created initial admin user')
-
-  // Simplify homepage content for fresh projects
-  const homePath = path.join(projectDir, 'content/collections/pages/home.md')
-  if (fs.existsSync(homePath)) {
-    fs.writeFileSync(
-      homePath,
-      `---
-title: Home
-slug: home
-status: published
----
-
-# Welcome to MADORI
-
-Your flat-file CMS is ready. Visit /cp to start building.
-`
-    )
-  }
 
   console.log(`
   ✅ MADORI project created!
