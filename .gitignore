@@ -44,3 +44,4 @@ next-env.d.ts
 .sessions
 packages/*/node_modules
 packages/*/dist
+users/*

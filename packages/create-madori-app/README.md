@@ -44,7 +44,7 @@ pnpm dev
 After scaffolding, log in to the control panel with:
 
 - **Email:** admin@example.com
-- **Password:** changeme
+- **Password:** password
 
 ⚠️ Change these after first login.
 

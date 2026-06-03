@@ -46,7 +46,7 @@ Your site is now running at [http://localhost:3000](http://localhost:3000).
 Visit [http://localhost:3000/cp](http://localhost:3000/cp) and sign in with:
 
 - **Email:** `admin@example.com`
-- **Password:** `changeme`
+- **Password:** `password`
 
 > ⚠️ Change the default password after your first login.
 

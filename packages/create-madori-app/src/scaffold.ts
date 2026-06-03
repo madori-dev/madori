@@ -1,9 +1,19 @@
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { execSync } from 'node:child_process'
+import { randomBytes, scryptSync } from 'node:crypto'
 
 const REPO = 'madori-dev/madori'
 const BRANCH = 'main'
+
+const SALT_LENGTH = 32
+const KEY_LENGTH = 64
+
+function hashPasswordSync(password: string): string {
+  const salt = randomBytes(SALT_LENGTH)
+  const hash = scryptSync(password, salt, KEY_LENGTH)
+  return `scrypt:${salt.toString('hex')}:${hash.toString('hex')}`
+}
 
 /** Items to always strip from the cloned template */
 const REMOVE_AFTER_CLONE = [
@@ -195,12 +205,15 @@ Welcome to MADORI. This is your first blog post.
   }
 
   // Write initial admin user
+  const adminPassword = 'password'
+  const adminId = crypto.randomUUID()
+  const passwordHash = hashPasswordSync(adminPassword)
   fs.writeFileSync(
-    path.join(projectDir, 'users', 'admin.yaml'),
-    `id: admin
+    path.join(projectDir, 'users', `${adminId}.yaml`),
+    `id: ${adminId}
 email: admin@example.com
 name: Admin
-password_hash: changeme
+password_hash: ${passwordHash}
 roles:
   - admin
 created_at: ${new Date().toISOString()}
@@ -223,7 +236,7 @@ created_at: ${new Date().toISOString()}
 
   Default admin login:
     Email:    admin@example.com
-    Password: changeme
+    Password: password
 
   ⚠️  Change the default admin password after first login!
 `)
