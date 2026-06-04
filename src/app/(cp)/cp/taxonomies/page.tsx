@@ -55,6 +55,7 @@ export default function TaxonomiesListPage() {
         title="Taxonomies"
         description="Manage your content taxonomies and terms."
         createHref="/cp/taxonomies/create"
+        blueprintsHref="/cp/blueprints?type=taxonomies"
       />
 
       {taxonomies.length === 0 ? (

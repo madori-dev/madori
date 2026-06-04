@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,6 +21,7 @@ import {
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { BlueprintPicker } from '@/components/cp/BlueprintPicker'
+import { MultiSelect, type MultiSelectOption } from '@/components/cp/multi-select'
 
 export type EntityType = 'taxonomies' | 'globals' | 'navigations' | 'forms'
 
@@ -44,7 +46,7 @@ const ENTITY_FIELDS: Record<EntityType, FieldConfig[]> = {
   globals: [],
   navigations: [
     { name: 'max_depth', label: 'Max Depth', type: 'number', placeholder: 'e.g. 3', help: 'Maximum nesting depth for navigation items' },
-    { name: 'collections', label: 'Collections', type: 'collections', placeholder: 'e.g. blog, pages', help: 'Comma-separated list of collections to include' },
+    { name: 'collections', label: 'Collections', type: 'collections', help: 'Enable linking to entries in these collections' },
   ],
   forms: [
     { name: 'honeypot', label: 'Enable honeypot', type: 'checkbox', help: 'Add a hidden field to detect spam submissions' },
@@ -53,7 +55,7 @@ const ENTITY_FIELDS: Record<EntityType, FieldConfig[]> = {
 }
 
 /** Entity types that support blueprints */
-const BLUEPRINT_ENTITY_TYPES: EntityType[] = ['taxonomies', 'globals', 'forms']
+const BLUEPRINT_ENTITY_TYPES: EntityType[] = ['taxonomies', 'globals', 'forms', 'navigations']
 
 function slugify(text: string): string {
   return text
@@ -72,6 +74,27 @@ export default function DefinitionForm({ entityType, mode, handle, listPath, tit
   const [errors, setErrors] = useState<Record<string, string[]>>({})
   const [generalError, setGeneralError] = useState<string | null>(null)
   const [createNewBlueprint, setCreateNewBlueprint] = useState(false)
+  const [collectionOptions, setCollectionOptions] = useState<MultiSelectOption[]>([])
+
+  // Fetch available collections for the multi-select picker
+  useEffect(() => {
+    const hasCollectionsField = ENTITY_FIELDS[entityType].some((f) => f.type === 'collections')
+    if (!hasCollectionsField) return
+
+    async function fetchCollections() {
+      try {
+        const res = await fetch('/api/collections')
+        if (res.ok) {
+          const json = await res.json()
+          const collections = (json.data ?? []) as { handle: string; title: string }[]
+          setCollectionOptions(collections.map((c) => ({ value: c.handle, label: c.title })))
+        }
+      } catch {
+        // Non-critical — picker will just be empty
+      }
+    }
+    fetchCollections()
+  }, [entityType])
 
   useEffect(() => {
     if (mode !== 'edit' || !handle) return
@@ -134,11 +157,17 @@ export default function DefinitionForm({ entityType, mode, handle, listPath, tit
       // If creating a new blueprint, generate an empty one first
       if (mode === 'create' && createNewBlueprint && BLUEPRINT_ENTITY_TYPES.includes(entityType)) {
         const bpHandle = handleValue
+        const defaultFields = entityType === 'navigations'
+          ? [
+              { handle: 'label', field: { type: 'text', display: 'Label', required: true } },
+              { handle: 'url', field: { type: 'text', display: 'URL' } },
+            ]
+          : []
         const emptyBlueprint = {
           tabs: {
             main: {
               label: 'Main',
-              fields: [],
+              fields: defaultFields,
             },
           },
         }
@@ -191,9 +220,11 @@ export default function DefinitionForm({ entityType, mode, handle, listPath, tit
         return
       }
 
+      toast.success(mode === 'create' ? `${sectionTitle.slice(0, -1)} created` : 'Changes saved')
       router.push(listPath)
     } catch (err) {
       setGeneralError(err instanceof Error ? err.message : 'An unexpected error occurred')
+      toast.error(mode === 'create' ? 'Failed to create' : 'Failed to save changes')
     } finally {
       setSubmitting(false)
     }
@@ -299,29 +330,27 @@ export default function DefinitionForm({ entityType, mode, handle, listPath, tit
                       {field.label}
                     </Label>
                   </div>
+                ) : field.type === 'collections' ? (
+                  <>
+                    <Label>{field.label}</Label>
+                    <MultiSelect
+                      options={collectionOptions}
+                      selected={Array.isArray(formData[field.name]) ? (formData[field.name] as string[]) : []}
+                      onChange={(val) => handleFieldChange(field.name, val.length > 0 ? val : undefined)}
+                      placeholder="Select collections..."
+                    />
+                  </>
                 ) : (
                   <>
                     <Label htmlFor={field.name}>{field.label}</Label>
                     <Input
                       id={field.name}
                       type={field.type === 'number' ? 'number' : 'text'}
-                      value={
-                        field.type === 'collections'
-                          ? Array.isArray(formData[field.name])
-                            ? (formData[field.name] as string[]).join(', ')
-                            : (formData[field.name] as string) ?? ''
-                          : (formData[field.name] as string | number) ?? ''
-                      }
+                      value={(formData[field.name] as string | number) ?? ''}
                       onChange={(e) => {
                         if (field.type === 'number') {
                           const val = e.target.value === '' ? undefined : Number(e.target.value)
                           handleFieldChange(field.name, val)
-                        } else if (field.type === 'collections') {
-                          const val = e.target.value
-                            .split(',')
-                            .map((s) => s.trim())
-                            .filter(Boolean)
-                          handleFieldChange(field.name, val.length > 0 ? val : undefined)
                         } else {
                           const val = e.target.value || undefined
                           handleFieldChange(field.name, val)

@@ -4,7 +4,7 @@ import * as path from 'path'
 import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
 import { MarkdownYamlParser } from '@/lib/fs/parser'
 import { InMemoryContentCache } from '@/lib/cache/store'
-import { FormOperations } from '@/lib/content/forms'
+import { FormOperations, isHoneypotFilled } from '@/lib/content/forms'
 import { NotFoundError } from '@/lib/errors'
 
 describe('FormOperations', () => {
@@ -151,5 +151,175 @@ fields:
       expect(raw).toContain('message: Hello world')
       expect(raw).toContain(submission.id)
     })
+
+    it('silently discards submission when honeypot is filled', async () => {
+      const blueprintYaml = `handle: contact\ndisplay: Contact Form\nfields: []\n`
+      await fs.writeFile(path.join(resourcesDir, 'blueprints', 'forms', 'contact.yaml'), blueprintYaml)
+
+      // Create form definition with honeypot enabled
+      const defDir = path.join(resourcesDir, 'forms')
+      await fs.mkdir(defDir, { recursive: true })
+      await fs.writeFile(path.join(defDir, 'contact.yaml'), `title: Contact\nhoneypot: true\n`)
+
+      const result = await forms.submitForm('contact', { name: 'Bot', _honeypot: 'filled' })
+      expect(result).toBeNull()
+
+      // Verify no file was written
+      const submissionDir = path.join(tmpDir, 'content', 'forms', 'contact')
+      const dirExists = await fs.access(submissionDir).then(() => true).catch(() => false)
+      expect(dirExists).toBe(false)
+    })
+
+    it('stores submission normally when honeypot is empty', async () => {
+      const blueprintYaml = `handle: contact\ndisplay: Contact Form\nfields: []\n`
+      await fs.writeFile(path.join(resourcesDir, 'blueprints', 'forms', 'contact.yaml'), blueprintYaml)
+
+      const defDir = path.join(resourcesDir, 'forms')
+      await fs.mkdir(defDir, { recursive: true })
+      await fs.writeFile(path.join(defDir, 'contact.yaml'), `title: Contact\nhoneypot: true\n`)
+
+      const result = await forms.submitForm('contact', { name: 'Human', _honeypot: '' })
+      expect(result).not.toBeNull()
+      expect(result!.data.name).toBe('Human')
+      // honeypot field should be stripped from stored data
+      expect(result!.data._honeypot).toBeUndefined()
+    })
+  })
+
+  describe('listSubmissions', () => {
+    it('returns empty result when no submissions directory exists', async () => {
+      const result = await forms.listSubmissions('contact', { page: 1, perPage: 10 })
+      expect(result.submissions).toEqual([])
+      expect(result.total).toBe(0)
+    })
+
+    it('returns paginated submissions sorted newest first by default', async () => {
+      const blueprintYaml = `handle: contact\ndisplay: Contact Form\nfields: []\n`
+      await fs.writeFile(path.join(resourcesDir, 'blueprints', 'forms', 'contact.yaml'), blueprintYaml)
+
+      // Create 3 submissions
+      await forms.submitForm('contact', { name: 'First' })
+      await forms.submitForm('contact', { name: 'Second' })
+      await forms.submitForm('contact', { name: 'Third' })
+
+      const result = await forms.listSubmissions('contact', { page: 1, perPage: 2 })
+      expect(result.total).toBe(3)
+      expect(result.submissions).toHaveLength(2)
+      expect(result.page).toBe(1)
+      expect(result.perPage).toBe(2)
+    })
+
+    it('supports page 2', async () => {
+      const blueprintYaml = `handle: contact\ndisplay: Contact Form\nfields: []\n`
+      await fs.writeFile(path.join(resourcesDir, 'blueprints', 'forms', 'contact.yaml'), blueprintYaml)
+
+      await forms.submitForm('contact', { name: 'First' })
+      await forms.submitForm('contact', { name: 'Second' })
+      await forms.submitForm('contact', { name: 'Third' })
+
+      const result = await forms.listSubmissions('contact', { page: 2, perPage: 2 })
+      expect(result.submissions).toHaveLength(1)
+    })
+  })
+
+  describe('getSubmission', () => {
+    it('returns null for non-existent submission', async () => {
+      const result = await forms.getSubmission('contact', 'nonexistent-id')
+      expect(result).toBeNull()
+    })
+
+    it('retrieves a previously submitted form entry', async () => {
+      const blueprintYaml = `handle: contact\ndisplay: Contact Form\nfields: []\n`
+      await fs.writeFile(path.join(resourcesDir, 'blueprints', 'forms', 'contact.yaml'), blueprintYaml)
+
+      const submission = await forms.submitForm('contact', { name: 'Jane', email: 'jane@example.com' })
+      const result = await forms.getSubmission('contact', submission!.id)
+
+      expect(result).not.toBeNull()
+      expect(result!.id).toBe(submission!.id)
+      expect(result!.data).toEqual({ name: 'Jane', email: 'jane@example.com' })
+    })
+  })
+
+  describe('deleteSubmission', () => {
+    it('throws NotFoundError for non-existent submission', async () => {
+      await expect(forms.deleteSubmission('contact', 'nonexistent')).rejects.toThrow(NotFoundError)
+    })
+
+    it('removes a submission file', async () => {
+      const blueprintYaml = `handle: contact\ndisplay: Contact Form\nfields: []\n`
+      await fs.writeFile(path.join(resourcesDir, 'blueprints', 'forms', 'contact.yaml'), blueprintYaml)
+
+      const submission = await forms.submitForm('contact', { name: 'ToDelete' })
+      await forms.deleteSubmission('contact', submission!.id)
+
+      const result = await forms.getSubmission('contact', submission!.id)
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('exportCsv', () => {
+    it('returns empty string when no submissions exist', async () => {
+      const result = await forms.exportCsv('contact')
+      expect(result).toBe('')
+    })
+
+    it('generates CSV with headers as superset of all field handles', async () => {
+      const blueprintYaml = `handle: contact\ndisplay: Contact Form\nfields: []\n`
+      await fs.writeFile(path.join(resourcesDir, 'blueprints', 'forms', 'contact.yaml'), blueprintYaml)
+
+      await forms.submitForm('contact', { name: 'Jane', email: 'jane@example.com' })
+      await forms.submitForm('contact', { name: 'Bob', phone: '123' })
+
+      const csv = await forms.exportCsv('contact')
+      const lines = csv.split('\n')
+
+      // Header should contain id, submitted_at, and all unique field handles
+      expect(lines[0]).toContain('id')
+      expect(lines[0]).toContain('submitted_at')
+      expect(lines[0]).toContain('name')
+      expect(lines[0]).toContain('email')
+      expect(lines[0]).toContain('phone')
+
+      // Should have header + 2 data rows
+      expect(lines).toHaveLength(3)
+    })
+  })
+
+  describe('exportJson', () => {
+    it('returns empty array when no submissions exist', async () => {
+      const result = await forms.exportJson('contact')
+      expect(result).toBe('[]')
+    })
+
+    it('returns JSON array with all submissions', async () => {
+      const blueprintYaml = `handle: contact\ndisplay: Contact Form\nfields: []\n`
+      await fs.writeFile(path.join(resourcesDir, 'blueprints', 'forms', 'contact.yaml'), blueprintYaml)
+
+      await forms.submitForm('contact', { name: 'Jane' })
+      await forms.submitForm('contact', { name: 'Bob' })
+
+      const json = await forms.exportJson('contact')
+      const parsed = JSON.parse(json)
+
+      expect(Array.isArray(parsed)).toBe(true)
+      expect(parsed).toHaveLength(2)
+      expect(parsed[0].data.name).toBeDefined()
+      expect(parsed[1].data.name).toBeDefined()
+    })
+  })
+})
+
+describe('isHoneypotFilled', () => {
+  it('returns true when honeypot field has a value', () => {
+    expect(isHoneypotFilled({ _honeypot: 'spam' }, '_honeypot')).toBe(true)
+  })
+
+  it('returns false when honeypot field is empty string', () => {
+    expect(isHoneypotFilled({ _honeypot: '' }, '_honeypot')).toBe(false)
+  })
+
+  it('returns false when honeypot field is undefined', () => {
+    expect(isHoneypotFilled({}, '_honeypot')).toBe(false)
   })
 })

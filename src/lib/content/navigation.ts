@@ -3,6 +3,7 @@ import type { FileSystemAdapter } from '@/lib/fs/adapter'
 import type { ContentParser } from '@/lib/fs/parser'
 import type { ContentCache } from '@/lib/cache/store'
 import type { Navigation, NavigationItem } from '@/lib/types'
+import { serializeNavigation } from '@/lib/navigation/tree'
 
 export class NavigationOperations {
   constructor(
@@ -60,27 +61,34 @@ export class NavigationOperations {
     return navigations
   }
 
+  async saveNavigation(handle: string, items: NavigationItem[]): Promise<Navigation> {
+    const filePath = path.join(this.navigationDir, `${handle}.yaml`)
+    const yaml = serializeNavigation(items)
+    await this.fs.writeFile(filePath, yaml)
+
+    // Invalidate cache
+    this.cache.invalidate(this.cacheKey(handle))
+    this.cache.invalidate('navigations:list')
+
+    const navigation: Navigation = { handle, items }
+    this.cache.set(this.cacheKey(handle), navigation, [filePath])
+    return navigation
+  }
+
   private parseItems(items: unknown[]): NavigationItem[] {
     return items.map((item) => this.parseItem(item))
   }
 
   private parseItem(item: unknown): NavigationItem {
     if (typeof item !== 'object' || item === null) {
-      return { label: '' }
+      return {}
     }
 
-    const obj = item as Record<string, unknown>
+    const { children, ...fields } = item as Record<string, unknown>
+    const navItem: NavigationItem = { ...fields }
 
-    const navItem: NavigationItem = {
-      label: typeof obj.label === 'string' ? obj.label : '',
-    }
-
-    if (typeof obj.url === 'string') navItem.url = obj.url
-    if (typeof obj.entry === 'string') navItem.entry = obj.entry
-    if (typeof obj.external === 'boolean') navItem.external = obj.external
-
-    if (Array.isArray(obj.children)) {
-      navItem.children = this.parseItems(obj.children)
+    if (Array.isArray(children)) {
+      navItem.children = this.parseItems(children)
     }
 
     return navItem

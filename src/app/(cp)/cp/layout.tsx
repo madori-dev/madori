@@ -33,28 +33,56 @@ import {
 } from '@/components/ui/sidebar'
 import { Separator } from '@/components/ui/separator'
 import { TooltipProvider } from '@/components/ui/tooltip'
+import { Toaster } from '@/components/ui/sonner'
 import { MadoriLogo } from '@/components/cp/MadoriLogo'
 import { SidebarUserMenu } from '@/components/cp/SidebarUserMenu'
 
-const navItems = [
-  { label: 'Dashboard', href: '/cp', icon: LayoutDashboard },
-  { label: 'Collections', href: '/cp/collections', icon: FolderOpen },
-  { label: 'Blueprints', href: '/cp/blueprints', icon: FileCode2 },
-  { label: 'Fieldsets', href: '/cp/fieldsets', icon: Layers },
-  { label: 'Taxonomies', href: '/cp/taxonomies', icon: Tags },
-  { label: 'Globals', href: '/cp/globals', icon: Globe },
-  { label: 'Navigation', href: '/cp/navigation', icon: Navigation },
-  { label: 'Assets', href: '/cp/assets', icon: Image },
-  { label: 'Forms', href: '/cp/forms', icon: FileText },
-  { label: 'Users', href: '/cp/users', icon: Users },
+const navGroups = [
+  {
+    items: [
+      { label: 'Dashboard', href: '/cp', icon: LayoutDashboard },
+    ],
+  },
+  {
+    label: 'Content',
+    items: [
+      { label: 'Collections', href: '/cp/collections', icon: FolderOpen },
+      { label: 'Globals', href: '/cp/globals', icon: Globe },
+      { label: 'Navigation', href: '/cp/navigation', icon: Navigation },
+      { label: 'Taxonomies', href: '/cp/taxonomies', icon: Tags },
+    ],
+  },
+  {
+    label: 'Media & Data',
+    items: [
+      { label: 'Assets', href: '/cp/assets', icon: Image },
+      { label: 'Forms', href: '/cp/forms', icon: FileText },
+    ],
+  },
+  {
+    label: 'Configuration',
+    items: [
+      { label: 'Blueprints', href: '/cp/blueprints', icon: FileCode2 },
+      { label: 'Fieldsets', href: '/cp/fieldsets', icon: Layers },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { label: 'Users', href: '/cp/users', icon: Users },
+    ],
+  },
 ]
+
+// Flat list for header breadcrumb lookup
+const allNavItems = navGroups.flatMap((g) => g.items)
 
 export default function CPLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
 
   // Don't render sidebar on login page
   if (pathname === '/cp/login') {
-    return <>{children}</>
+    return <>{children}<Toaster /></>
   }
 
   return (
@@ -72,7 +100,7 @@ export default function CPLayout({ children }: { children: React.ReactNode }) {
                     <MadoriLogo className="size-5" />
                   </div>
                   <div className="grid flex-1 text-left text-sm leading-tight">
-                    <span className="truncate font-semibold">MADORI</span>
+                    <span className="truncate font-heading font-semibold">MADORI</span>
                     <span className="truncate text-xs text-muted-foreground">
                       Control Panel
                     </span>
@@ -83,32 +111,34 @@ export default function CPLayout({ children }: { children: React.ReactNode }) {
           </SidebarHeader>
 
           <SidebarContent>
-            <SidebarGroup>
-              <SidebarGroupLabel>Content</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {navItems.map((item) => {
-                    const isActive =
-                      item.href === '/cp'
-                        ? pathname === '/cp'
-                        : pathname.startsWith(item.href)
+            {navGroups.map((group, groupIndex) => (
+              <SidebarGroup key={groupIndex}>
+                {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {group.items.map((item) => {
+                      const isActive =
+                        item.href === '/cp'
+                          ? pathname === '/cp'
+                          : pathname.startsWith(item.href)
 
-                    return (
-                      <SidebarMenuItem key={item.href}>
-                        <SidebarMenuButton
-                          render={<Link href={item.href} />}
-                          isActive={isActive}
-                          tooltip={item.label}
-                        >
-                          <item.icon />
-                          <span>{item.label}</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    )
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+                      return (
+                        <SidebarMenuItem key={item.href}>
+                          <SidebarMenuButton
+                            render={<Link href={item.href} />}
+                            isActive={isActive}
+                            tooltip={item.label}
+                          >
+                            <item.icon />
+                            <span>{item.label}</span>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      )
+                    })}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ))}
           </SidebarContent>
 
           <SidebarFooter>
@@ -134,7 +164,7 @@ export default function CPLayout({ children }: { children: React.ReactNode }) {
             <SidebarTrigger className="-ml-1" />
             <Separator orientation="vertical" className="mr-2 h-4" />
             <span className="text-sm text-muted-foreground">
-              {navItems.find(
+              {allNavItems.find(
                 (item) =>
                   item.href === '/cp'
                     ? pathname === '/cp'
@@ -145,6 +175,7 @@ export default function CPLayout({ children }: { children: React.ReactNode }) {
           <main className="flex-1 overflow-y-auto p-6">{children}</main>
         </SidebarInset>
       </SidebarProvider>
+      <Toaster />
     </TooltipProvider>
   )
 }

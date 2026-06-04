@@ -8,6 +8,7 @@ export interface Entry {
   collection: string
   createdAt: string
   updatedAt: string
+  contentHash?: string
 }
 
 export interface Collection {
@@ -48,10 +49,7 @@ export interface Global {
 }
 
 export interface NavigationItem {
-  label: string
-  url?: string
-  entry?: string
-  external?: boolean
+  [key: string]: unknown
   children?: NavigationItem[]
 }
 

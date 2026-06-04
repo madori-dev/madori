@@ -69,6 +69,21 @@ export const DEPRECATED_CONFIG_PROPERTIES = [
   'navigations',
 ] as const
 
+export const InvalidationRuleSchema = z.object({
+  trigger: z.string(), // collection handle or resource type
+  urls: z.array(z.string()), // explicit paths or glob patterns
+})
+
+export const StaticCacheConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  driver: z.enum(['application', 'file']).default('application'),
+  storagePath: z.string().default('storage/static-cache/'),
+  exclude: z.array(z.string()).default([]),
+  queryStrings: z.enum(['ignore', 'separate']).default('ignore'),
+  warmOnInvalidate: z.boolean().default(false),
+  invalidationRules: z.array(InvalidationRuleSchema).default([]),
+})
+
 export const MadoriConfigSchema = z.object({
   contentPath: z.string().default('./content'),
   resourcesPath: z.string().default('./resources'),
@@ -95,11 +110,23 @@ export const MadoriConfigSchema = z.object({
     })),
 
   auth: AuthConfigSchema,
+
+  staticCache: StaticCacheConfigSchema.default({
+    enabled: false,
+    driver: 'application',
+    storagePath: 'storage/static-cache/',
+    exclude: [],
+    queryStrings: 'ignore',
+    warmOnInvalidate: false,
+    invalidationRules: [],
+  }),
 })
 
 export type MadoriConfig = z.infer<typeof MadoriConfigSchema>
 export type MadoriConfigInput = z.input<typeof MadoriConfigSchema>
 export type AuthConfig = z.infer<typeof AuthConfigSchema>
+export type StaticCacheConfig = z.infer<typeof StaticCacheConfigSchema>
+export type InvalidationRule = z.infer<typeof InvalidationRuleSchema>
 export type CollectionConfig = z.infer<typeof CollectionConfigSchema>
 export type TaxonomyConfig = z.infer<typeof TaxonomyConfigSchema>
 export type GlobalConfig = z.infer<typeof GlobalConfigSchema>

@@ -55,6 +55,7 @@ export default function GlobalsListPage() {
         title="Globals"
         description="Manage site-wide content and settings."
         createHref="/cp/globals/create"
+        blueprintsHref="/cp/blueprints?type=globals"
       />
 
       {globals.length === 0 ? (

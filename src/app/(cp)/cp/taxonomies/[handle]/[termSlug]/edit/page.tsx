@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Plus, X } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,7 +31,6 @@ export default function EditTermPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
 
   useEffect(() => {
     async function fetchTerm() {
@@ -74,7 +74,6 @@ export default function EditTermPage() {
     e.preventDefault()
     setSaving(true)
     setError(null)
-    setSuccess(false)
 
     try {
       const data: Record<string, unknown> = {}
@@ -99,12 +98,13 @@ export default function EditTermPage() {
         throw new Error(json?.error || `Failed to update term: ${res.status}`)
       }
 
-      setSuccess(true)
+      toast.success('Term updated')
       setTimeout(() => {
         router.push(`/cp/taxonomies/${handle}`)
       }, 800)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update term')
+      toast.error('Failed to update term')
     } finally {
       setSaving(false)
     }
@@ -140,12 +140,6 @@ export default function EditTermPage() {
           Editing term &ldquo;{termSlug}&rdquo; in the {handle} taxonomy.
         </p>
       </div>
-
-      {success && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-3">
-          <p className="text-sm text-green-700">Term updated successfully.</p>
-        </div>
-      )}
 
       {error && <ErrorAlert message={error} />}
 

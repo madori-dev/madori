@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { toast } from 'sonner'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,6 +31,9 @@ export function DeleteDialog({ title, description, onConfirm }: DeleteDialogProp
     try {
       await onConfirm()
       setOpen(false)
+      toast.success('Deleted successfully')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete')
     } finally {
       setDeleting(false)
     }

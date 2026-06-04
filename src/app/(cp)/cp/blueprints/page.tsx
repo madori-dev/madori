@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Plus, FileCode2, ChevronRight } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -18,13 +19,21 @@ const blueprintTypes: { type: BlueprintType; label: string; description: string 
   { type: 'collections', label: 'Collections', description: 'Define fields for collection entries' },
   { type: 'taxonomies', label: 'Taxonomies', description: 'Define fields for taxonomy terms' },
   { type: 'globals', label: 'Globals', description: 'Define fields for global sets' },
+  { type: 'navigations', label: 'Navigations', description: 'Define custom fields for navigation items' },
   { type: 'forms', label: 'Forms', description: 'Define fields for form submissions' },
 ]
 
 export default function BlueprintsListPage() {
+  const searchParams = useSearchParams()
+  const filterType = searchParams.get('type') as BlueprintType | null
+
   const [blueprintsByType, setBlueprintsByType] = useState<Record<string, Blueprint[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  const visibleTypes = filterType
+    ? blueprintTypes.filter(({ type }) => type === filterType)
+    : blueprintTypes
 
   async function fetchAll() {
     try {
@@ -66,14 +75,22 @@ export default function BlueprintsListPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Blueprints"
+        title={filterType ? `Blueprints — ${visibleTypes[0]?.label ?? filterType}` : 'Blueprints'}
         description="Define the field schemas for your content types."
         createHref="/cp/blueprints/create"
         createLabel="New Blueprint"
       />
 
+      {filterType && (
+        <div>
+          <Link href="/cp/blueprints" className="text-sm text-muted-foreground hover:text-foreground underline">
+            ← Show all blueprint types
+          </Link>
+        </div>
+      )}
+
       <div className="space-y-6">
-        {blueprintTypes.map(({ type, label, description }) => {
+        {visibleTypes.map(({ type, label, description }) => {
           const blueprints = blueprintsByType[type] ?? []
           if (blueprints.length === 0) return null
 

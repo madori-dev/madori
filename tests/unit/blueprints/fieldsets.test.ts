@@ -39,13 +39,14 @@ describe('FieldsetResolver', () => {
     it('resolves nested fieldset references', async () => {
       const fields = await resolver.loadFieldset('seo_full')
 
-      // seo_full imports seo (3 fields) and social (2 fields)
-      expect(fields).toHaveLength(5)
+      // seo_full imports seo (3 fields) and social (3 fields)
+      expect(fields).toHaveLength(6)
       expect(fields[0].handle).toBe('meta_title')
       expect(fields[1].handle).toBe('meta_description')
       expect(fields[2].handle).toBe('og_image')
-      expect(fields[3].handle).toBe('twitter_handle')
-      expect(fields[4].handle).toBe('facebook_url')
+      expect(fields[3].handle).toBe('name')
+      expect(fields[4].handle).toBe('url')
+      expect(fields[5].handle).toBe('icon')
     })
 
     it('detects circular references and throws an error', async () => {
@@ -140,14 +141,15 @@ describe('FieldsetResolver', () => {
 
       const resolved = await resolver.resolveBlueprint(blueprint)
 
-      // seo (3) + divider (1) + social (2) = 6
-      expect(resolved.tabs.main.fields).toHaveLength(6)
+      // seo (3) + divider (1) + social (3) = 7
+      expect(resolved.tabs.main.fields).toHaveLength(7)
       expect(resolved.tabs.main.fields[0].handle).toBe('meta_title')
       expect(resolved.tabs.main.fields[1].handle).toBe('meta_description')
       expect(resolved.tabs.main.fields[2].handle).toBe('og_image')
       expect(resolved.tabs.main.fields[3].handle).toBe('divider')
-      expect(resolved.tabs.main.fields[4].handle).toBe('twitter_handle')
-      expect(resolved.tabs.main.fields[5].handle).toBe('facebook_url')
+      expect(resolved.tabs.main.fields[4].handle).toBe('name')
+      expect(resolved.tabs.main.fields[5].handle).toBe('url')
+      expect(resolved.tabs.main.fields[6].handle).toBe('icon')
     })
 
     it('resolves nested imports through blueprint', async () => {
@@ -162,9 +164,9 @@ describe('FieldsetResolver', () => {
 
       const resolved = await resolver.resolveBlueprint(blueprint)
 
-      expect(resolved.tabs.main.fields).toHaveLength(5)
+      expect(resolved.tabs.main.fields).toHaveLength(6)
       expect(resolved.tabs.main.fields[0].handle).toBe('meta_title')
-      expect(resolved.tabs.main.fields[4].handle).toBe('facebook_url')
+      expect(resolved.tabs.main.fields[5].handle).toBe('icon')
     })
 
     it('detects circular references during blueprint resolution', async () => {

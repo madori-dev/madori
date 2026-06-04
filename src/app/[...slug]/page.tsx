@@ -44,9 +44,13 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params
-  const slugStr = slug.join('/')
   const engine = await getContentEngine()
-  const entry = await engine.getEntry('pages', slugStr)
+
+  const isDocsPage = slug[0] === 'docs'
+  const collection = isDocsPage ? 'docs' : 'pages'
+  const entrySlug = isDocsPage ? slug.slice(1).join('/') : slug.join('/')
+
+  const entry = await engine.getEntry(collection, entrySlug)
 
   if (!entry) return {}
 
@@ -61,10 +65,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function DynamicPage({ params }: PageProps) {
   const { slug } = await params
-  const slugStr = slug.join('/')
 
   const engine = await getContentEngine()
-  const entry = await engine.getEntry('pages', slugStr)
+
+  const isDocsPage = slug[0] === 'docs'
+  const collection = isDocsPage ? 'docs' : 'pages'
+  const entrySlug = isDocsPage ? slug.slice(1).join('/') : slug.join('/')
+
+  const entry = await engine.getEntry(collection, entrySlug)
 
   if (!entry) {
     notFound()
@@ -78,8 +86,6 @@ export default async function DynamicPage({ params }: PageProps) {
   } else if (entry.content) {
     html = await marked.parse(entry.content)
   }
-
-  const isDocsPage = slug[0] === 'docs' || slugStr === 'getting-started'
 
   const content = (
     <>

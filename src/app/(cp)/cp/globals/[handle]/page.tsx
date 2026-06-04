@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -17,20 +18,22 @@ import {
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { FieldRenderer } from '@/components/cp/fields/FieldRenderer'
+import { useFieldValidation } from '@/hooks/use-field-validation'
 
-import type { Blueprint, FieldDefinition } from '@/lib/blueprints/types'
+import type { FieldDefinition } from '@/lib/blueprints/types'
 
 export default function EditGlobalPage() {
   const params = useParams()
   const handle = params.handle as string
 
-  const [blueprint, setBlueprint] = useState<Blueprint | null>(null)
+  const [allFields, setAllFields] = useState<FieldDefinition[]>([])
   const [formData, setFormData] = useState<Record<string, unknown>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
   const [blueprintHandle, setBlueprintHandle] = useState<string | null>(null)
+
+  const { errors: fieldErrors, validate, setErrors: setFieldErrors, clearFieldError } = useFieldValidation(allFields)
 
   useEffect(() => {
     async function loadGlobal() {
@@ -46,7 +49,17 @@ export default function EditGlobalPage() {
             const bpRes = await fetch(`/api/blueprints/globals/${bpHandle}`)
             if (bpRes.ok) {
               const bpJson = await bpRes.json()
-              setBlueprint(bpJson.data)
+
+              // Extract all fields for validation hook
+              const fields: FieldDefinition[] = []
+              if (bpJson.data?.tabs) {
+                for (const tab of Object.values(bpJson.data.tabs) as { fields: FieldDefinition[] }[]) {
+                  for (const field of tab.fields) {
+                    fields.push(field)
+                  }
+                }
+              }
+              setAllFields(fields)
             }
           }
         }
@@ -68,13 +81,20 @@ export default function EditGlobalPage() {
 
   function handleFieldChange(fieldHandle: string, value: unknown) {
     setFormData((prev) => ({ ...prev, [fieldHandle]: value }))
+    clearFieldError(fieldHandle)
   }
 
   async function handleSave(e?: React.FormEvent) {
     e?.preventDefault()
-    setSaving(true)
-    setSuccess(false)
     setError(null)
+
+    // Client-side validation first (runs <100ms via Zod schemas)
+    const result = validate(formData)
+    if (!result.valid) {
+      return
+    }
+
+    setSaving(true)
 
     try {
       const res = await fetch(`/api/content/globals/${handle}/_`, {
@@ -85,27 +105,26 @@ export default function EditGlobalPage() {
 
       if (!res.ok) {
         const json = await res.json().catch(() => null)
-        throw new Error(json?.error || `Failed to save: ${res.status}`)
+        // Wire server-side field errors to field-level display
+        if (json?.error?.details?.fieldErrors) {
+          setFieldErrors(json.error.details.fieldErrors)
+        } else if (json?.details) {
+          setFieldErrors(json.details)
+        } else {
+          throw new Error(json?.error?.message || json?.error || `Failed to save: ${res.status}`)
+        }
+        return
       }
-      setSuccess(true)
+      toast.success('Global saved')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save global')
+      toast.error('Failed to save global')
     } finally {
       setSaving(false)
     }
   }
 
   if (loading) return <ListSkeleton rows={4} />
-
-  // Collect all fields from blueprint
-  const allFields: FieldDefinition[] = []
-  if (blueprint) {
-    for (const tab of Object.values(blueprint.tabs)) {
-      for (const field of tab.fields) {
-        allFields.push(field)
-      }
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -130,12 +149,6 @@ export default function EditGlobalPage() {
         </Button>
       </div>
 
-      {success && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-3">
-          <p className="text-sm text-green-700">Global saved successfully.</p>
-        </div>
-      )}
-
       {error && <ErrorAlert message={error} />}
 
       {allFields.length > 0 ? (
@@ -148,6 +161,7 @@ export default function EditGlobalPage() {
                   fieldDefinition={fieldDef}
                   value={formData[fieldDef.handle]}
                   onChange={(value) => handleFieldChange(fieldDef.handle, value)}
+                  error={fieldErrors[fieldDef.handle]}
                 />
               ))}
             </form>

@@ -1,0 +1,5 @@
+title: Main
+blueprint: main
+collections:
+  - docs
+  - pages

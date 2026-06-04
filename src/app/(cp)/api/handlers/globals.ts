@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { GlobalOperations } from '@/lib/content/globals'
 import { NotFoundError } from '@/lib/errors'
+import { getInvalidationEngine } from '@/lib/static-cache/instance'
 
 export function createGlobalHandlers(globalOps: GlobalOperations) {
   async function handleListGlobals(): Promise<NextResponse> {
@@ -28,6 +29,13 @@ export function createGlobalHandlers(globalOps: GlobalOperations) {
   ): Promise<NextResponse> {
     const body = await request.json()
     const global = await globalOps.updateGlobal(handle, body)
+
+    // Fire cache invalidation after successful global update
+    const engine = getInvalidationEngine()
+    if (engine) {
+      engine.invalidate({ type: 'global', handle })
+    }
+
     return NextResponse.json({ data: global })
   }
 

@@ -3,7 +3,12 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { FieldRenderer } from '@/components/cp/fields/FieldRenderer'
+import { ListSkeleton } from '@/components/cp/ListSkeleton'
+import { DeleteDialog } from '@/components/cp/DeleteDialog'
+import { useFieldValidation } from '@/hooks/use-field-validation'
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes'
 import type { FieldDefinition as TypedFieldDefinition } from '@/lib/blueprints/types'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 
@@ -49,11 +54,14 @@ export default function EntryEditorPage() {
 
   const [entry, setEntry] = useState<EntryData | null>(null)
   const [blueprint, setBlueprint] = useState<Blueprint | null>(null)
+  const [allBlueprintFields, setAllBlueprintFields] = useState<TypedFieldDefinition[]>([])
   const [formData, setFormData] = useState<Record<string, unknown>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
+  const { validate, clearFieldError } = useFieldValidation(allBlueprintFields)
+  const { isDirty, markSaved } = useUnsavedChanges(formData, { enabled: !saving })
 
   useEffect(() => {
     async function loadData() {
@@ -85,6 +93,17 @@ export default function EntryEditorPage() {
         if (blueprintRes.ok) {
           const blueprintJson = await blueprintRes.json()
           setBlueprint(blueprintJson.data)
+
+          // Extract all fields for client-side validation
+          const fields: TypedFieldDefinition[] = []
+          if (blueprintJson.data?.tabs) {
+            for (const tab of Object.values(blueprintJson.data.tabs) as { fields: FieldDefinition[] }[]) {
+              for (const field of tab.fields) {
+                fields.push(field as TypedFieldDefinition)
+              }
+            }
+          }
+          setAllBlueprintFields(fields)
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load entry')
@@ -103,13 +122,24 @@ export default function EntryEditorPage() {
       delete next[fieldHandle]
       return next
     })
+    clearFieldError(fieldHandle)
   }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
-    setSaving(true)
     setFieldErrors({})
     setError(null)
+
+    // Client-side validation for blueprint fields (<100ms via Zod)
+    if (allBlueprintFields.length > 0) {
+      const result = validate(formData)
+      if (!result.valid) {
+        setFieldErrors(result.errors)
+        return
+      }
+    }
+
+    setSaving(true)
 
     try {
       const { title, slug: formSlug, status, content, ...data } = formData
@@ -154,42 +184,28 @@ export default function EntryEditorPage() {
       } else {
         setEntry(updatedEntry)
       }
+      markSaved()
+      toast.success('Entry saved')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save entry')
+      toast.error('Failed to save entry')
     } finally {
       setSaving(false)
     }
   }
 
   async function handleDelete() {
-    if (!confirm(`Are you sure you want to delete "${entry?.title}"? This action cannot be undone.`)) {
-      return
+    const res = await fetch(`/api/entries/${handle}/${slug}`, {
+      method: 'DELETE',
+    })
+    if (!res.ok) {
+      throw new Error(`Failed to delete entry: ${res.status}`)
     }
-
-    try {
-      const res = await fetch(`/api/entries/${handle}/${slug}`, {
-        method: 'DELETE',
-      })
-      if (!res.ok) {
-        throw new Error(`Failed to delete entry: ${res.status}`)
-      }
-      router.push(`/cp/collections/${handle}`)
-    } catch (err) {
-      alert(err instanceof Error ? err.message : 'Failed to delete entry')
-    }
+    router.push(`/cp/collections/${handle}`)
   }
 
   if (loading) {
-    return (
-      <div className="animate-pulse">
-        <div className="h-8 w-64 rounded bg-muted" />
-        <div className="mt-6 space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-12 rounded bg-muted/50" />
-          ))}
-        </div>
-      </div>
-    )
+    return <ListSkeleton rows={4} />
   }
 
   if (error && !entry) {
@@ -239,12 +255,11 @@ export default function EntryEditorPage() {
             Edit Entry
           </h1>
         </div>
-        <button
-          onClick={handleDelete}
-          className="rounded-md border border-red-200 px-3 py-1.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 cursor-pointer"
-        >
-          Delete
-        </button>
+        <DeleteDialog
+          title="Delete entry"
+          description={`Are you sure you want to delete "${entry?.title}"? This action cannot be undone.`}
+          onConfirm={handleDelete}
+        />
       </div>
 
       {error && (
@@ -317,6 +332,9 @@ export default function EntryEditorPage() {
               >
                 Cancel
               </Link>
+              {isDirty && (
+                <span className="text-xs text-amber-600">Unsaved changes</span>
+              )}
             </div>
           </div>
 

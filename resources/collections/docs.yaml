@@ -1,0 +1,3 @@
+title: Documentation
+blueprint: docs
+route: /docs/{slug}

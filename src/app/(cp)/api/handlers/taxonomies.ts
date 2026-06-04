@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { TaxonomyOperations } from '@/lib/content/taxonomies'
 import { NotFoundError } from '@/lib/errors'
+import { getInvalidationEngine } from '@/lib/static-cache/instance'
 
 export function createTaxonomyHandlers(taxonomyOps: TaxonomyOperations) {
   async function handleListTaxonomies(): Promise<NextResponse> {
@@ -26,5 +27,16 @@ export function createTaxonomyHandlers(taxonomyOps: TaxonomyOperations) {
     }
   }
 
-  return { handleListTaxonomies, handleListTerms }
+  /**
+   * Fires a taxonomy invalidation event.
+   * Called after a successful taxonomy term write operation.
+   */
+  function fireTaxonomyInvalidation(url: string, relatedUrls?: string[]): void {
+    const engine = getInvalidationEngine()
+    if (engine) {
+      engine.invalidate({ type: 'taxonomy', url, relatedUrls })
+    }
+  }
+
+  return { handleListTaxonomies, handleListTerms, fireTaxonomyInvalidation }
 }

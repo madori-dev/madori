@@ -9,22 +9,13 @@ interface FieldComponentProps {
   error?: string[]
 }
 
-export function HiddenField({ value, onChange, field, error }: FieldComponentProps) {
+export function HiddenField({ value, onChange, field }: FieldComponentProps) {
   return (
-    <>
-      <input
-        type="hidden"
-        value={(value as string) ?? ''}
-        onChange={(e) => onChange(e.target.value)}
-        name={field.display}
-      />
-      {error && error.length > 0 && (
-        <div className="text-xs text-red-600">
-          {error.map((msg, i) => (
-            <p key={i}>{msg}</p>
-          ))}
-        </div>
-      )}
-    </>
+    <input
+      type="hidden"
+      value={(value as string) ?? ''}
+      onChange={(e) => onChange(e.target.value)}
+      name={field.display}
+    />
   )
 }

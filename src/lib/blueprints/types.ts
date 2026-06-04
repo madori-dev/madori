@@ -28,6 +28,7 @@ export interface VisibilityCondition {
 export interface FieldConfig {
   type: FieldType
   display?: string
+  instructions?: string
   required?: boolean
   default?: unknown
   validate?: ValidationRule[]
@@ -56,4 +57,4 @@ export interface Blueprint {
   tabs: Record<string, BlueprintTab>
 }
 
-export type BlueprintType = 'collections' | 'taxonomies' | 'globals' | 'forms'
+export type BlueprintType = 'collections' | 'taxonomies' | 'globals' | 'forms' | 'navigations'

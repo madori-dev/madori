@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { MoreVertical, Settings, FileText, Trash2, FolderOpen } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -95,6 +96,7 @@ export default function EntriesListPage() {
     if (!res.ok) {
       throw new Error(`Failed to delete collection: ${res.status}`)
     }
+    toast.success('Collection deleted')
     router.push('/cp/collections')
   }
 

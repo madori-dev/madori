@@ -57,6 +57,7 @@ export default function FormsListPage() {
         title="Forms"
         description="Manage form definitions and submissions."
         createHref="/cp/forms/create"
+        blueprintsHref="/cp/blueprints?type=forms"
       />
 
       {forms.length === 0 ? (

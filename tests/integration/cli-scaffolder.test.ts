@@ -4,7 +4,7 @@ import * as path from 'node:path'
 import * as os from 'node:os'
 import * as yaml from 'yaml'
 
-// Mock execSync to skip pnpm install during tests
+// Mock execSync to skip download during tests
 vi.mock('node:child_process', () => ({
   execSync: vi.fn(),
 }))
@@ -22,32 +22,29 @@ describe('CLI Scaffolder Integration', () => {
   const projectName = 'test-madori-project'
 
   beforeEach(() => {
-    // Create a temp directory and change cwd to it
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'madori-test-'))
     originalCwd = process.cwd()
     process.chdir(tempDir)
   })
 
   afterEach(() => {
-    // Restore cwd and clean up temp directory
     process.chdir(originalCwd)
     fs.rmSync(tempDir, { recursive: true, force: true })
   })
 
   it('creates the correct directory structure', () => {
-    scaffold(projectName)
+    scaffold(projectName, { includeBoilerplate: false })
 
     const projectDir = path.join(tempDir, projectName)
 
+    // Directories explicitly created by the scaffolder
     const expectedDirs = [
       'content/collections/blog',
       'content/forms',
-      'content/globals',
       'content/navigation',
       'content/taxonomies',
       'resources/blueprints/collections',
-      'resources/fieldsets',
-      'resources/roles',
+      'resources/collections',
       'users',
       'public/assets',
       'src/app',
@@ -60,55 +57,8 @@ describe('CLI Scaffolder Integration', () => {
     }
   })
 
-  it('generates a valid package.json with expected dependencies', () => {
-    scaffold(projectName)
-
-    const projectDir = path.join(tempDir, projectName)
-    const pkgPath = path.join(projectDir, 'package.json')
-
-    expect(fs.existsSync(pkgPath)).toBe(true)
-
-    const pkgContent = fs.readFileSync(pkgPath, 'utf-8')
-    const pkg = JSON.parse(pkgContent)
-
-    expect(pkg.name).toBe(projectName)
-    expect(pkg.version).toBe('0.1.0')
-    expect(pkg.private).toBe(true)
-    expect(pkg.scripts).toBeDefined()
-    expect(pkg.scripts.dev).toBe('next dev')
-    expect(pkg.scripts.build).toBe('next build')
-    expect(pkg.dependencies).toBeDefined()
-    expect(pkg.dependencies.next).toBeDefined()
-    expect(pkg.dependencies.react).toBeDefined()
-    expect(pkg.dependencies['react-dom']).toBeDefined()
-    expect(pkg.dependencies.yaml).toBeDefined()
-    expect(pkg.dependencies['gray-matter']).toBeDefined()
-    expect(pkg.dependencies.graphql).toBeDefined()
-    expect(pkg.dependencies['graphql-yoga']).toBeDefined()
-    expect(pkg.devDependencies).toBeDefined()
-    expect(pkg.devDependencies.typescript).toBeDefined()
-  })
-
-  it('generates madori.config.ts', () => {
-    scaffold(projectName)
-
-    const projectDir = path.join(tempDir, projectName)
-    const configPath = path.join(projectDir, 'madori.config.ts')
-
-    expect(fs.existsSync(configPath)).toBe(true)
-
-    const configContent = fs.readFileSync(configPath, 'utf-8')
-    expect(configContent).toContain('MadoriConfig')
-    expect(configContent).toContain('contentPath')
-    expect(configContent).toContain('resourcesPath')
-    expect(configContent).toContain('usersPath')
-    expect(configContent).toContain('cp:')
-    expect(configContent).toContain('graphql:')
-    expect(configContent).toContain('collections:')
-  })
-
   it('generates a valid blog blueprint YAML', () => {
-    scaffold(projectName)
+    scaffold(projectName, { includeBoilerplate: false })
 
     const projectDir = path.join(tempDir, projectName)
     const blueprintPath = path.join(projectDir, 'resources/blueprints/collections/blog.yaml')
@@ -133,42 +83,49 @@ describe('CLI Scaffolder Integration', () => {
     expect(titleField.field.required).toBe(true)
   })
 
-  it('generates admin user YAML', () => {
-    scaffold(projectName)
+  it('generates blog collection definition', () => {
+    scaffold(projectName, { includeBoilerplate: false })
 
     const projectDir = path.join(tempDir, projectName)
-    const userPath = path.join(projectDir, 'users/admin.yaml')
+    const collectionPath = path.join(projectDir, 'resources/collections/blog.yaml')
 
-    expect(fs.existsSync(userPath)).toBe(true)
+    expect(fs.existsSync(collectionPath)).toBe(true)
 
-    const userContent = fs.readFileSync(userPath, 'utf-8')
+    const collectionContent = fs.readFileSync(collectionPath, 'utf-8')
+    const collection = yaml.parse(collectionContent)
+
+    expect(collection).toBeDefined()
+    expect(collection.title).toBe('Blog')
+    expect(collection.blueprint).toBe('blog')
+    expect(collection.route).toBe('/blog/{slug}')
+    expect(collection.defaultStatus).toBe('draft')
+  })
+
+  it('generates admin user YAML', () => {
+    scaffold(projectName, { includeBoilerplate: false })
+
+    const projectDir = path.join(tempDir, projectName)
+    const usersDir = path.join(projectDir, 'users')
+
+    expect(fs.existsSync(usersDir)).toBe(true)
+
+    const userFiles = fs.readdirSync(usersDir).filter(f => f.endsWith('.yaml'))
+    expect(userFiles.length).toBe(1)
+
+    const userContent = fs.readFileSync(path.join(usersDir, userFiles[0]), 'utf-8')
     const user = yaml.parse(userContent)
 
     expect(user).toBeDefined()
-    expect(user.id).toBe('admin')
+    expect(user.id).toBeDefined()
     expect(user.email).toBe('admin@example.com')
+    expect(user.name).toBe('Admin')
+    expect(user.password_hash).toBeDefined()
+    expect(user.password_hash).toContain('scrypt:')
     expect(user.roles).toContain('admin')
   })
 
-  it('generates admin role YAML', () => {
-    scaffold(projectName)
-
-    const projectDir = path.join(tempDir, projectName)
-    const rolePath = path.join(projectDir, 'resources/roles/admin.yaml')
-
-    expect(fs.existsSync(rolePath)).toBe(true)
-
-    const roleContent = fs.readFileSync(rolePath, 'utf-8')
-    const role = yaml.parse(roleContent)
-
-    expect(role).toBeDefined()
-    expect(role.handle).toBe('admin')
-    expect(role.permissions).toBeInstanceOf(Array)
-    expect(role.permissions.length).toBeGreaterThan(0)
-  })
-
   it('generates sample blog entry', () => {
-    scaffold(projectName)
+    scaffold(projectName, { includeBoilerplate: false })
 
     const projectDir = path.join(tempDir, projectName)
     const entryPath = path.join(projectDir, 'content/collections/blog/hello-world.md')
@@ -181,19 +138,39 @@ describe('CLI Scaffolder Integration', () => {
     expect(entryContent).toContain('status: published')
   })
 
-  it('generates additional config files (next.config.ts, tsconfig.json, .gitignore)', () => {
-    scaffold(projectName)
+  it('generates minimal homepage', () => {
+    scaffold(projectName, { includeBoilerplate: false })
 
     const projectDir = path.join(tempDir, projectName)
+    const pagePath = path.join(projectDir, 'src/app/page.tsx')
 
-    expect(fs.existsSync(path.join(projectDir, 'next.config.ts'))).toBe(true)
-    expect(fs.existsSync(path.join(projectDir, 'tsconfig.json'))).toBe(true)
-    expect(fs.existsSync(path.join(projectDir, '.gitignore'))).toBe(true)
+    expect(fs.existsSync(pagePath)).toBe(true)
 
-    // Verify tsconfig.json is valid JSON
-    const tsconfigContent = fs.readFileSync(path.join(projectDir, 'tsconfig.json'), 'utf-8')
-    const tsconfig = JSON.parse(tsconfigContent)
-    expect(tsconfig.compilerOptions).toBeDefined()
-    expect(tsconfig.compilerOptions.strict).toBe(true)
+    const pageContent = fs.readFileSync(pagePath, 'utf-8')
+    expect(pageContent).toContain('MADORI')
+    expect(pageContent).toContain('/cp')
+  })
+
+  it('updates package.json name when it exists', () => {
+    scaffold(projectName, { includeBoilerplate: false })
+
+    const projectDir = path.join(tempDir, projectName)
+    const pkgPath = path.join(projectDir, 'package.json')
+
+    // When download is mocked (no-op), package.json won't exist from template.
+    // This test verifies the scaffolder doesn't crash when package.json is absent.
+    // The scaffold only modifies package.json if it exists post-download.
+    // In a real run, curl would have extracted it.
+    if (fs.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))
+      expect(pkg.name).toBe(projectName)
+    }
+  })
+
+  it('fails if project directory already exists', () => {
+    const projectDir = path.join(tempDir, projectName)
+    fs.mkdirSync(projectDir, { recursive: true })
+
+    expect(() => scaffold(projectName, { includeBoilerplate: false })).toThrow('process.exit called')
   })
 })

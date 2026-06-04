@@ -1,0 +1,16 @@
+tabs:
+  main:
+    fields:
+      - handle: label
+        field:
+          type: text
+          display: Label
+          required: true
+      - handle: url
+        field:
+          type: text
+          display: URL
+      - handle: icon
+        field:
+          type: text
+          display: Icon

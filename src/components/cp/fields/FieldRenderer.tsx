@@ -18,6 +18,7 @@ import { GridField } from './GridField'
 import { YamlField } from './YamlField'
 import { CodeField } from './CodeField'
 import { HiddenField } from './HiddenField'
+import { FieldError } from './FieldError'
 
 export interface FieldComponentProps {
   value: unknown
@@ -74,12 +75,37 @@ export function FieldRenderer({ fieldDefinition, value, onChange, error }: Field
       .replace(/\b\w/g, (c) => c.toUpperCase())
   }
 
+  // Resolve help text from field.instructions or field.options.instructions
+  const helpText = field.instructions ?? (field.options?.instructions as string | undefined)
+
+  const describedByParts: string[] = []
+  if (helpText) describedByParts.push(`field-help-${fieldDefinition.handle}`)
+  if (error && error.length > 0) describedByParts.push(`field-error-${fieldDefinition.handle}`)
+
   return (
-    <Component
-      value={value}
-      onChange={onChange}
-      field={field}
-      error={error}
-    />
+    <div
+      role="group"
+      aria-invalid={error && error.length > 0 ? true : undefined}
+      aria-describedby={describedByParts.length > 0 ? describedByParts.join(' ') : undefined}
+    >
+      <Component
+        value={value}
+        onChange={onChange}
+        field={field}
+        error={error}
+      />
+      {helpText && (
+        <p
+          id={`field-help-${fieldDefinition.handle}`}
+          className="mt-1 text-xs text-muted-foreground"
+        >
+          {helpText}
+        </p>
+      )}
+      <FieldError
+        errors={error}
+        fieldHandle={`field-error-${fieldDefinition.handle}`}
+      />
+    </div>
   )
 }

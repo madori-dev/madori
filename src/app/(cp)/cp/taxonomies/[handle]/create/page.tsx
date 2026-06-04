@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Plus, X } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -74,8 +75,10 @@ export default function CreateTermPage() {
       }
 
       router.push(`/cp/taxonomies/${handle}`)
+      toast.success('Term created')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create term')
+      toast.error('Failed to create term')
     } finally {
       setSaving(false)
     }

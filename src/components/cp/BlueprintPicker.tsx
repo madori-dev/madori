@@ -90,44 +90,78 @@ export function BlueprintPicker({
 
   return (
     <div className="space-y-2">
-      <Label>{label}</Label>
-      <div className="rounded-lg border divide-y">
+      <Label id="blueprint-picker-label">{label}</Label>
+      <div
+        className="rounded-lg border divide-y"
+        role="listbox"
+        aria-labelledby="blueprint-picker-label"
+        aria-activedescendant={createNew ? 'bp-option-create-new' : value ? `bp-option-${value}` : undefined}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          const allOptions = [...options.map(o => o.handle), '__create_new__']
+          const currentIndex = createNew
+            ? allOptions.length - 1
+            : allOptions.indexOf(value)
+
+          if (e.key === 'ArrowDown') {
+            e.preventDefault()
+            const nextIndex = Math.min(currentIndex + 1, allOptions.length - 1)
+            const next = allOptions[nextIndex]
+            if (next === '__create_new__') handleCreateNew()
+            else handleSelect(next)
+          } else if (e.key === 'ArrowUp') {
+            e.preventDefault()
+            const prevIndex = Math.max(currentIndex - 1, 0)
+            const prev = allOptions[prevIndex]
+            if (prev === '__create_new__') handleCreateNew()
+            else handleSelect(prev)
+          }
+        }}
+      >
         {options.map((bp) => (
           <button
             key={bp.handle}
+            id={`bp-option-${bp.handle}`}
             type="button"
+            role="option"
+            aria-selected={value === bp.handle && !createNew}
             onClick={() => handleSelect(bp.handle)}
             className={cn(
               'flex items-center justify-between w-full px-3 py-2 text-left transition-colors cursor-pointer',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
               value === bp.handle && !createNew
                 ? 'bg-accent'
                 : 'hover:bg-accent/50'
             )}
           >
             <div className="flex items-center gap-2.5 min-w-0">
-              <FileCode2 className="size-4 text-muted-foreground shrink-0" />
+              <FileCode2 className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
               <span className="text-sm font-medium truncate">{bp.handle}</span>
               <span className="text-xs text-muted-foreground hidden sm:inline">
                 {bp.tabCount} tab{bp.tabCount !== 1 ? 's' : ''} · {bp.fieldCount} field{bp.fieldCount !== 1 ? 's' : ''}
               </span>
             </div>
             {value === bp.handle && !createNew && (
-              <Check className="size-4 text-primary shrink-0" />
+              <Check className="size-4 text-primary shrink-0" aria-hidden="true" />
             )}
           </button>
         ))}
         <button
           type="button"
+          id="bp-option-create-new"
+          role="option"
+          aria-selected={createNew}
           onClick={handleCreateNew}
           className={cn(
             'flex items-center gap-2.5 w-full px-3 py-2 text-left transition-colors cursor-pointer',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
             createNew ? 'bg-accent' : 'hover:bg-accent/50'
           )}
         >
-          <Plus className="size-4 text-muted-foreground shrink-0" />
+          <Plus className="size-4 text-muted-foreground shrink-0" aria-hidden="true" />
           <span className="text-sm font-medium">Create new</span>
           {createNew && (
-            <Check className="size-4 text-primary shrink-0 ml-auto" />
+            <Check className="size-4 text-primary shrink-0 ml-auto" aria-hidden="true" />
           )}
         </button>
       </div>

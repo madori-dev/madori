@@ -6,6 +6,7 @@ import { AssetToolbar } from '@/components/cp/assets/asset-toolbar'
 import { AssetBreadcrumb } from '@/components/cp/assets/asset-breadcrumb'
 import { AssetDropzone } from '@/components/cp/assets/asset-dropzone'
 import { AssetGrid } from '@/components/cp/assets/asset-grid'
+import { UploadProgressPanel } from '@/components/cp/assets/upload-progress-panel'
 import { Skeleton } from '@/components/ui/skeleton'
 
 export default function AssetsPage() {
@@ -82,8 +83,16 @@ export default function AssetsPage() {
           onDeleteDirectory={manager.deleteDirectory}
           onRenameDirectory={manager.renameDirectory}
           onMoveAsset={manager.moveAsset}
+          onUpload={manager.uploadFiles}
         />
       </AssetDropzone>
+
+      {/* Upload progress */}
+      <UploadProgressPanel
+        queue={manager.uploadQueue}
+        onDismiss={manager.dismissUploadItem}
+        onClearAll={manager.clearUploadQueue}
+      />
     </div>
   )
 }

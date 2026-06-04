@@ -3,11 +3,11 @@ title: Home
 slug: home
 status: published
 createdAt: 2026-06-03T08:15:33.462Z
-updatedAt: 2026-06-03T12:00:00.000Z
+updatedAt: 2026-06-04T12:40:15.787Z
 template: home
 order: 1
-meta_title: "MADORI — The flat-file CMS for React"
-meta_description: "A Statamic-inspired content management system for React/Next.js. Flat-file storage, visual control panel, GraphQL API. No database required."
+meta_title: MADORI — The flat-file CMS for React
+meta_description: A Statamic-inspired content management system for React/Next.js. Flat-file storage, visual control panel, GraphQL API. No database required.
 blocks:
   - _type: hero
     title: The flat-file CMS for React applications
@@ -16,7 +16,7 @@ blocks:
     primary_button_link: /getting-started
     secondary_button_text: View on GitHub
     secondary_button_link: https://github.com/madori-dev/madori
-
+    _id: block-1780576792691-2myyr7f
   - _type: features_grid
     title: Everything you need to manage content
     subtitle: A complete content management toolkit, no database required.
@@ -26,32 +26,38 @@ blocks:
         feature_description: Organize your content into structured collections with custom blueprints and fields.
         feature_icon: Layers
         feature_link: /docs/collections
+        _id: block-1780576800531-089h08z
       - _type: feature_item
         feature_name: Blueprints
         feature_description: Define flexible content schemas with a visual editor or YAML configuration.
         feature_icon: Layout
         feature_link: /docs/blueprints
+        _id: block-1780576800531-o3h8hbl
       - _type: feature_item
         feature_name: Taxonomies
         feature_description: Tag and categorize content with hierarchical taxonomy systems.
         feature_icon: Tags
         feature_link: /docs/taxonomies
+        _id: block-1780576800531-0pkm1n0
       - _type: feature_item
         feature_name: Control Panel
         feature_description: A polished admin interface for content editors, built with modern React.
         feature_icon: Settings
         feature_link: /getting-started
+        _id: block-1780576800531-d8zy8fc
       - _type: feature_item
         feature_name: Flat-File Storage
         feature_description: All content stored as Markdown and YAML. Version control friendly, no database needed.
         feature_icon: FileText
         feature_link: /docs/configuration
+        _id: block-1780576800531-16x2uqk
       - _type: feature_item
         feature_name: GraphQL API
         feature_description: Auto-generated GraphQL schema from your blueprints. Query content with type safety.
         feature_icon: Zap
         feature_link: /docs/graphql
-
+        _id: block-1780576800531-njr3rxe
+    _id: block-1780576792691-xg9x58e
   - _type: basic_cta
     title: Ready to build with Madori?
     text: Get up and running in minutes. One command to scaffold, one to start.
@@ -59,7 +65,7 @@ blocks:
     primary_button_link: /getting-started
     secondary_button_text: View on GitHub
     secondary_button_link: https://github.com/madori-dev/madori
-
+    _id: block-1780576792691-p7e2xf0
   - _type: about_the_creator
     title: About Madori
     subtitle: A passion project by a developer who wanted better tooling.
@@ -74,5 +80,7 @@ blocks:
       - Blueprints define your schema
       - The control panel is optional
       - Everything is extensible
+    _id: block-1780576792691-qqq7mmx
 ---
+
 

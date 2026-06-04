@@ -3,37 +3,20 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { FieldRenderer } from '@/components/cp/fields/FieldRenderer'
-import type { FieldDefinition as TypedFieldDefinition } from '@/lib/blueprints/types'
-
-interface FieldDefinition {
-  handle: string
-  field: {
-    type: string
-    display?: string
-    required?: boolean
-    default?: unknown
-    options?: Record<string, unknown>
-  }
-}
-
-interface Blueprint {
-  handle: string
-  tabs: Record<
-    string,
-    {
-      display?: string
-      fields: FieldDefinition[]
-    }
-  >
-}
+import { ListSkeleton } from '@/components/cp/ListSkeleton'
+import { getDefaultsFromBlueprint, getAllFields } from '@/lib/blueprints/defaults'
+import { useFieldValidation } from '@/hooks/use-field-validation'
+import { useUnsavedChanges } from '@/hooks/use-unsaved-changes'
+import type { Blueprint, FieldDefinition } from '@/lib/blueprints/types'
 
 export default function CreateEntryPage() {
   const params = useParams()
   const router = useRouter()
   const handle = params.handle as string
 
-  const [blueprint, setBlueprint] = useState<Blueprint | null>(null)
+  const [allFields, setAllFields] = useState<FieldDefinition[]>([])
   const [formData, setFormData] = useState<Record<string, unknown>>({
     title: '',
     slug: '',
@@ -44,6 +27,8 @@ export default function CreateEntryPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({})
+  const { validate, clearFieldError } = useFieldValidation(allFields)
+  const { isDirty } = useUnsavedChanges(formData, { enabled: !saving })
 
   useEffect(() => {
     async function loadBlueprint() {
@@ -51,25 +36,21 @@ export default function CreateEntryPage() {
         const res = await fetch(`/api/blueprints/collections/${handle}`)
         if (res.ok) {
           const json = await res.json()
-          setBlueprint(json.data)
+          const bp = json.data as Blueprint | undefined
 
-          // Set defaults from blueprint
-          const defaults: Record<string, unknown> = {
+          // Extract all fields for validation
+          const fields = bp ? getAllFields(bp) : []
+          setAllFields(fields)
+
+          // Pre-populate defaults from blueprint field definitions
+          const blueprintDefaults = bp ? getDefaultsFromBlueprint(bp) : {}
+          setFormData({
             title: '',
             slug: '',
             status: 'draft',
             content: '',
-          }
-          if (json.data?.tabs) {
-            for (const tab of Object.values(json.data.tabs) as { fields: FieldDefinition[] }[]) {
-              for (const fieldDef of tab.fields) {
-                if (fieldDef.field.default !== undefined) {
-                  defaults[fieldDef.handle] = fieldDef.field.default
-                }
-              }
-            }
-          }
-          setFormData(defaults)
+            ...blueprintDefaults,
+          })
         }
       } catch {
         // Blueprint loading is optional — form still works with core fields
@@ -97,13 +78,24 @@ export default function CreateEntryPage() {
       delete next[fieldHandle]
       return next
     })
+    clearFieldError(fieldHandle)
   }
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    setSaving(true)
     setFieldErrors({})
     setError(null)
+
+    // Client-side validation for blueprint fields (<100ms via Zod)
+    if (allFields.length > 0) {
+      const result = validate(formData)
+      if (!result.valid) {
+        setFieldErrors(result.errors)
+        return
+      }
+    }
+
+    setSaving(true)
 
     try {
       const { title, slug, status, content, ...data } = formData
@@ -139,35 +131,18 @@ export default function CreateEntryPage() {
       }
 
       const json = await res.json()
+      toast.success('Entry created')
       router.push(`/cp/collections/${handle}/${json.data.slug}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create entry')
+      toast.error('Failed to create entry')
     } finally {
       setSaving(false)
     }
   }
 
   if (loading) {
-    return (
-      <div className="animate-pulse">
-        <div className="h-8 w-64 rounded bg-muted" />
-        <div className="mt-6 space-y-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="h-12 rounded bg-muted/50" />
-          ))}
-        </div>
-      </div>
-    )
-  }
-
-  // Collect all fields from blueprint tabs
-  const allFields: FieldDefinition[] = []
-  if (blueprint) {
-    for (const tab of Object.values(blueprint.tabs)) {
-      for (const field of tab.fields) {
-        allFields.push(field)
-      }
-    }
+    return <ListSkeleton rows={4} />
   }
 
   return (
@@ -248,7 +223,7 @@ export default function CreateEntryPage() {
           .map((fieldDef) => (
             <FieldRenderer
               key={fieldDef.handle}
-              fieldDefinition={fieldDef as TypedFieldDefinition}
+              fieldDefinition={fieldDef}
               value={formData[fieldDef.handle]}
               onChange={(value) => handleFieldChange(fieldDef.handle, value)}
               error={fieldErrors[fieldDef.handle]}
@@ -285,6 +260,9 @@ export default function CreateEntryPage() {
           >
             Cancel
           </Link>
+          {isDirty && (
+            <span className="text-xs text-amber-600">Unsaved changes</span>
+          )}
         </div>
       </form>
     </div>

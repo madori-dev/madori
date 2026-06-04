@@ -105,6 +105,7 @@ export function scaffold(projectName: string, options: ScaffoldOptions): void {
 
     // Replace the homepage with a minimal one
     const pageFile = path.join(projectDir, 'src/app/page.tsx')
+    fs.mkdirSync(path.dirname(pageFile), { recursive: true })
     fs.writeFileSync(
       pageFile,
       `export default function Home() {

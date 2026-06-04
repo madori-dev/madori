@@ -51,7 +51,11 @@ export class ConflictError extends MadoriError {
   readonly code = 'CONFLICT'
   readonly statusCode = 409
 
-  constructor(message: string) {
+  constructor(
+    message: string,
+    public readonly submittedHash?: string,
+    public readonly currentHash?: string
+  ) {
     super(message)
   }
 }

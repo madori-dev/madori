@@ -478,7 +478,7 @@ created_at: "2024-01-01T00:00:00.000Z"
         return entry
       }
 
-      async updateEntry(collection: string, slug: string, data: Partial<EntryInput>): Promise<Entry> {
+      async updateEntry(collection: string, slug: string, data: Partial<EntryInput>, _contentHash?: string): Promise<Entry> {
         const key = `${collection}/${slug}`
         const existing = this.entries.get(key)
         if (!existing) {

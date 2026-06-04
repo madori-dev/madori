@@ -4,9 +4,7 @@ import { glob } from 'glob'
 import { UniversalFileParser, type FileFormat } from '@/lib/fs/parser'
 
 export interface NavigationItem {
-  title: string
-  url?: string
-  entry?: string
+  [key: string]: unknown
   children?: NavigationItem[]
 }
 

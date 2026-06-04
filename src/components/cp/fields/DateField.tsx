@@ -22,15 +22,8 @@ export function DateField({ value, onChange, field, error }: FieldComponentProps
         type="date"
         value={(value as string) ?? ''}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-md border border-border px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+        className={`rounded-md border px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring ${error && error.length > 0 ? 'border-destructive' : 'border-border'}`}
       />
-      {error && error.length > 0 && (
-        <div className="text-xs text-red-600">
-          {error.map((msg, i) => (
-            <p key={i}>{msg}</p>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

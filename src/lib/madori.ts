@@ -105,6 +105,9 @@ async function initialize(): Promise<MadoriInstance> {
     blueprintRegistry
   )
 
+  // 6b. Run startup orphan detection for atomic writes
+  await contentEngine.init()
+
   // 7. Create and start file watcher
   const fileWatcher = new ChokidarFileWatcher({
     cache,

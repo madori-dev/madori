@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { toast } from 'sonner'
 
 import type { CollectionConfig } from '@/lib/config/schema'
 import { IconPicker } from '@/components/cp/icon-picker'
@@ -32,10 +33,6 @@ export default function CollectionConfigurePage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [notification, setNotification] = useState<{
-    type: 'success' | 'error'
-    message: string
-  } | null>(null)
   const [blueprintOptions, setBlueprintOptions] = useState<MultiSelectOption[]>([])
   const [taxonomyOptions, setTaxonomyOptions] = useState<MultiSelectOption[]>([])
 
@@ -87,10 +84,7 @@ export default function CollectionConfigurePage() {
       const json = await res.json()
       setConfig(json.data)
     } catch (err) {
-      setNotification({
-        type: 'error',
-        message: err instanceof Error ? err.message : 'Failed to load configuration',
-      })
+      toast.error(err instanceof Error ? err.message : 'Failed to load configuration')
     } finally {
       setLoading(false)
     }
@@ -101,7 +95,6 @@ export default function CollectionConfigurePage() {
 
     setSaving(true)
     setErrors({})
-    setNotification(null)
 
     try {
       const res = await fetch(`/cp/api/collections/${handle}`, {
@@ -119,7 +112,7 @@ export default function CollectionConfigurePage() {
           }
         }
         setErrors(fieldErrors)
-        setNotification({ type: 'error', message: 'Validation failed. Check the fields below.' })
+        toast.error('Validation failed. Check the fields below.')
         return
       }
 
@@ -127,12 +120,9 @@ export default function CollectionConfigurePage() {
         throw new Error(`Failed to save configuration: ${res.status}`)
       }
 
-      setNotification({ type: 'success', message: 'Configuration saved successfully.' })
+      toast.success('Configuration saved')
     } catch (err) {
-      setNotification({
-        type: 'error',
-        message: err instanceof Error ? err.message : 'Failed to save configuration',
-      })
+      toast.error(err instanceof Error ? err.message : 'Failed to save configuration')
     } finally {
       setSaving(false)
     }
@@ -178,18 +168,7 @@ export default function CollectionConfigurePage() {
         </Button>
       </div>
 
-      {notification && (
-        <div
-          className={`rounded-lg border p-3 text-sm ${
-            notification.type === 'success'
-              ? 'border-green-200 bg-green-50 text-green-700'
-              : 'border-destructive/50 bg-destructive/10 text-destructive'
-          }`}
-        >
-          {notification.message}
-        </div>
-      )}
-
+      {/* Configuration cards */}
       <div className="space-y-6">
         {/* General */}
         <Card>

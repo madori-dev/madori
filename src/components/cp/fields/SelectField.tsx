@@ -23,7 +23,7 @@ export function SelectField({ value, onChange, field, error }: FieldComponentPro
       <select
         value={(value as string) ?? ''}
         onChange={(e) => onChange(e.target.value)}
-        className="rounded-md border border-border px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+        className={`rounded-md border px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring ${error && error.length > 0 ? 'border-destructive' : 'border-border'}`}
       >
         <option value="">Select...</option>
         {options.map((opt) => (
@@ -32,13 +32,6 @@ export function SelectField({ value, onChange, field, error }: FieldComponentPro
           </option>
         ))}
       </select>
-      {error && error.length > 0 && (
-        <div className="text-xs text-red-600">
-          {error.map((msg, i) => (
-            <p key={i}>{msg}</p>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

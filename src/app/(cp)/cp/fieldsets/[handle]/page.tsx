@@ -11,6 +11,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import Link from 'next/link'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -25,6 +26,17 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 
@@ -59,7 +71,6 @@ export default function FieldsetEditorPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -86,7 +97,6 @@ export default function FieldsetEditorPage() {
   const saveFieldset = useCallback(async () => {
     setSaving(true)
     setError(null)
-    setSuccess(false)
     try {
       const res = await fetch(`/api/fieldsets/${handle}`, {
         method: 'PUT',
@@ -97,9 +107,10 @@ export default function FieldsetEditorPage() {
         const json = await res.json().catch(() => null)
         throw new Error(json?.error?.message || `Failed to save: ${res.status}`)
       }
-      setSuccess(true)
+      toast.success('Fieldset saved')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save fieldset')
+      toast.error('Failed to save fieldset')
     } finally {
       setSaving(false)
     }
@@ -162,11 +173,6 @@ export default function FieldsetEditorPage() {
       </div>
 
       {error && <ErrorAlert message={error} />}
-      {success && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-3">
-          <p className="text-sm text-green-700">Fieldset saved.</p>
-        </div>
-      )}
 
       <Card className="p-0 overflow-hidden">
         <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">
@@ -270,14 +276,34 @@ function FieldRow({
             required
           </Badge>
         )}
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="opacity-0 group-hover:opacity-100 transition-opacity"
-          onClick={(e) => { e.stopPropagation(); onRemove() }}
-        >
-          <Trash2 className="size-3 text-destructive" />
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => e.stopPropagation()}
+              />
+            }
+          >
+            <Trash2 className="size-3 text-destructive" />
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove field?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will remove the &ldquo;{field.handle || 'unnamed'}&rdquo; field from this fieldset. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onClick={onRemove}>
+                Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {isExpanded && field.field && (

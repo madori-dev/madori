@@ -3,6 +3,7 @@
 import { Command } from 'commander'
 import { registerMakeUser } from './commands/make-user.js'
 import { registerMigrateDefinitions } from './commands/migrate-definitions.js'
+import { registerCheck } from './commands/check.js'
 
 const program = new Command()
 
@@ -15,6 +16,7 @@ program.showHelpAfterError(true)
 
 registerMakeUser(program)
 registerMigrateDefinitions(program)
+registerCheck(program)
 
 program.parseAsync(process.argv).catch((error: Error) => {
   console.error(`Error: ${error.message}`)

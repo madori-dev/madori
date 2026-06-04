@@ -10,7 +10,7 @@ interface FieldComponentProps {
   error?: string[]
 }
 
-export function TiptapField({ value, onChange, field, error }: FieldComponentProps) {
+export function TiptapField({ value, onChange, field, error: _error }: FieldComponentProps) {
   // Value can be a JSON object (structured), a JSON string, or a markdown string (legacy)
   const editorValue = typeof value === 'string' || typeof value === 'object' ? value ?? '' : ''
 
@@ -27,13 +27,6 @@ export function TiptapField({ value, onChange, field, error }: FieldComponentPro
         onChange={(json) => onChange(json)}
         placeholder={field.options?.placeholder as string | undefined}
       />
-      {error && error.length > 0 && (
-        <div className="text-xs text-red-600">
-          {error.map((msg, i) => (
-            <p key={i}>{msg}</p>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

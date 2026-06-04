@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { AssetOperations, type AssetUploadInput } from '@/lib/content/assets'
+import { AssetOperations, type AssetUploadInput, type AssetMetadataUpdate } from '@/lib/content/assets'
 import { NotFoundError } from '@/lib/errors'
+import {
+  validateUploadFile,
+  DEFAULT_UPLOAD_CONSTRAINTS,
+  type UploadConstraints,
+} from '@/lib/content/upload-constraints'
 
-export function createAssetHandlers(assetOps: AssetOperations) {
+export function createAssetHandlers(assetOps: AssetOperations, constraints: UploadConstraints = DEFAULT_UPLOAD_CONSTRAINTS) {
   async function handleListAssets(request: NextRequest): Promise<NextResponse> {
     const { searchParams } = new URL(request.url)
     const directory = searchParams.get('directory') ?? undefined
@@ -18,6 +23,18 @@ export function createAssetHandlers(assetOps: AssetOperations) {
     if (!file || !(file instanceof File)) {
       return NextResponse.json(
         { error: { code: 'VALIDATION_ERROR', message: 'No file provided' } },
+        { status: 422 }
+      )
+    }
+
+    // Validate file size and type constraints
+    const validationError = validateUploadFile(
+      { name: file.name, size: file.size, type: file.type },
+      constraints
+    )
+    if (validationError) {
+      return NextResponse.json(
+        { error: validationError },
         { status: 422 }
       )
     }
@@ -50,8 +67,21 @@ export function createAssetHandlers(assetOps: AssetOperations) {
     }
 
     const assets = []
+    const errors: Array<{ filename: string; error: ReturnType<typeof validateUploadFile> }> = []
+
     for (const file of files) {
       if (!(file instanceof File)) continue
+
+      // Validate each file against constraints
+      const validationError = validateUploadFile(
+        { name: file.name, size: file.size, type: file.type },
+        constraints
+      )
+      if (validationError) {
+        errors.push({ filename: file.name, error: validationError })
+        continue
+      }
+
       const buffer = Buffer.from(await file.arrayBuffer())
       const input: AssetUploadInput = {
         name: file.name,
@@ -62,7 +92,15 @@ export function createAssetHandlers(assetOps: AssetOperations) {
       assets.push(asset)
     }
 
-    return NextResponse.json({ data: assets }, { status: 201 })
+    if (errors.length > 0 && assets.length === 0) {
+      // All files failed validation
+      return NextResponse.json(
+        { error: errors[0].error, errors: errors.map((e) => e.error) },
+        { status: 422 }
+      )
+    }
+
+    return NextResponse.json({ data: assets, errors: errors.length > 0 ? errors.map((e) => e.error) : undefined }, { status: 201 })
   }
 
   async function handleDeleteAsset(
@@ -211,6 +249,49 @@ export function createAssetHandlers(assetOps: AssetOperations) {
     }
   }
 
+  async function handleUpdateMetadata(
+    request: NextRequest,
+    pathSegments: string[]
+  ): Promise<NextResponse> {
+    const assetPath = pathSegments.join('/')
+    if (!assetPath) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'Asset path is required' } },
+        { status: 422 }
+      )
+    }
+
+    const body = await request.json()
+    const update: AssetMetadataUpdate = {}
+
+    if (typeof body.alt === 'string') {
+      update.alt = body.alt
+    }
+    if (typeof body.filename === 'string') {
+      update.filename = body.filename
+    }
+
+    if (Object.keys(update).length === 0) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'At least one metadata field (alt, filename) is required' } },
+        { status: 422 }
+      )
+    }
+
+    try {
+      const asset = await assetOps.updateMetadata(assetPath, update)
+      return NextResponse.json({ data: asset })
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        return NextResponse.json(
+          { error: { code: 'NOT_FOUND', message: error.message } },
+          { status: 404 }
+        )
+      }
+      throw error
+    }
+  }
+
   return {
     handleListAssets,
     handleUploadAsset,
@@ -222,5 +303,6 @@ export function createAssetHandlers(assetOps: AssetOperations) {
     handleCreateDirectory,
     handleDeleteDirectory,
     handleRenameDirectory,
+    handleUpdateMetadata,
   }
 }

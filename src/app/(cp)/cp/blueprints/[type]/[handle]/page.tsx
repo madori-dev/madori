@@ -12,13 +12,25 @@ import {
   ArrowLeft,
 } from 'lucide-react'
 import Link from 'next/link'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
+import { ListSkeleton } from '@/components/cp/ListSkeleton'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 
 import type {
   Blueprint,
@@ -101,8 +113,10 @@ export default function BlueprintEditorPage() {
         const json = await res.json()
         throw new Error(json.error?.message ?? 'Save failed')
       }
+      toast.success('Blueprint saved')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed')
+      toast.error('Failed to save blueprint')
     } finally {
       setSaving(false)
     }
@@ -200,12 +214,7 @@ export default function BlueprintEditorPage() {
   }, [])
 
   if (loading) {
-    return (
-      <div className="animate-pulse space-y-4">
-        <div className="h-8 w-48 rounded bg-muted" />
-        <div className="h-64 rounded-lg bg-muted" />
-      </div>
-    )
+    return <ListSkeleton rows={4} />
   }
 
   if (!blueprint) {
@@ -320,9 +329,25 @@ function TabEditor({
             <Plus className="size-3.5" />
           </Button>
           {canDelete && (
-            <Button variant="ghost" size="icon-xs" onClick={onRemoveTab}>
-              <Trash2 className="size-3.5 text-destructive" />
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger render={<Button variant="ghost" size="icon-xs" />}>
+                <Trash2 className="size-3.5 text-destructive" />
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Remove tab?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will remove the &ldquo;{tab.display || tabKey}&rdquo; tab and all its fields. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction variant="destructive" onClick={onRemoveTab}>
+                    Remove
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
         </div>
       </div>
@@ -417,14 +442,34 @@ function FieldRow({
             required
           </Badge>
         )}
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="opacity-0 group-hover:opacity-100 transition-opacity"
-          onClick={(e) => { e.stopPropagation(); onRemove() }}
-        >
-          <Trash2 className="size-3 text-destructive" />
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => e.stopPropagation()}
+              />
+            }
+          >
+            <Trash2 className="size-3 text-destructive" />
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove field?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will remove the &ldquo;{field.handle || 'unnamed'}&rdquo; field from this tab. This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction variant="destructive" onClick={onRemove}>
+                Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {/* Expanded config */}

@@ -48,6 +48,7 @@ export default function CollectionsListPage() {
         title="Collections"
         description="Manage your structured content collections."
         createHref="/cp/collections/create"
+        blueprintsHref="/cp/blueprints?type=collections"
       />
 
       {collections.length === 0 ? (

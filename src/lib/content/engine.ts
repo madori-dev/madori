@@ -4,7 +4,9 @@ import type { FileSystemAdapter } from '@/lib/fs/adapter'
 import type { ContentParser } from '@/lib/fs/parser'
 import type { ContentCache } from '@/lib/cache/store'
 import type { BlueprintRegistry } from '@/lib/blueprints/registry'
+import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors'
+import { computeContentHash, verifyContentHash } from '@/lib/content/concurrency'
 import { TaxonomyOperations } from './taxonomies'
 import type {
   Entry,
@@ -37,7 +39,7 @@ export interface ContentEngine {
   getEntry(collection: string, slug: string): Promise<Entry | null>
   listEntries(collection: string, options?: ListOptions): Promise<Entry[]>
   createEntry(collection: string, data: EntryInput): Promise<Entry>
-  updateEntry(collection: string, slug: string, data: Partial<EntryInput>): Promise<Entry>
+  updateEntry(collection: string, slug: string, data: Partial<EntryInput>, contentHash?: string): Promise<Entry>
   deleteEntry(collection: string, slug: string): Promise<void>
 
   // Taxonomies
@@ -64,11 +66,12 @@ export interface ContentEngine {
   // Forms
   getForm(handle: string): Promise<Form | null>
   listForms(): Promise<Form[]>
-  submitForm(handle: string, data: Record<string, unknown>): Promise<FormSubmission>
+  submitForm(handle: string, data: Record<string, unknown>): Promise<FormSubmission | null>
 }
 
 export class MadoriContentEngine implements ContentEngine {
   private readonly taxonomyOps: TaxonomyOperations
+  private readonly atomicWriter: AtomicFileWriter
   private collectionsCache: Map<string, CollectionConfig> | null = null
 
   /** Invalidate the in-memory collections cache (call after create/delete). */
@@ -85,6 +88,22 @@ export class MadoriContentEngine implements ContentEngine {
     private readonly blueprintRegistry: BlueprintRegistry
   ) {
     this.taxonomyOps = new TaxonomyOperations(config, fs, parser, cache)
+    this.atomicWriter = new AtomicFileWriter(fs)
+  }
+
+  /**
+   * Startup routine: detect orphaned temporary files from interrupted writes
+   * and log a warning for each one found.
+   */
+  async init(): Promise<void> {
+    const contentDir = path.join(this.config.contentPath, 'collections')
+    const dirExists = await this.fs.exists(contentDir)
+    if (!dirExists) return
+
+    const orphans = await this.atomicWriter.detectOrphans(contentDir)
+    for (const orphanPath of orphans) {
+      console.warn(`[madori] Orphaned temporary file detected: ${orphanPath}`)
+    }
   }
 
   /**
@@ -198,6 +217,7 @@ export class MadoriContentEngine implements ContentEngine {
 
     const raw = await this.fs.readFile(filePath)
     const entry = this.parseEntry(collection, slug, raw)
+    entry.contentHash = computeContentHash(raw)
 
     this.cache.set(cacheKey, entry, [filePath])
     return entry
@@ -270,7 +290,10 @@ export class MadoriContentEngine implements ContentEngine {
 
     const content = data.content ?? ''
     const fileContent = this.parser.serializeMarkdown(frontmatter, content)
-    await this.fs.writeFile(filePath, fileContent)
+    const writeResult = await this.atomicWriter.writeFileAtomic(filePath, fileContent)
+    if (!writeResult.success) {
+      throw writeResult.error ?? new Error(`Atomic write failed for ${filePath}`)
+    }
 
     // Invalidate cache
     this.cache.invalidatePattern(`entries:${collection}*`)
@@ -290,10 +313,17 @@ export class MadoriContentEngine implements ContentEngine {
     return entry
   }
 
-  async updateEntry(collection: string, slug: string, data: Partial<EntryInput>): Promise<Entry> {
+  async updateEntry(collection: string, slug: string, data: Partial<EntryInput>, contentHash?: string): Promise<Entry> {
     const collectionConfig = await this.getCollectionConfig(collection)
     if (!collectionConfig) {
       throw new NotFoundError('Collection', collection)
+    }
+
+    if (!contentHash) {
+      throw new ValidationError(
+        'contentHash is required for update operations',
+        { contentHash: ['contentHash is required'] }
+      )
     }
 
     const filePath = this.getEntryFilePath(collection, slug)
@@ -302,8 +332,11 @@ export class MadoriContentEngine implements ContentEngine {
       throw new NotFoundError('Entry', `${collection}/${slug}`)
     }
 
-    // Read existing entry
+    // Re-read file content and verify hash before writing
     const raw = await this.fs.readFile(filePath)
+    verifyContentHash(contentHash, raw)
+
+    // Read existing entry from the raw content
     const existing = this.parseEntry(collection, slug, raw)
 
     // Merge data
@@ -347,9 +380,15 @@ export class MadoriContentEngine implements ContentEngine {
         throw new ConflictError(`Entry with slug "${data.slug}" already exists in collection "${collection}"`)
       }
       await this.fs.deleteFile(filePath)
-      await this.fs.writeFile(newFilePath, fileContent)
+      const writeResult = await this.atomicWriter.writeFileAtomic(newFilePath, fileContent)
+      if (!writeResult.success) {
+        throw writeResult.error ?? new Error(`Atomic write failed for ${newFilePath}`)
+      }
     } else {
-      await this.fs.writeFile(filePath, fileContent)
+      const writeResult = await this.atomicWriter.writeFileAtomic(filePath, fileContent)
+      if (!writeResult.success) {
+        throw writeResult.error ?? new Error(`Atomic write failed for ${filePath}`)
+      }
     }
 
     // Invalidate cache
@@ -463,7 +502,7 @@ export class MadoriContentEngine implements ContentEngine {
     throw new Error('Not implemented: listForms will be implemented in task 6.3')
   }
 
-  async submitForm(_handle: string, _data: Record<string, unknown>): Promise<FormSubmission> {
+  async submitForm(_handle: string, _data: Record<string, unknown>): Promise<FormSubmission | null> {
     throw new Error('Not implemented: submitForm will be implemented in task 6.3')
   }
 

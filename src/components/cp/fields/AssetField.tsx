@@ -2,9 +2,14 @@
 
 import { useState, useCallback } from 'react'
 import { ImageIcon, Upload, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { FieldConfig } from '@/lib/blueprints/types'
 import { AssetPickerModal } from '@/components/cp/AssetPickerModal'
 import { Button } from '@/components/ui/button'
+import {
+  validateUploadFile,
+  DEFAULT_UPLOAD_CONSTRAINTS,
+} from '@/lib/content/upload-constraints'
 
 interface FieldComponentProps {
   value: unknown
@@ -69,19 +74,41 @@ export function AssetField({ value, onChange, field, error }: FieldComponentProp
 
       if (!allowed.length) return
 
-      if (isSingle || allowed.length === 1) {
+      // Client-side validation: check file size/type constraints before uploading
+      const validFiles: File[] = []
+      for (const file of allowed) {
+        const validationError = validateUploadFile(
+          { name: file.name, size: file.size, type: file.type },
+          DEFAULT_UPLOAD_CONSTRAINTS
+        )
+        if (validationError) {
+          toast.error(validationError.message)
+        } else {
+          validFiles.push(file)
+        }
+      }
+
+      if (!validFiles.length) return
+
+      if (isSingle || validFiles.length === 1) {
         const formData = new FormData()
-        formData.append('file', allowed[0])
+        formData.append('file', validFiles[0])
         try {
           const res = await fetch('/api/assets/upload', { method: 'POST', body: formData })
           if (res.ok) {
             const json = await res.json()
             if (json.data) addAsset(`/assets/${json.data.path}`)
+          } else {
+            const json = await res.json().catch(() => null)
+            const msg = json?.error?.message ?? `Upload failed: ${res.status}`
+            toast.error(msg)
           }
-        } catch { /* user can retry via picker */ }
+        } catch {
+          toast.error('Network error during upload')
+        }
       } else {
         const formData = new FormData()
-        for (const file of allowed) formData.append('files', file)
+        for (const file of validFiles) formData.append('files', file)
         try {
           const res = await fetch('/api/assets/upload-multiple', { method: 'POST', body: formData })
           if (res.ok) {
@@ -91,8 +118,14 @@ export function AssetField({ value, onChange, field, error }: FieldComponentProp
               const next = [...values, ...uploaded.map((a) => `/assets/${a.path}`)]
               onChange(isSingle ? next[0] : next)
             }
+          } else {
+            const json = await res.json().catch(() => null)
+            const msg = json?.error?.message ?? `Upload failed: ${res.status}`
+            toast.error(msg)
           }
-        } catch { /* user can retry via picker */ }
+        } catch {
+          toast.error('Network error during upload')
+        }
       }
     },
     [addAsset, isSingle, maxFiles, onChange, values]
@@ -194,14 +227,6 @@ export function AssetField({ value, onChange, field, error }: FieldComponentProp
         <p className="text-xs text-muted-foreground">
           {values.length}/{maxFiles} files
         </p>
-      )}
-
-      {error && error.length > 0 && (
-        <div className="text-xs text-red-600">
-          {error.map((msg, i) => (
-            <p key={i}>{msg}</p>
-          ))}
-        </div>
       )}
 
       <AssetPickerModal

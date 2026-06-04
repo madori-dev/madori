@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest --run"
+    "test": "vitest --run",
+    "cache:clear": "tsx src/lib/static-cache/cli/clear.ts",
+    "cache:warm": "tsx src/lib/static-cache/cli/warm.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

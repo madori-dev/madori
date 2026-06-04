@@ -23,18 +23,11 @@ export function EntriesField({ value, onChange, field, error }: FieldComponentPr
         value={(value as string) ?? ''}
         onChange={(e) => onChange(e.target.value)}
         placeholder="entry-slug-1, entry-slug-2"
-        className="rounded-md border border-border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+        className={`rounded-md border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring ${error && error.length > 0 ? 'border-destructive' : 'border-border'}`}
       />
       <p className="text-xs text-muted-foreground">
         Enter entry slugs separated by commas (relationship picker coming soon)
       </p>
-      {error && error.length > 0 && (
-        <div className="text-xs text-red-600">
-          {error.map((msg, i) => (
-            <p key={i}>{msg}</p>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

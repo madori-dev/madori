@@ -183,6 +183,9 @@ export function IconPicker({ value, onChange, label }: IconPickerProps) {
       )}
       <PopoverPrimitive.Root open={open} onOpenChange={handleOpenChange}>
         <PopoverPrimitive.Trigger
+          aria-label={value ? `Selected icon: ${value}. Click to change` : 'Select an icon'}
+          aria-expanded={open}
+          aria-haspopup="grid"
           className={cn(
             'inline-flex h-8 items-center gap-2 rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm transition-colors cursor-pointer',
             'hover:bg-accent focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50',
@@ -218,6 +221,8 @@ export function IconPicker({ value, onChange, label }: IconPickerProps) {
                   ref={searchInputRef}
                   type="text"
                   placeholder="Search icons…"
+                  aria-label="Search icons"
+                  aria-controls="icon-picker-grid"
                   value={search}
                   onChange={(e) => {
                     setSearch(e.target.value)
@@ -235,9 +240,10 @@ export function IconPicker({ value, onChange, label }: IconPickerProps) {
 
               <div
                 ref={gridRef}
+                id="icon-picker-grid"
                 className="grid max-h-56 grid-cols-6 gap-1 overflow-y-auto"
                 role="grid"
-                aria-label="Icon grid"
+                aria-label="Icon selection grid"
               >
                 {filteredIcons.map((iconName, index) => {
                   const Icon = getIconComponent(iconName)
@@ -251,6 +257,7 @@ export function IconPicker({ value, onChange, label }: IconPickerProps) {
                       key={iconName}
                       type="button"
                       title={iconName}
+                      aria-label={`Select ${iconName} icon`}
                       onClick={() => handleSelect(iconName)}
                       data-focused={isFocused || undefined}
                       data-selected={isSelected || undefined}
@@ -262,7 +269,7 @@ export function IconPicker({ value, onChange, label }: IconPickerProps) {
                         'outline-none focus-visible:ring-2 focus-visible:ring-ring'
                       )}
                     >
-                      <Icon className="size-4" />
+                      <Icon className="size-4" aria-hidden="true" />
                     </button>
                   )
                 })}

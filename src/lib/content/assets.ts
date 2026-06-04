@@ -1,5 +1,6 @@
 import * as path from 'path'
 import * as fs from 'fs/promises'
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { FileSystemAdapter } from '@/lib/fs/adapter'
 import { NotFoundError } from '@/lib/errors'
 import type { Asset } from '@/lib/types'
@@ -69,10 +70,42 @@ export interface AssetUploadInput {
 }
 
 /**
+ * Metadata fields that can be updated on an asset.
+ */
+export interface AssetMetadataUpdate {
+  alt?: string
+  filename?: string
+}
+
+/**
  * Get MIME type from a file extension.
  */
 export function getMimeType(extension: string): string {
   return MIME_TYPES[extension.toLowerCase()] ?? 'application/octet-stream'
+}
+
+/**
+ * Determine whether an asset should be displayed as a thumbnail or icon
+ * based on its MIME type.
+ */
+export function getDisplayMode(mimeType: string): 'thumbnail' | 'icon' {
+  return mimeType.startsWith('image/') ? 'thumbnail' : 'icon'
+}
+
+/**
+ * Get the appropriate file-type icon name for a given MIME type.
+ */
+export function getFileTypeIcon(mimeType: string): string {
+  const iconMap: Record<string, string> = {
+    'application/pdf': 'file-text',
+    'application/zip': 'archive',
+    'video/': 'video',
+    'audio/': 'music',
+  }
+  for (const [prefix, icon] of Object.entries(iconMap)) {
+    if (mimeType.startsWith(prefix)) return icon
+  }
+  return 'file'
 }
 
 /**
@@ -277,6 +310,90 @@ export class AssetOperations {
     }
 
     await fs.rename(fullOld, fullNew)
+  }
+
+  /**
+   * Update asset metadata (alt text, filename).
+   * Stores metadata as a `.meta.yaml` sidecar file alongside the asset.
+   * If filename is updated, the asset file is also renamed.
+   */
+  async updateMetadata(assetPath: string, update: AssetMetadataUpdate): Promise<Asset> {
+    const fullPath = path.join(this.assetsPath, assetPath)
+
+    const exists = await this.fsAdapter.exists(fullPath)
+    if (!exists) {
+      throw new NotFoundError('Asset', assetPath)
+    }
+
+    // Read existing metadata if present
+    const metaPath = `${fullPath}.meta.yaml`
+    let existingMeta: Record<string, unknown> = {}
+    const metaExists = await this.fsAdapter.exists(metaPath)
+    if (metaExists) {
+      const content = await this.fsAdapter.readFile(metaPath)
+      existingMeta = (parseYaml(content) as Record<string, unknown>) ?? {}
+    }
+
+    // Merge the update into existing metadata
+    const merged = { ...existingMeta }
+    if (update.alt !== undefined) {
+      merged.alt = update.alt
+    }
+    if (update.filename !== undefined) {
+      merged.filename = update.filename
+    }
+
+    // Handle file rename if filename changed
+    let finalAssetPath = assetPath
+    if (update.filename && update.filename !== path.basename(assetPath)) {
+      const dir = path.dirname(assetPath)
+      const newRelativePath = dir === '.' ? update.filename : path.join(dir, update.filename)
+      const newFullPath = path.join(this.assetsPath, newRelativePath)
+
+      await this.fsAdapter.moveFile(fullPath, newFullPath)
+
+      // Move old meta file if it existed
+      if (metaExists) {
+        await this.fsAdapter.deleteFile(metaPath)
+      }
+
+      finalAssetPath = newRelativePath
+
+      // Write meta to the new location
+      const newMetaPath = `${newFullPath}.meta.yaml`
+      await this.fsAdapter.writeFile(newMetaPath, stringifyYaml(merged))
+    } else {
+      // Write metadata sidecar
+      await this.fsAdapter.writeFile(metaPath, stringifyYaml(merged))
+    }
+
+    // Build and return the updated asset
+    const finalFullPath = path.join(this.assetsPath, finalAssetPath)
+    const stat = await fs.stat(finalFullPath)
+    const asset = this.buildAssetFromStat(finalAssetPath, stat)
+
+    // Attach alt from metadata
+    if (merged.alt !== undefined) {
+      asset.alt = merged.alt as string
+    }
+
+    return asset
+  }
+
+  /**
+   * Read metadata for an asset from its `.meta.yaml` sidecar file.
+   */
+  async getMetadata(assetPath: string): Promise<Record<string, unknown>> {
+    const fullPath = path.join(this.assetsPath, assetPath)
+    const metaPath = `${fullPath}.meta.yaml`
+
+    const metaExists = await this.fsAdapter.exists(metaPath)
+    if (!metaExists) {
+      return {}
+    }
+
+    const content = await this.fsAdapter.readFile(metaPath)
+    return (parseYaml(content) as Record<string, unknown>) ?? {}
   }
 
   /**

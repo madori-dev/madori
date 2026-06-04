@@ -1,11 +1,41 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, Trash2, GripVertical, ChevronDown, ChevronRight } from 'lucide-react'
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { FieldRenderer } from './FieldRenderer'
 
 import type { FieldConfig, FieldDefinition } from '@/lib/blueprints/types'
@@ -19,6 +49,7 @@ interface FieldComponentProps {
 
 interface Block {
   _type: string
+  _id?: string
   [key: string]: unknown
 }
 
@@ -27,13 +58,62 @@ interface FieldsetData {
   fields: FieldDefinition[]
 }
 
+/** Generate a stable unique ID for a block */
+function generateBlockId(): string {
+  return `block-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+}
+
+/** Ensure all blocks have stable _id fields */
+function ensureBlockIds(blocks: Block[]): Block[] {
+  let changed = false
+  const result = blocks.map((block) => {
+    if (!block._id) {
+      changed = true
+      return { ...block, _id: generateBlockId() }
+    }
+    return block
+  })
+  return changed ? result : blocks
+}
+
 export function ReplicatorField({ value, onChange, field, error }: FieldComponentProps) {
   const [fieldsets, setFieldsets] = useState<FieldsetData[]>([])
   const [loading, setLoading] = useState(true)
   const [expandedBlocks, setExpandedBlocks] = useState<Set<number>>(new Set())
+  const [activeId, setActiveId] = useState<string | null>(null)
 
-  const blocks: Block[] = Array.isArray(value) ? value : []
+  const rawBlocks: Block[] = Array.isArray(value) ? value : []
   const configuredSets = (field.options?.sets as string[]) ?? []
+
+  // Ensure all blocks have stable IDs for dnd-kit
+  const blocksRef = useRef<Block[]>(rawBlocks)
+  const blocks = useMemo(() => {
+    const withIds = ensureBlockIds(rawBlocks)
+    if (withIds !== rawBlocks) {
+      // Defer the onChange to avoid render-during-render
+      blocksRef.current = withIds
+    }
+    return withIds
+  }, [rawBlocks])
+
+  // Sync IDs back to parent if they were missing
+  useEffect(() => {
+    if (blocksRef.current !== rawBlocks && blocksRef.current.length > 0) {
+      onChange(blocksRef.current)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const blockIds = useMemo(() => blocks.map((b) => b._id!), [blocks])
+
+  // dnd-kit sensors with activation constraints to avoid accidental drags
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   useEffect(() => {
     async function loadFieldsets() {
@@ -49,7 +129,7 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
           if (res.ok) {
             const json = await res.json()
             const fields = (json.data?.fields ?? []).filter(
-              (f: { field?: unknown }) => f.field // exclude import entries
+              (f: { field?: unknown }) => f.field
             )
             results.push({ handle, fields })
           }
@@ -65,8 +145,7 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
   }, [configuredSets.join(',')])
 
   function addBlock(type: string) {
-    const newBlock: Block = { _type: type }
-    // Set defaults from fieldset
+    const newBlock: Block = { _type: type, _id: generateBlockId() }
     const fs = fieldsets.find((f) => f.handle === type)
     if (fs) {
       for (const fieldDef of fs.fields) {
@@ -100,9 +179,7 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
   }
 
   function moveBlock(from: number, to: number) {
-    const updated = [...blocks]
-    const [moved] = updated.splice(from, 1)
-    updated.splice(to, 0, moved)
+    const updated = arrayMove(blocks, from, to)
     onChange(updated)
     setExpandedBlocks((prev) => {
       const next = new Set<number>()
@@ -125,7 +202,32 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
     })
   }
 
-  // No sets configured — show a message
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(event.active.id as string)
+  }, [])
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+      setActiveId(null)
+
+      if (over && active.id !== over.id) {
+        const oldIndex = blockIds.indexOf(active.id as string)
+        const newIndex = blockIds.indexOf(over.id as string)
+        if (oldIndex !== -1 && newIndex !== -1) {
+          moveBlock(oldIndex, newIndex)
+        }
+      }
+    },
+    [blockIds, blocks] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  const activeBlock = activeId ? blocks.find((b) => b._id === activeId) : undefined
+  const activeBlockFs = activeBlock
+    ? fieldsets.find((f) => f.handle === activeBlock._type)
+    : undefined
+
+  // No sets configured
   if (configuredSets.length === 0) {
     return (
       <div className="flex flex-col gap-1">
@@ -167,92 +269,49 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
         </label>
       )}
 
-      {/* Block list */}
+      {/* Block list with drag-and-drop */}
       {blocks.length > 0 && (
-        <div className="space-y-2">
-          {blocks.map((block, index) => {
-            const isExpanded = expandedBlocks.has(index)
-            const fs = fieldsets.find((f) => f.handle === block._type)
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={blockIds} strategy={verticalListSortingStrategy}>
+            <div className="space-y-2" role="list" aria-label="Replicator blocks">
+              {blocks.map((block, index) => (
+                <SortableBlock
+                  key={block._id}
+                  block={block}
+                  index={index}
+                  totalBlocks={blocks.length}
+                  isExpanded={expandedBlocks.has(index)}
+                  fieldsets={fieldsets}
+                  isDragOverlay={false}
+                  onToggleExpanded={() => toggleExpanded(index)}
+                  onUpdateBlock={(fieldHandle, fieldValue) =>
+                    updateBlock(index, fieldHandle, fieldValue)
+                  }
+                  onRemoveBlock={() => removeBlock(index)}
+                  onMoveUp={index > 0 ? () => moveBlock(index, index - 1) : undefined}
+                  onMoveDown={
+                    index < blocks.length - 1 ? () => moveBlock(index, index + 1) : undefined
+                  }
+                />
+              ))}
+            </div>
+          </SortableContext>
 
-            return (
-              <Card key={index} className="p-0 overflow-hidden">
-                {/* Block header */}
-                <div
-                  className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-b"
-                  onClick={() => toggleExpanded(index)}
-                >
-                  <GripVertical className="size-3.5 text-muted-foreground/50 shrink-0" />
-                  {isExpanded ? (
-                    <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
-                  ) : (
-                    <ChevronRight className="size-3.5 text-muted-foreground shrink-0" />
-                  )}
-                  <Badge variant="secondary" className="text-xs">
-                    {block._type}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground flex-1 truncate">
-                    {getBlockPreview(block, fs)}
-                  </span>
-                  <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-                    {index > 0 && (
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => moveBlock(index, index - 1)}
-                      >
-                        <span className="text-xs">↑</span>
-                      </Button>
-                    )}
-                    {index < blocks.length - 1 && (
-                      <Button
-                        variant="ghost"
-                        size="icon-xs"
-                        onClick={() => moveBlock(index, index + 1)}
-                      >
-                        <span className="text-xs">↓</span>
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="text-muted-foreground hover:text-destructive"
-                      onClick={() => removeBlock(index)}
-                    >
-                      <Trash2 className="size-3" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Block fields */}
-                {isExpanded && fs && (
-                  <div className="p-4 space-y-4">
-                    {fs.fields.map((fieldDef) => (
-                      <FieldRenderer
-                        key={fieldDef.handle}
-                        fieldDefinition={fieldDef}
-                        value={block[fieldDef.handle]}
-                        onChange={(val) => updateBlock(index, fieldDef.handle, val)}
-                      />
-                    ))}
-                    {fs.fields.length === 0 && (
-                      <p className="text-xs text-muted-foreground">
-                        This fieldset has no fields defined.
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {isExpanded && !fs && (
-                  <div className="p-4">
-                    <p className="text-xs text-muted-foreground">
-                      Fieldset &ldquo;{block._type}&rdquo; not found.
-                    </p>
-                  </div>
-                )}
-              </Card>
-            )
-          })}
-        </div>
+          {/* Drag overlay for smooth visual feedback */}
+          <DragOverlay dropAnimation={{
+            duration: 200,
+            easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+          }}>
+            {activeBlock ? (
+              <SortableBlockOverlay block={activeBlock} fieldset={activeBlockFs} />
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
 
       {/* Add block buttons */}
@@ -283,10 +342,210 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
   )
 }
 
+// ─── Sortable Block Component ────────────────────────────────────────────────
+
+interface SortableBlockProps {
+  block: Block
+  index: number
+  totalBlocks: number
+  isExpanded: boolean
+  fieldsets: FieldsetData[]
+  isDragOverlay: boolean
+  onToggleExpanded: () => void
+  onUpdateBlock: (fieldHandle: string, fieldValue: unknown) => void
+  onRemoveBlock: () => void
+  onMoveUp?: () => void
+  onMoveDown?: () => void
+}
+
+function SortableBlock({
+  block,
+  index,
+  totalBlocks,
+  isExpanded,
+  fieldsets,
+  onToggleExpanded,
+  onUpdateBlock,
+  onRemoveBlock,
+  onMoveUp,
+  onMoveDown,
+}: SortableBlockProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: block._id! })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
+  const fs = fieldsets.find((f) => f.handle === block._type)
+
+  return (
+    <Card
+      ref={setNodeRef}
+      style={style}
+      className={`p-0 overflow-hidden transition-shadow duration-200 ${
+        isDragging
+          ? 'opacity-40 shadow-lg ring-2 ring-primary/20 scale-[0.98]'
+          : 'opacity-100'
+      }`}
+      role="listitem"
+      aria-label={`Block ${index + 1}: ${block._type}`}
+    >
+      {/* Block header */}
+      <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-b">
+        {/* Drag handle */}
+        <button
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          type="button"
+          className="cursor-grab active:cursor-grabbing touch-none rounded-sm p-0.5 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={`Drag to reorder block ${index + 1}`}
+          aria-roledescription="sortable"
+        >
+          <GripVertical className="size-3.5 text-muted-foreground/50 shrink-0" aria-hidden="true" />
+        </button>
+
+        <button
+          type="button"
+          onClick={onToggleExpanded}
+          aria-expanded={isExpanded}
+          aria-controls={`replicator-block-${index}-content`}
+          className="flex items-center gap-2 flex-1 min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+        >
+          {isExpanded ? (
+            <ChevronDown className="size-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+          ) : (
+            <ChevronRight className="size-3.5 text-muted-foreground shrink-0" aria-hidden="true" />
+          )}
+          <Badge variant="secondary" className="text-xs">
+            {block._type}
+          </Badge>
+          <span className="text-xs text-muted-foreground flex-1 truncate">
+            {getBlockPreview(block, fs)}
+          </span>
+        </button>
+
+        <div className="flex items-center gap-0.5">
+          {onMoveUp && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={onMoveUp}
+              aria-label={`Move block ${index + 1} up`}
+            >
+              <span className="text-xs">↑</span>
+            </Button>
+          )}
+          {onMoveDown && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={onMoveDown}
+              aria-label={`Move block ${index + 1} down`}
+            >
+              <span className="text-xs">↓</span>
+            </Button>
+          )}
+          <AlertDialog>
+            <AlertDialogTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-muted-foreground hover:text-destructive"
+                />
+              }
+            >
+              <Trash2 className="size-3" />
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Remove block?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will remove this &ldquo;{block._type}&rdquo; block and all its content.
+                  This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction variant="destructive" onClick={onRemoveBlock}>
+                  Remove
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      </div>
+
+      {/* Block fields */}
+      {isExpanded && fs && (
+        <div id={`replicator-block-${index}-content`} className="p-4 space-y-4">
+          {fs.fields.map((fieldDef) => (
+            <FieldRenderer
+              key={fieldDef.handle}
+              fieldDefinition={fieldDef}
+              value={block[fieldDef.handle]}
+              onChange={(val) => onUpdateBlock(fieldDef.handle, val)}
+            />
+          ))}
+          {fs.fields.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              This fieldset has no fields defined.
+            </p>
+          )}
+        </div>
+      )}
+
+      {isExpanded && !fs && (
+        <div id={`replicator-block-${index}-content`} className="p-4">
+          <p className="text-xs text-muted-foreground">
+            Fieldset &ldquo;{block._type}&rdquo; not found.
+          </p>
+        </div>
+      )}
+    </Card>
+  )
+}
+
+// ─── Drag Overlay ────────────────────────────────────────────────────────────
+
+interface SortableBlockOverlayProps {
+  block: Block
+  fieldset: FieldsetData | undefined
+}
+
+function SortableBlockOverlay({ block, fieldset }: SortableBlockOverlayProps) {
+  return (
+    <Card className="p-0 overflow-hidden shadow-2xl ring-2 ring-primary/30 rotate-1 scale-[1.02]">
+      <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-b">
+        <GripVertical className="size-3.5 text-muted-foreground/50 shrink-0 cursor-grabbing" aria-hidden="true" />
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <Badge variant="secondary" className="text-xs">
+            {block._type}
+          </Badge>
+          <span className="text-xs text-muted-foreground flex-1 truncate">
+            {getBlockPreview(block, fieldset)}
+          </span>
+        </div>
+      </div>
+    </Card>
+  )
+}
+
+// ─── Utilities ───────────────────────────────────────────────────────────────
+
 /** Get a short preview string from block data */
 function getBlockPreview(block: Block, fs: FieldsetData | undefined): string {
   if (!fs) return ''
-  // Find first text-like field for preview
   for (const fieldDef of fs.fields) {
     if (['text', 'slug'].includes(fieldDef.field.type)) {
       const val = block[fieldDef.handle]

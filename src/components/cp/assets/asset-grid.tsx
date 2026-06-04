@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Folder, FileText, Trash2, FolderInput, Pencil } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Folder, FileText, Trash2, FolderInput, Pencil, Upload } from 'lucide-react'
 import type { Asset } from '@/lib/types'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
@@ -52,6 +52,7 @@ interface AssetGridProps {
   onDeleteDirectory: (name: string) => void
   onRenameDirectory: (oldName: string, newName: string) => void
   onMoveAsset: (from: string, to: string) => void
+  onUpload?: (files: File[]) => void
 }
 
 export function AssetGrid({
@@ -66,6 +67,7 @@ export function AssetGrid({
   onDeleteDirectory,
   onRenameDirectory,
   onMoveAsset,
+  onUpload,
 }: AssetGridProps) {
   const [renamingDir, setRenamingDir] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -129,17 +131,44 @@ export function AssetGrid({
     onMoveAsset(sourcePath, destination)
   }
 
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   if (assets.length === 0 && directories.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center p-12">
         <div className="text-center">
-          <FileText className="mx-auto h-12 w-12 text-muted-foreground/50" />
-          <p className="mt-3 text-sm text-muted-foreground">
+          <Upload className="mx-auto h-12 w-12 text-muted-foreground/50" />
+          <p className="mt-3 text-sm font-medium text-muted-foreground">
             No files in this folder.
           </p>
           <p className="mt-1 text-xs text-muted-foreground/70">
-            Drag and drop files here or use the Upload button.
+            Drag and drop files here or use the upload button to get started.
           </p>
+          {onUpload && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.length) {
+                    onUpload(Array.from(e.target.files))
+                    e.target.value = ''
+                  }
+                }}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                Upload files
+              </Button>
+            </>
+          )}
         </div>
       </div>
     )
@@ -153,14 +182,25 @@ export function AssetGrid({
           <ContextMenu key={`dir-${dir}`}>
             <ContextMenuTrigger>
               <div
+                role="button"
+                tabIndex={0}
+                aria-label={`Open folder ${dir}`}
                 className={cn(
                   'group relative flex flex-col items-center gap-2 rounded-lg border border-border p-3 transition-colors cursor-pointer',
                   'hover:bg-accent hover:border-accent-foreground/20',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                   dragOverDir === dir && 'border-primary bg-primary/10'
                 )}
                 onDoubleClick={() => {
                   const target = currentDirectory ? `${currentDirectory}/${dir}` : dir
                   onNavigateToDirectory(target)
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    const target = currentDirectory ? `${currentDirectory}/${dir}` : dir
+                    onNavigateToDirectory(target)
+                  }
                 }}
                 onDragOver={(e) => handleDragOver(e, dir)}
                 onDragLeave={handleDragLeave}
@@ -219,14 +259,25 @@ export function AssetGrid({
             <ContextMenu key={asset.path}>
               <ContextMenuTrigger>
                 <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${asset.filename}${isSelected ? ' (selected)' : ''}`}
+                  aria-pressed={isSelected}
                   className={cn(
                     'group relative flex flex-col items-center gap-2 rounded-lg border p-3 transition-colors cursor-pointer',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                     isSelected
                       ? 'border-primary bg-primary/5'
                       : 'border-border hover:bg-accent hover:border-accent-foreground/20',
                     draggedAsset === asset.path && 'opacity-50'
                   )}
                   onClick={(e) => handleAssetClick(e, asset.path)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onToggleSelection(asset.path)
+                    }
+                  }}
                   draggable
                   onDragStart={(e) => handleDragStart(e, asset.path)}
                   onDragEnd={() => setDraggedAsset(null)}

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -54,8 +55,10 @@ export default function CreateBlueprintPage() {
       }
 
       router.push(`/cp/blueprints/${type}/${sanitized}`)
+      toast.success('Blueprint created')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Creation failed')
+      toast.error('Failed to create blueprint')
       setSaving(false)
     }
   }

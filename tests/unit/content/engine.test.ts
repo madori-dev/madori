@@ -7,6 +7,7 @@ import type { ContentParser } from '@/lib/fs/parser'
 import type { ContentCache } from '@/lib/cache/store'
 import type { BlueprintRegistry } from '@/lib/blueprints/registry'
 import { NotFoundError, ConflictError, ValidationError } from '@/lib/errors'
+import { computeContentHash } from '@/lib/content/concurrency'
 
 // ─── Test Helpers ────────────────────────────────────────────────────────────
 
@@ -48,7 +49,12 @@ function createMockFs(): FileSystemAdapter {
     listDirectories: async (_directory: string) => [],
     mkdir: async () => {},
     copyFile: async () => {},
-    moveFile: async () => {},
+    moveFile: async (src: string, dest: string) => {
+      const content = files.get(src)
+      if (content === undefined) throw new Error(`File not found: ${src}`)
+      files.set(dest, content)
+      files.delete(src)
+    },
     // Expose internal state for test setup
     _files: files,
     _directories: directories,
@@ -132,6 +138,12 @@ describe('MadoriContentEngine', () => {
     mockCache = createMockCache()
     mockBlueprintRegistry = createMockBlueprintRegistry()
 
+    // Seed mock FS with collection config files (engine reads from resources/collections/*.yaml)
+    const collectionsDir = '/project/resources/collections'
+    mockFs._directories.set(collectionsDir, ['blog.yaml', 'pages.yaml'])
+    mockFs._files.set(`${collectionsDir}/blog.yaml`, JSON.stringify({ title: 'Blog', blueprint: 'blog' }))
+    mockFs._files.set(`${collectionsDir}/pages.yaml`, JSON.stringify({ title: 'Pages', blueprint: 'pages' }))
+
     engine = new MadoriContentEngine(
       createMockConfig(),
       mockFs,
@@ -191,6 +203,17 @@ describe('MadoriContentEngine', () => {
       expect(entry!.status).toBe('published')
       expect(entry!.collection).toBe('blog')
       expect(entry!.content).toBe('# Hello World')
+    })
+
+    it('includes contentHash computed from file content', async () => {
+      const filePath = '/project/content/collections/blog/hello-world.md'
+      const fileContent = '---\ntitle: Hello World\nslug: hello-world\nstatus: published\ncreatedAt: 2024-01-01T00:00:00Z\nupdatedAt: 2024-01-01T00:00:00Z\n---\n\n# Hello World\n'
+      mockFs._files.set(filePath, fileContent)
+
+      const entry = await engine.getEntry('blog', 'hello-world')
+      expect(entry).not.toBeNull()
+      expect(entry!.contentHash).toBeDefined()
+      expect(entry!.contentHash).toBe(computeContentHash(fileContent))
     })
 
     it('returns null for non-existent entry', async () => {
@@ -350,18 +373,19 @@ describe('MadoriContentEngine', () => {
   })
 
   describe('updateEntry', () => {
+    const fileContent = '---\ntitle: Hello World\nslug: hello-world\nstatus: published\ncreatedAt: 2024-01-01T00:00:00Z\nupdatedAt: 2024-01-01T00:00:00Z\n---\n\n# Hello World\n'
+    let contentHash: string
+
     beforeEach(() => {
       const filePath = '/project/content/collections/blog/hello-world.md'
-      mockFs._files.set(
-        filePath,
-        '---\ntitle: Hello World\nslug: hello-world\nstatus: published\ncreatedAt: 2024-01-01T00:00:00Z\nupdatedAt: 2024-01-01T00:00:00Z\n---\n\n# Hello World\n'
-      )
+      mockFs._files.set(filePath, fileContent)
+      contentHash = computeContentHash(fileContent)
     })
 
     it('updates entry fields', async () => {
       const entry = await engine.updateEntry('blog', 'hello-world', {
         title: 'Updated Title',
-      })
+      }, contentHash)
 
       expect(entry.title).toBe('Updated Title')
       expect(entry.slug).toBe('hello-world')
@@ -371,7 +395,7 @@ describe('MadoriContentEngine', () => {
     it('preserves existing fields when not provided', async () => {
       const entry = await engine.updateEntry('blog', 'hello-world', {
         content: 'New content',
-      })
+      }, contentHash)
 
       expect(entry.title).toBe('Hello World')
       expect(entry.content).toBe('New content')
@@ -379,20 +403,20 @@ describe('MadoriContentEngine', () => {
 
     it('throws NotFoundError for non-existent entry', async () => {
       await expect(
-        engine.updateEntry('blog', 'nonexistent', { title: 'Test' })
+        engine.updateEntry('blog', 'nonexistent', { title: 'Test' }, contentHash)
       ).rejects.toThrow(NotFoundError)
     })
 
     it('throws NotFoundError for non-existent collection', async () => {
       await expect(
-        engine.updateEntry('nonexistent', 'slug', { title: 'Test' })
+        engine.updateEntry('nonexistent', 'slug', { title: 'Test' }, contentHash)
       ).rejects.toThrow(NotFoundError)
     })
 
     it('handles slug change', async () => {
       const entry = await engine.updateEntry('blog', 'hello-world', {
         slug: 'new-slug',
-      })
+      }, contentHash)
 
       expect(entry.slug).toBe('new-slug')
       // Old file should be deleted
@@ -408,8 +432,36 @@ describe('MadoriContentEngine', () => {
       )
 
       await expect(
-        engine.updateEntry('blog', 'hello-world', { slug: 'existing' })
+        engine.updateEntry('blog', 'hello-world', { slug: 'existing' }, contentHash)
       ).rejects.toThrow(ConflictError)
+    })
+
+    it('throws ValidationError when contentHash is not provided', async () => {
+      await expect(
+        engine.updateEntry('blog', 'hello-world', { title: 'Test' })
+      ).rejects.toThrow(ValidationError)
+    })
+
+    it('throws ConflictError when contentHash does not match current file', async () => {
+      const staleHash = computeContentHash('stale content')
+
+      await expect(
+        engine.updateEntry('blog', 'hello-world', { title: 'Test' }, staleHash)
+      ).rejects.toThrow(ConflictError)
+    })
+
+    it('includes both hashes in ConflictError', async () => {
+      const staleHash = computeContentHash('stale content')
+
+      try {
+        await engine.updateEntry('blog', 'hello-world', { title: 'Test' }, staleHash)
+        expect.fail('Should have thrown')
+      } catch (error) {
+        expect(error).toBeInstanceOf(ConflictError)
+        const conflictError = error as ConflictError
+        expect(conflictError.submittedHash).toBe(staleHash)
+        expect(conflictError.currentHash).toBe(contentHash)
+      }
     })
   })
 

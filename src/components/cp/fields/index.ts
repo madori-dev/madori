@@ -1,5 +1,6 @@
 export { FieldRenderer } from './FieldRenderer'
 export type { FieldComponentProps } from './FieldRenderer'
+export { FieldError } from './FieldError'
 export { TextField } from './TextField'
 export { SlugField } from './SlugField'
 export { MarkdownField } from './MarkdownField'

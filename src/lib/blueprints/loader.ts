@@ -2,6 +2,7 @@ import * as path from 'path'
 import type { FileSystemAdapter } from '@/lib/fs/adapter'
 import type { ContentParser } from '@/lib/fs/parser'
 import type { Blueprint, BlueprintTab, BlueprintType, FieldDefinition } from './types'
+import { BlueprintValidator } from './validator'
 
 /**
  * Raw YAML structure for a blueprint tab before normalization.
@@ -32,11 +33,15 @@ interface RawBlueprint {
  * Loads and parses blueprint YAML files from the resources directory.
  */
 export class BlueprintLoader {
+  private readonly validator: BlueprintValidator
+
   constructor(
     private readonly fs: FileSystemAdapter,
     private readonly parser: ContentParser,
     private readonly resourcesPath: string
-  ) {}
+  ) {
+    this.validator = new BlueprintValidator()
+  }
 
   /**
    * Load a single blueprint by type and handle.
@@ -52,6 +57,12 @@ export class BlueprintLoader {
 
     const raw = await this.fs.readFile(filePath)
     const parsed = this.parser.parseYaml<RawBlueprint>(raw)
+
+    // Validate blueprint before normalisation; reject invalid blueprints
+    const validationResult = this.validator.validate(parsed)
+    if (!validationResult.success) {
+      return null
+    }
 
     return this.normalizeBlueprint(handle, parsed)
   }

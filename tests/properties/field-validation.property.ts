@@ -74,7 +74,7 @@ const validNumber = fc.oneof(
 
 /** Valid ISO date strings */
 const validDate = fc
-  .date({ min: new Date('1970-01-01'), max: new Date('2099-12-31') })
+  .date({ min: new Date('1970-01-01'), max: new Date('2099-12-31'), noInvalidDate: true })
   .map((d) => d.toISOString())
 
 /** Array of strings arbitrary */

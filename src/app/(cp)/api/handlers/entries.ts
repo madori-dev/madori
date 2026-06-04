@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import type { ContentEngine, EntryInput } from '@/lib/content/engine'
 import { NotFoundError, ValidationError, ConflictError, MadoriError } from '@/lib/errors'
+import { getInvalidationEngine } from '@/lib/static-cache/instance'
 
 /**
  * Maps ContentEngine errors to appropriate HTTP JSON error responses.
@@ -26,7 +27,16 @@ function mapEngineError(error: unknown): NextResponse {
   }
   if (error instanceof ConflictError) {
     return NextResponse.json(
-      { error: { code: 'CONFLICT', message: error.message } },
+      {
+        error: {
+          code: 'CONFLICT',
+          message: error.message,
+          details: {
+            submittedHash: error.submittedHash,
+            currentHash: error.currentHash,
+          },
+        },
+      },
       { status: 409 }
     )
   }
@@ -40,6 +50,22 @@ function mapEngineError(error: unknown): NextResponse {
     { error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } },
     { status: 500 }
   )
+}
+
+/**
+ * Derive the front-end URL of an entry from its collection route pattern.
+ * Falls back to /{collection}/{slug} if no route is defined.
+ */
+async function resolveEntryUrl(
+  contentEngine: ContentEngine,
+  collection: string,
+  slug: string
+): Promise<string> {
+  const col = await contentEngine.getCollection(collection)
+  if (col?.route) {
+    return col.route.replace('{slug}', slug)
+  }
+  return `/${collection}/${slug}`
 }
 
 export function createEntryHandlers(contentEngine: ContentEngine) {
@@ -118,6 +144,13 @@ export function createEntryHandlers(contentEngine: ContentEngine) {
         data,
       })
 
+      // Fire cache invalidation after successful create
+      const engine = getInvalidationEngine()
+      if (engine) {
+        const url = await resolveEntryUrl(contentEngine, collection, slug)
+        engine.invalidate({ type: 'entry', collection, url })
+      }
+
       return NextResponse.json({ data: entry }, { status: 201 })
     } catch (error) {
       return mapEngineError(error)
@@ -134,7 +167,7 @@ export function createEntryHandlers(contentEngine: ContentEngine) {
   ): Promise<NextResponse> {
     try {
       const body = await request.json()
-      const { title, slug: newSlug, status, author, content, data } = body as Partial<EntryInput>
+      const { title, slug: newSlug, status, author, content, data, contentHash } = body as Partial<EntryInput> & { contentHash?: string }
 
       const entry = await contentEngine.updateEntry(collection, slug, {
         title,
@@ -143,7 +176,14 @@ export function createEntryHandlers(contentEngine: ContentEngine) {
         author,
         content,
         data,
-      })
+      }, contentHash)
+
+      // Fire cache invalidation after successful update
+      const engine = getInvalidationEngine()
+      if (engine) {
+        const url = await resolveEntryUrl(contentEngine, collection, entry.slug)
+        engine.invalidate({ type: 'entry', collection, url })
+      }
 
       return NextResponse.json({ data: entry })
     } catch (error) {
@@ -160,7 +200,20 @@ export function createEntryHandlers(contentEngine: ContentEngine) {
     slug: string
   ): Promise<NextResponse> {
     try {
+      // Resolve URL before deletion (entry data won't be available after)
+      const engine = getInvalidationEngine()
+      let url: string | undefined
+      if (engine) {
+        url = await resolveEntryUrl(contentEngine, collection, slug)
+      }
+
       await contentEngine.deleteEntry(collection, slug)
+
+      // Fire cache invalidation after successful delete
+      if (engine && url) {
+        engine.invalidate({ type: 'entry', collection, url })
+      }
+
       return NextResponse.json({ success: true })
     } catch (error) {
       return mapEngineError(error)

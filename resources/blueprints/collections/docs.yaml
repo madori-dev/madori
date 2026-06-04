@@ -1,0 +1,27 @@
+tabs:
+  main:
+    label: Main
+    fields:
+      - handle: title
+        field:
+          type: text
+          required: true
+
+      - handle: slug
+        field:
+          type: slug
+
+      - handle: content
+        field:
+          type: tiptap
+  seo:
+    label: SEO
+    fields:
+      - handle: meta_title
+        field:
+          type: text
+          display: Meta Title
+      - handle: meta_description
+        field:
+          type: text
+          display: Meta Description

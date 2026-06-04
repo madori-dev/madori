@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import * as path from 'path'
 import { loadConfig, resolveConfigPaths } from '@/lib/config/loader'
 import { PermissionChecker } from '@/lib/auth/permissions'
+import { PermissionGuard } from '@/lib/auth/guard'
+import type { AuthContext } from '@/lib/auth/guard'
 import { PluginRegistry } from '@/lib/auth/registry'
 import { YamlUserProviderFactory } from '@/lib/auth/providers/yaml'
 import { FileSessionStoreFactory } from '@/lib/auth/stores/file'
@@ -13,7 +15,7 @@ import { MarkdownYamlParser } from '@/lib/fs/parser'
 import { InMemoryContentCache } from '@/lib/cache/store'
 import { BlueprintLoader } from '@/lib/blueprints/loader'
 import { BlueprintRegistry } from '@/lib/blueprints/registry'
-import type { Blueprint } from '@/lib/blueprints/types'
+import type { Blueprint, BlueprintType } from '@/lib/blueprints/types'
 import { MadoriContentEngine } from '@/lib/content/engine'
 import { AssetOperations } from '@/lib/content/assets'
 import { GlobalOperations } from '@/lib/content/globals'
@@ -30,12 +32,14 @@ import { createEntryHandlers } from '../handlers/entries'
 import { createCollectionHandlers } from '../handlers/collections'
 import { createDefinitionHandlers } from '../handlers/definitions'
 import { createContentHandlers } from '../handlers/content'
+import { createDashboardHandlers } from '../handlers/dashboard'
 import { DefinitionLoader } from '@/lib/definitions/loader'
 import { ContentStore } from '@/lib/content/store'
 import { FileConfigWriter } from '@/lib/config/writer'
+import { initInvalidationEngine } from '@/lib/static-cache/instance'
 import type { User, CreateUserInput, UpdateUserInput } from '@/lib/auth/types'
 import type { ResourceType, Action } from '@/lib/auth/permissions'
-import { AuthenticationError } from '@/lib/errors'
+import { AuthenticationError, AuthorizationError as AuthorizationErr } from '@/lib/errors'
 
 /**
  * Internal AuthService interface — adapts ComposedAuthService to a shape
@@ -75,6 +79,7 @@ type UnauthenticatedRouteHandler = (
 
 let authServiceInstance: AuthService | null = null
 let composedAuthInstance: ComposedAuthService | null = null
+let permissionGuardInstance: PermissionGuard | null = null
 let servicesInitialized = false
 let assetHandlers: ReturnType<typeof createAssetHandlers>
 let userHandlers: ReturnType<typeof createUserHandlers>
@@ -86,6 +91,7 @@ let entryHandlers: ReturnType<typeof createEntryHandlers>
 let collectionHandlers: ReturnType<typeof createCollectionHandlers>
 let definitionHandlers: ReturnType<typeof createDefinitionHandlers>
 let contentHandlers: ReturnType<typeof createContentHandlers>
+let dashboardHandlers: ReturnType<typeof createDashboardHandlers>
 let contentEngineInstance: MadoriContentEngine
 let blueprintRegistryInstance: BlueprintRegistry
 
@@ -166,6 +172,9 @@ async function initializeServices(): Promise<AuthService> {
   // 3. Create PermissionChecker (remains independent of adapter system)
   const permissionChecker = new PermissionChecker(fs, parser, resolvedConfig.resourcesPath)
 
+  // 3b. Create PermissionGuard — shared instance for CP route permission enforcement
+  permissionGuardInstance = new PermissionGuard(permissionChecker, { permissions: new Map() })
+
   // 4. Adapt ComposedAuthService to existing AuthService interface for backward compatibility
   authServiceInstance = {
     async login(email: string, password: string) {
@@ -216,17 +225,31 @@ async function initializeServices(): Promise<AuthService> {
   userHandlers = createUserHandlers(composedAuth)
   globalHandlers = createGlobalHandlers(globalOps)
   taxonomyHandlers = createTaxonomyHandlers(taxonomyOps)
-  navigationHandlers = createNavigationHandlers(navigationOps)
-  formHandlers = createFormHandlers(formOps)
 
   // Initialize flat-file definition and content handlers
   const definitionLoader = new DefinitionLoader(resolvedConfig.resourcesPath)
   const flatContentStore = new ContentStore(resolvedConfig.contentPath)
+
+  navigationHandlers = createNavigationHandlers(navigationOps, definitionLoader)
+  formHandlers = createFormHandlers(formOps, blueprintRegistryInstance)
+
   definitionHandlers = createDefinitionHandlers(definitionLoader)
   contentHandlers = createContentHandlers(flatContentStore)
 
   // Collection handlers need definitionLoader for delete
   collectionHandlers = createCollectionHandlers(contentEngineInstance, configWriter, blueprintRegistryInstance, definitionLoader)
+
+  // Dashboard handler for recent activity
+  dashboardHandlers = createDashboardHandlers(contentEngineInstance)
+
+  // Initialize static cache invalidation engine
+  initInvalidationEngine({
+    enabled: config.staticCache?.enabled ?? false,
+    driver: config.staticCache?.driver ?? 'application',
+    storagePath: config.staticCache?.storagePath ?? 'storage/static-cache/',
+    warmOnInvalidate: config.staticCache?.warmOnInvalidate ?? false,
+    invalidationRules: config.staticCache?.invalidationRules ?? [],
+  })
 
   servicesInitialized = true
   return authServiceInstance
@@ -299,20 +322,41 @@ function withAuth(handler: RouteHandler): UnauthenticatedRouteHandler {
 }
 
 /**
- * Wraps a route handler with permission checking.
+ * Wraps a route handler with permission checking using PermissionGuard.
  * Must be used after withAuth (expects an authenticated context).
+ * Uses the same PermissionGuard.authorize() as the GraphQL resolvers.
+ * Falls back to authService.hasPermission() when guard is not initialized (testing).
  */
-function withPermission(resource: ResourceType, action: Action) {
+function withPermission(resource: ResourceType, action: Action, scope?: string) {
   return (handler: RouteHandler): RouteHandler => {
     return async (request, context, pathSegments) => {
-      const hasPermission = await context.authService.hasPermission(
-        context.user,
-        resource,
-        action
-      )
-      if (!hasPermission) {
-        return authorizationError(resource, action)
+      if (permissionGuardInstance) {
+        const authContext: AuthContext = {
+          userId: context.user.id,
+          roles: context.user.roles,
+        }
+
+        try {
+          await permissionGuardInstance.authorize(authContext, resource, action, scope)
+        } catch (error) {
+          if (error instanceof AuthorizationErr) {
+            return authorizationError(resource, action)
+          }
+          throw error
+        }
+      } else {
+        // Fallback for test environments where guard may not be initialized
+        const hasPermission = await context.authService.hasPermission(
+          context.user,
+          resource,
+          action,
+          scope
+        )
+        if (!hasPermission) {
+          return authorizationError(resource, action)
+        }
       }
+
       return handler(request, context, pathSegments)
     }
   }
@@ -490,6 +534,14 @@ async function dispatch(
     return handler(request, authService, pathSegments)
   }
 
+  if (pathSegments[0] === 'assets' && pathSegments.length > 1 && method === 'PATCH') {
+    const assetPathSegments = pathSegments.slice(1)
+    const handler = withAuth(withPermission('assets', 'edit')(
+      async (req) => assetHandlers.handleUpdateMetadata(req, assetPathSegments)
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
   // --- Users ---
   if (routePath === 'users' && method === 'GET') {
     const handler = withAuth(withPermission('users', 'view')(
@@ -590,6 +642,14 @@ async function dispatch(
     return handler(request, authService, pathSegments)
   }
 
+  if (pathSegments[0] === 'navigation' && pathSegments.length === 2 && method === 'PUT') {
+    const handle = pathSegments[1]
+    const handler = withAuth(withPermission('navigation', 'edit')(
+      async (req) => navigationHandlers.handleSaveNavigation(req, handle)
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
   // --- Forms ---
   if (routePath === 'forms' && method === 'GET') {
     const handler = withAuth(withPermission('forms', 'view')(
@@ -616,6 +676,88 @@ async function dispatch(
     const handler = withAuth(withPermission('forms', 'view')(
       async (req) => formHandlers.handleSubmitForm(req, handle)
     ))
+    return handler(request, authService, pathSegments)
+  }
+
+  // GET /api/forms/{handle}/submissions — paginated list
+  if (
+    pathSegments[0] === 'forms' &&
+    pathSegments.length === 3 &&
+    pathSegments[2] === 'submissions' &&
+    method === 'GET'
+  ) {
+    const handle = pathSegments[1]
+    const handler = withAuth(withPermission('forms', 'view')(
+      async (req) => formHandlers.handleListSubmissions(req, handle)
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
+  // GET /api/forms/{handle}/submissions/{id} — single submission
+  if (
+    pathSegments[0] === 'forms' &&
+    pathSegments.length === 4 &&
+    pathSegments[2] === 'submissions' &&
+    method === 'GET'
+  ) {
+    const handle = pathSegments[1]
+    const id = pathSegments[3]
+    const handler = withAuth(withPermission('forms', 'view')(
+      async (req) => formHandlers.handleGetSubmission(req, handle, id)
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
+  // DELETE /api/forms/{handle}/submissions/{id} — delete submission
+  if (
+    pathSegments[0] === 'forms' &&
+    pathSegments.length === 4 &&
+    pathSegments[2] === 'submissions' &&
+    method === 'DELETE'
+  ) {
+    const handle = pathSegments[1]
+    const id = pathSegments[3]
+    const handler = withAuth(withPermission('forms', 'delete')(
+      async (req) => formHandlers.handleDeleteSubmission(req, handle, id)
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
+  // GET /api/forms/{handle}/export/csv — CSV export
+  if (
+    pathSegments[0] === 'forms' &&
+    pathSegments.length === 4 &&
+    pathSegments[2] === 'export' &&
+    pathSegments[3] === 'csv' &&
+    method === 'GET'
+  ) {
+    const handle = pathSegments[1]
+    const handler = withAuth(withPermission('forms', 'view')(
+      async (req) => formHandlers.handleExportCsv(req, handle)
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
+  // GET /api/forms/{handle}/export/json — JSON export
+  if (
+    pathSegments[0] === 'forms' &&
+    pathSegments.length === 4 &&
+    pathSegments[2] === 'export' &&
+    pathSegments[3] === 'json' &&
+    method === 'GET'
+  ) {
+    const handle = pathSegments[1]
+    const handler = withAuth(withPermission('forms', 'view')(
+      async (req) => formHandlers.handleExportJson(req, handle)
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
+  // --- Dashboard ---
+  if (routePath === 'dashboard/recent' && method === 'GET') {
+    const handler = withAuth(
+      async () => dashboardHandlers.handleRecentActivity()
+    )
     return handler(request, authService, pathSegments)
   }
 
@@ -741,13 +883,13 @@ async function dispatch(
   // blueprints/{type} (GET = list all of type)
   if (pathSegments[0] === 'blueprints' && pathSegments.length === 2 && method === 'GET') {
     const type = pathSegments[1]
-    const validTypes = ['collections', 'taxonomies', 'globals', 'forms']
+    const validTypes = ['collections', 'taxonomies', 'globals', 'forms', 'navigations']
     if (!validTypes.includes(type)) {
       return jsonError('BAD_REQUEST', `Invalid blueprint type: ${type}`, 400)
     }
     const handler = withAuth(withPermission('collections', 'view')(
       async () => {
-        const blueprints = await blueprintRegistryInstance.listBlueprints(type as 'collections' | 'taxonomies' | 'globals' | 'forms')
+        const blueprints = await blueprintRegistryInstance.listBlueprints(type as BlueprintType)
         return NextResponse.json({ data: blueprints })
       }
     ))
@@ -758,7 +900,7 @@ async function dispatch(
   if (pathSegments[0] === 'blueprints' && pathSegments.length === 3) {
     const type = pathSegments[1]
     const handle = pathSegments[2]
-    const validTypes = ['collections', 'taxonomies', 'globals', 'forms']
+    const validTypes = ['collections', 'taxonomies', 'globals', 'forms', 'navigations']
     if (!validTypes.includes(type)) {
       return jsonError('BAD_REQUEST', `Invalid blueprint type: ${type}`, 400)
     }
@@ -766,7 +908,7 @@ async function dispatch(
     if (method === 'GET') {
       const handler = withAuth(withPermission('collections', 'view')(
         async () => {
-          const blueprint = await blueprintRegistryInstance.getBlueprint(type as 'collections' | 'taxonomies' | 'globals' | 'forms', handle)
+          const blueprint = await blueprintRegistryInstance.getBlueprint(type as BlueprintType, handle)
           if (!blueprint) {
             return NextResponse.json(
               { error: { code: 'NOT_FOUND', message: `Blueprint "${type}/${handle}" not found` } },
@@ -788,7 +930,7 @@ async function dispatch(
             return jsonError('BAD_REQUEST', 'Blueprint must include a "tabs" object', 400)
           }
           blueprint.handle = handle
-          await blueprintRegistryInstance.saveBlueprint(type as 'collections' | 'taxonomies' | 'globals' | 'forms', handle, blueprint)
+          await blueprintRegistryInstance.saveBlueprint(type as BlueprintType, handle, blueprint)
           return NextResponse.json({ data: blueprint })
         }
       ))
@@ -798,7 +940,7 @@ async function dispatch(
     if (method === 'DELETE') {
       const handler = withAuth(withPermission('collections', 'delete')(
         async () => {
-          const deleted = await blueprintRegistryInstance.deleteBlueprint(type as 'collections' | 'taxonomies' | 'globals' | 'forms', handle)
+          const deleted = await blueprintRegistryInstance.deleteBlueprint(type as BlueprintType, handle)
           if (!deleted) {
             return NextResponse.json(
               { error: { code: 'NOT_FOUND', message: `Blueprint "${type}/${handle}" not found` } },
@@ -974,6 +1116,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const { path: pathSegments } = await params
+  return dispatch(request, pathSegments)
+}
+
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const { path: pathSegments } = await params
   return dispatch(request, pathSegments)
 }

@@ -27,6 +27,7 @@ export const GlobalDefinitionSchema = z.object({
 
 export const NavigationDefinitionSchema = z.object({
   title: z.string(),
+  blueprint: z.string().optional(),
   max_depth: z.number().optional(),
   collections: z.array(z.string()).optional(),
 })

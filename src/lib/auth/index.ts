@@ -4,6 +4,10 @@ export type { Session, User, CreateUserInput, UpdateUserInput } from './types'
 // Errors
 export { AuthenticationError, NotFoundError, ConflictError } from './errors'
 
+// Guard
+export { PermissionGuard } from './guard'
+export type { AuthContext, GuardConfig } from './guard'
+
 // Contracts
 export type {
   AuthDriver,

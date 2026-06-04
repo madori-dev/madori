@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,7 +46,6 @@ export default function EditUserPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
 
   useEffect(() => {
     setAvailableRoles(['admin', 'editor'])
@@ -91,7 +91,6 @@ export default function EditUserPage() {
     e.preventDefault()
     setSaving(true)
     setError(null)
-    setSuccess(false)
 
     try {
       const payload: Record<string, unknown> = {
@@ -114,10 +113,11 @@ export default function EditUserPage() {
         throw new Error(json.error?.message || `Failed to update user: ${res.status}`)
       }
 
-      setSuccess(true)
+      toast.success('User updated')
       setForm((prev) => ({ ...prev, password: '' }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update user')
+      toast.error('Failed to update user')
     } finally {
       setSaving(false)
     }
@@ -143,12 +143,6 @@ export default function EditUserPage() {
       </Breadcrumb>
 
       <h1 className="text-2xl font-bold tracking-tight">Edit User</h1>
-
-      {success && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-3">
-          <p className="text-sm text-green-700">User updated successfully.</p>
-        </div>
-      )}
 
       {error && user && <ErrorAlert message={error} />}
 

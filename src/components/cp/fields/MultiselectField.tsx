@@ -29,7 +29,7 @@ export function MultiselectField({ value, onChange, field, error }: FieldCompone
           {field.required && <span className="text-red-500 ml-0.5">*</span>}
         </label>
       )}
-      <div className="flex flex-col gap-1.5 rounded-md border border-border px-3 py-2">
+      <div className={`flex flex-col gap-1.5 rounded-md border px-3 py-2 ${error && error.length > 0 ? 'border-destructive' : 'border-border'}`}>
         {options.map((opt) => (
           <label key={opt} className="flex items-center gap-2 cursor-pointer text-sm text-foreground">
             <input
@@ -45,13 +45,6 @@ export function MultiselectField({ value, onChange, field, error }: FieldCompone
           <p className="text-xs text-muted-foreground">No options configured</p>
         )}
       </div>
-      {error && error.length > 0 && (
-        <div className="text-xs text-red-600">
-          {error.map((msg, i) => (
-            <p key={i}>{msg}</p>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

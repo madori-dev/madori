@@ -56,6 +56,7 @@ export default function NavigationListPage() {
         title="Navigation"
         description="Manage your site navigation menus."
         createHref="/cp/navigation/create"
+        blueprintsHref="/cp/blueprints?type=navigations"
       />
 
       {navigations.length === 0 ? (

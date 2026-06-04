@@ -1,9 +1,34 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { ChevronRight, Folder, Upload, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Archive,
+  Check,
+  ChevronRight,
+  File,
+  FileText,
+  Folder,
+  Music,
+  Search,
+  Upload,
+  Video,
+  X,
+} from 'lucide-react'
 import { useAssetManager } from './assets/use-asset-manager'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { getDisplayMode, getFileTypeIcon } from '@/lib/content/asset-display'
+
+/**
+ * Map file-type icon names (from getFileTypeIcon) to Lucide components.
+ */
+const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
+  'file-text': FileText,
+  archive: Archive,
+  video: Video,
+  music: Music,
+  file: File,
+}
 
 interface AssetPickerModalProps {
   open: boolean
@@ -26,12 +51,74 @@ export function AssetPickerModal({ open, onClose, onSelect }: AssetPickerModalPr
   } = useAssetManager()
 
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
+  const closeButtonRef = useRef<HTMLButtonElement>(null)
+  const previousFocusRef = useRef<HTMLElement | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedAssetPath, setSelectedAssetPath] = useState<string | null>(null)
+
+  // Filter assets by search query (filename match)
+  const filteredAssets = useMemo(() => {
+    if (!searchQuery.trim()) return assets
+    const query = searchQuery.toLowerCase()
+    return assets.filter((a) => a.filename.toLowerCase().includes(query))
+  }, [assets, searchQuery])
+
+  // Filter directories by search query
+  const filteredDirectories = useMemo(() => {
+    if (!searchQuery.trim()) return directories
+    const query = searchQuery.toLowerCase()
+    return directories.filter((d) => d.toLowerCase().includes(query))
+  }, [directories, searchQuery])
 
   useEffect(() => {
     if (open) {
       fetchAssets()
+      setSearchQuery('')
+      setSelectedAssetPath(null)
+      // Store the element that had focus before the modal opened
+      previousFocusRef.current = document.activeElement as HTMLElement
+      // Focus the close button when modal opens
+      requestAnimationFrame(() => {
+        closeButtonRef.current?.focus()
+      })
+    } else {
+      // Restore focus when modal closes
+      previousFocusRef.current?.focus()
     }
   }, [open, fetchAssets])
+
+  // Trap focus within the modal
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        onClose()
+        return
+      }
+
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusableElements = modalRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+        const firstFocusable = focusableElements[0]
+        const lastFocusable = focusableElements[focusableElements.length - 1]
+
+        if (e.shiftKey) {
+          if (document.activeElement === firstFocusable) {
+            e.preventDefault()
+            lastFocusable?.focus()
+          }
+        } else {
+          if (document.activeElement === lastFocusable) {
+            e.preventDefault()
+            firstFocusable?.focus()
+          }
+        }
+      }
+    },
+    [onClose]
+  )
 
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files
@@ -44,39 +131,63 @@ export function AssetPickerModal({ open, onClose, onSelect }: AssetPickerModalPr
     const parts = currentDirectory.split('/').filter(Boolean)
     parts.pop()
     navigateToDirectory(parts.join('/'))
+    setSearchQuery('')
+    setSelectedAssetPath(null)
+  }
+
+  function handleConfirmSelection() {
+    if (selectedAssetPath) {
+      onSelect(`/assets/${selectedAssetPath}`)
+      onClose()
+    }
   }
 
   if (!open) return null
 
-  const imageAssets = assets.filter((a) => a.mimeType?.startsWith('image/'))
   const breadcrumbs = currentDirectory ? currentDirectory.split('/').filter(Boolean) : []
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      role="presentation"
+      onKeyDown={handleKeyDown}
+    >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+        aria-hidden="true"
+      />
 
       {/* Modal */}
-      <div className="relative z-10 flex max-h-[80vh] w-full max-w-3xl flex-col rounded-lg bg-card shadow-xl border border-border">
+      <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="asset-picker-title"
+        className="relative z-10 flex max-h-[80vh] w-full max-w-3xl flex-col rounded-lg bg-card shadow-xl border border-border"
+      >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
-          <h2 className="text-lg font-semibold text-foreground">Select an image</h2>
+          <h2 id="asset-picker-title" className="text-lg font-semibold text-foreground">Select an asset</h2>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-muted-foreground hover:text-foreground cursor-pointer"
+            aria-label="Close asset picker"
+            className="rounded p-1 text-muted-foreground hover:text-foreground cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Toolbar: breadcrumbs + upload */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+        {/* Toolbar: breadcrumbs + search + upload */}
+        <div className="flex items-center justify-between border-b border-border px-5 py-3 gap-3">
           {/* Breadcrumbs */}
-          <nav className="flex items-center gap-1 text-sm text-muted-foreground">
+          <nav className="flex items-center gap-1 text-sm text-muted-foreground shrink-0">
             <button
               type="button"
-              onClick={() => navigateToDirectory('')}
+              onClick={() => { navigateToDirectory(''); setSearchQuery(''); setSelectedAssetPath(null) }}
               className="hover:text-foreground cursor-pointer font-medium"
             >
               Assets
@@ -86,7 +197,7 @@ export function AssetPickerModal({ open, onClose, onSelect }: AssetPickerModalPr
                 <ChevronRight className="h-3 w-3" />
                 <button
                   type="button"
-                  onClick={() => navigateToDirectory(breadcrumbs.slice(0, i + 1).join('/'))}
+                  onClick={() => { navigateToDirectory(breadcrumbs.slice(0, i + 1).join('/')); setSearchQuery(''); setSelectedAssetPath(null) }}
                   className="hover:text-foreground cursor-pointer font-medium"
                 >
                   {crumb}
@@ -95,6 +206,19 @@ export function AssetPickerModal({ open, onClose, onSelect }: AssetPickerModalPr
             ))}
           </nav>
 
+          {/* Search */}
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              type="text"
+              placeholder="Search files…"
+              value={searchQuery}
+              onChange={(e) => { setSearchQuery(e.target.value); setSelectedAssetPath(null) }}
+              className="pl-8 h-8 text-sm"
+              aria-label="Search files by name"
+            />
+          </div>
+
           <Button size="sm" disabled={uploading} onClick={() => fileInputRef.current?.click()}>
             <Upload className="h-4 w-4 mr-1.5" />
             {uploading ? 'Uploading…' : 'Upload'}
@@ -102,7 +226,6 @@ export function AssetPickerModal({ open, onClose, onSelect }: AssetPickerModalPr
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
             multiple
             onChange={handleUpload}
             className="hidden"
@@ -131,17 +254,26 @@ export function AssetPickerModal({ open, onClose, onSelect }: AssetPickerModalPr
             </div>
           )}
 
-          {!loading && !error && imageAssets.length === 0 && directories.length === 0 && (
+          {!loading && !error && filteredAssets.length === 0 && filteredDirectories.length === 0 && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <p className="text-sm text-muted-foreground">No images found.</p>
-              <p className="mt-1 text-xs text-muted-foreground/70">Upload an image to get started.</p>
+              {searchQuery ? (
+                <>
+                  <p className="text-sm text-muted-foreground">No results for &ldquo;{searchQuery}&rdquo;</p>
+                  <p className="mt-1 text-xs text-muted-foreground/70">Try a different search term.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">No assets found.</p>
+                  <p className="mt-1 text-xs text-muted-foreground/70">Upload a file to get started.</p>
+                </>
+              )}
             </div>
           )}
 
-          {!loading && !error && (directories.length > 0 || imageAssets.length > 0) && (
+          {!loading && !error && (filteredDirectories.length > 0 || filteredAssets.length > 0) && (
             <div className="space-y-4">
               {/* Back button when inside a directory */}
-              {currentDirectory && (
+              {currentDirectory && !searchQuery && (
                 <button
                   type="button"
                   onClick={handleNavigateUp}
@@ -153,15 +285,17 @@ export function AssetPickerModal({ open, onClose, onSelect }: AssetPickerModalPr
               )}
 
               {/* Directories */}
-              {directories.length > 0 && (
+              {filteredDirectories.length > 0 && (
                 <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
-                  {directories.map((dir) => (
+                  {filteredDirectories.map((dir) => (
                     <button
                       key={dir}
                       type="button"
                       onClick={() => {
                         const target = currentDirectory ? `${currentDirectory}/${dir}` : dir
                         navigateToDirectory(target)
+                        setSearchQuery('')
+                        setSelectedAssetPath(null)
                       }}
                       className="flex flex-col items-center gap-2 rounded-lg border border-border p-3 transition-colors hover:bg-accent hover:border-accent-foreground/20 cursor-pointer"
                     >
@@ -174,30 +308,85 @@ export function AssetPickerModal({ open, onClose, onSelect }: AssetPickerModalPr
                 </div>
               )}
 
-              {/* Images */}
-              {imageAssets.length > 0 && (
+              {/* Assets (images + non-images) */}
+              {filteredAssets.length > 0 && (
                 <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5">
-                  {imageAssets.map((asset) => (
-                    <button
-                      key={asset.path}
-                      type="button"
-                      onClick={() => onSelect(`/assets/${asset.path}`)}
-                      className="group relative aspect-square overflow-hidden rounded-lg border border-border transition-all hover:border-primary hover:ring-2 hover:ring-primary/20 cursor-pointer"
-                    >
-                      <img
-                        src={`/assets/${asset.path}`}
-                        alt={asset.filename}
-                        className="h-full w-full object-cover"
-                      />
-                      <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/60 to-transparent px-2 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <p className="truncate text-xs text-white">{asset.filename}</p>
-                      </div>
-                    </button>
-                  ))}
+                  {filteredAssets.map((asset) => {
+                    const isImage = getDisplayMode(asset.mimeType) === 'thumbnail'
+                    const isSelected = selectedAssetPath === asset.path
+                    const iconName = getFileTypeIcon(asset.mimeType)
+                    const IconComponent = ICON_MAP[iconName] || File
+
+                    return (
+                      <button
+                        key={asset.path}
+                        type="button"
+                        onClick={() => setSelectedAssetPath(asset.path)}
+                        onDoubleClick={() => {
+                          onSelect(`/assets/${asset.path}`)
+                          onClose()
+                        }}
+                        aria-pressed={isSelected}
+                        className={`group relative aspect-square overflow-hidden rounded-lg border transition-all cursor-pointer ${
+                          isSelected
+                            ? 'border-primary ring-2 ring-primary/30'
+                            : 'border-border hover:border-primary hover:ring-2 hover:ring-primary/20'
+                        }`}
+                      >
+                        {/* Selection indicator */}
+                        {isSelected && (
+                          <div className="absolute top-1.5 right-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                            <Check className="h-3 w-3" />
+                          </div>
+                        )}
+
+                        {isImage ? (
+                          <img
+                            src={`/assets/${asset.path}`}
+                            alt={asset.alt || asset.filename}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-muted/40">
+                            <IconComponent className="h-8 w-8 text-muted-foreground" />
+                            <span className="text-[10px] font-medium uppercase text-muted-foreground/80">
+                              {asset.extension}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Filename overlay */}
+                        <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/60 to-transparent px-2 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <p className="truncate text-xs text-white">{asset.filename}</p>
+                        </div>
+                      </button>
+                    )
+                  })}
                 </div>
               )}
             </div>
           )}
+        </div>
+
+        {/* Footer with selection confirmation */}
+        <div className="flex items-center justify-between border-t border-border px-5 py-3">
+          <p className="text-sm text-muted-foreground">
+            {selectedAssetPath
+              ? <span className="truncate">Selected: <span className="font-medium text-foreground">{assets.find(a => a.path === selectedAssetPath)?.filename}</span></span>
+              : 'Click to select, double-click to confirm'}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!selectedAssetPath}
+              onClick={handleConfirmSelection}
+            >
+              Confirm
+            </Button>
+          </div>
         </div>
       </div>
     </div>

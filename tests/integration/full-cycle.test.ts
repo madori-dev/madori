@@ -29,21 +29,17 @@ function createTestConfig(tempDir: string): MadoriConfig {
     assetsPath: path.join(tempDir, 'public/assets'),
     cp: { enabled: true, path: '/cp' },
     graphql: { enabled: true, path: '/api/graphql', introspection: true },
-    collections: {
-      blog: {
-        title: 'Blog',
-        handle: 'blog',
-        route: '/blog/{slug}',
-        blueprint: 'blog',
-        sortable: false,
-        dated: true,
-        defaultStatus: 'draft',
-      },
+    auth: { driver: 'password', store: 'file', provider: 'yaml' },
+    staticCache: {
+      enabled: false,
+      driver: 'application',
+      storagePath: 'storage/static-cache/',
+      exclude: [],
+      queryStrings: 'ignore',
+      warmOnInvalidate: false,
+      invalidationRules: [],
     },
-    taxonomies: {},
-    globals: {},
-    navigations: [],
-  }
+  } as MadoriConfig
 }
 
 function setupTempDir(tempDir: string): void {
@@ -57,6 +53,13 @@ function setupTempDir(tempDir: string): void {
   fs.mkdirSync(path.join(tempDir, 'resources/fieldsets'), { recursive: true })
   fs.mkdirSync(path.join(tempDir, 'users'), { recursive: true })
   fs.mkdirSync(path.join(tempDir, 'public/assets'), { recursive: true })
+
+  // Create collection definition
+  fs.mkdirSync(path.join(tempDir, 'resources/collections'), { recursive: true })
+  fs.writeFileSync(
+    path.join(tempDir, 'resources/collections/blog.yaml'),
+    'title: Blog\nblueprint: blog\nroute: /blog/{slug}\ndated: true\ndefaultStatus: draft\n'
+  )
 
   // Create a minimal blog blueprint (no required fields beyond title/slug)
   const blueprintYaml = `tabs:
@@ -129,7 +132,7 @@ describe('Full Cycle Integration: Content Engine write → read', () => {
     const updated = await engine.updateEntry('blog', 'integration-test', {
       title: 'Updated Title',
       content: '# Updated\n\nNew content here.',
-    })
+    }, read!.contentHash)
 
     expect(updated.title).toBe('Updated Title')
     expect(updated.content).toBe('# Updated\n\nNew content here.')
@@ -259,7 +262,7 @@ Existing content
     // Update the entry
     await engine.updateEntry('blog', 'cache-test', {
       title: 'Updated Title',
-    })
+    }, first!.contentHash)
 
     // Read again — should reflect update (cache was invalidated)
     const second = await engine.getEntry('blog', 'cache-test')
@@ -381,7 +384,14 @@ describe('Full Cycle Integration: GraphQL resolver equivalence', () => {
     engine = new MadoriContentEngine(config, fsAdapter, parser, cache, blueprintRegistry)
 
     // Build resolvers with the blog collection config
-    resolvers = buildResolvers([config.collections.blog])
+    resolvers = buildResolvers([{
+      title: 'Blog',
+      handle: 'blog',
+      blueprint: 'blog',
+      route: '/blog/{slug}',
+      dated: true,
+      defaultStatus: 'draft',
+    }])
   })
 
   afterEach(() => {

@@ -1,10 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
+import { GraphQLError } from 'graphql'
 import { buildResolvers } from '@/lib/graphql/resolvers'
 import type { GraphQLContext } from '@/lib/graphql/resolvers'
 import type { CollectionConfig } from '@/lib/config/schema'
 import type { ContentEngine } from '@/lib/content/engine'
 import type { BlueprintRegistry } from '@/lib/blueprints/registry'
 import type { Entry } from '@/lib/types'
+import { NotFoundError } from '@/lib/errors'
 
 function makeEntry(overrides: Partial<Entry> = {}): Entry {
   return {
@@ -292,6 +294,133 @@ describe('buildResolvers', () => {
       const result = await (resolvers['asset'] as Function)(null, { path: '/images/hero.jpg' }, context)
 
       expect(result).toEqual(asset)
+    })
+  })
+
+  describe('error handling', () => {
+    it('wraps NotFoundError as GraphQLError with NOT_FOUND code', async () => {
+      const context = makeContext({
+        getEntry: vi.fn().mockRejectedValue(new NotFoundError('Collection', 'nonexistent')),
+      })
+      const resolvers = buildResolvers([makeCollection('blog')])
+
+      await expect(
+        (resolvers['blog'] as Function)(null, { slug: 'test' }, context)
+      ).rejects.toMatchObject({
+        extensions: { code: 'NOT_FOUND' },
+      })
+    })
+
+    it('wraps FS errors as GraphQLError with INTERNAL_ERROR code', async () => {
+      const fsError = new Error('ENOENT: no such file or directory')
+      const context = makeContext({
+        listEntries: vi.fn().mockRejectedValue(fsError),
+      })
+      const resolvers = buildResolvers([makeCollection('blog')])
+
+      await expect(
+        (resolvers['blogs'] as Function)(null, {}, context)
+      ).rejects.toMatchObject({
+        extensions: { code: 'INTERNAL_ERROR' },
+      })
+    })
+
+    it('does not expose stack traces in INTERNAL_ERROR responses', async () => {
+      const fsError = new Error('Disk failure')
+      fsError.stack = 'Error: Disk failure\n    at readFile (/internal/path.ts:42:5)'
+      const context = makeContext({
+        listEntries: vi.fn().mockRejectedValue(fsError),
+      })
+      const resolvers = buildResolvers([makeCollection('blog')])
+
+      try {
+        await (resolvers['blogs'] as Function)(null, {}, context)
+        expect.fail('Should have thrown')
+      } catch (error) {
+        expect(error).toBeInstanceOf(GraphQLError)
+        const gqlError = error as GraphQLError
+        expect(gqlError.extensions.code).toBe('INTERNAL_ERROR')
+        // The error message is included but no stack property in extensions
+        expect(gqlError.extensions).not.toHaveProperty('stack')
+        expect(gqlError.extensions).not.toHaveProperty('stacktrace')
+      }
+    })
+
+    it('returns [] for empty list queries (empty collection)', async () => {
+      const context = makeContext({ listEntries: vi.fn().mockResolvedValue([]) })
+      const resolvers = buildResolvers([makeCollection('blog')])
+
+      const result = await (resolvers['blogs'] as Function)(null, {}, context)
+
+      expect(result).toEqual([])
+    })
+
+    it('returns null for singular queries when entry does not exist', async () => {
+      const context = makeContext({ getEntry: vi.fn().mockResolvedValue(null) })
+      const resolvers = buildResolvers([makeCollection('blog')])
+
+      const result = await (resolvers['blog'] as Function)(null, { slug: 'missing' }, context)
+
+      expect(result).toBeNull()
+    })
+
+    it('returns [] for empty taxonomy terms', async () => {
+      const context = makeContext({ listTerms: vi.fn().mockResolvedValue([]) })
+      const resolvers = buildResolvers([])
+
+      const result = await (resolvers['terms'] as Function)(null, { taxonomy: 'tags' }, context)
+
+      expect(result).toEqual([])
+    })
+
+    it('returns [] when taxonomy list returns null', async () => {
+      const context = makeContext({ listTerms: vi.fn().mockResolvedValue(null) })
+      const resolvers = buildResolvers([])
+
+      const result = await (resolvers['terms'] as Function)(null, { taxonomy: 'tags' }, context)
+
+      expect(result).toEqual([])
+    })
+
+    it('returns null when taxonomy resolver returns null', async () => {
+      const context = makeContext({ getTaxonomy: vi.fn().mockResolvedValue(null) })
+      const resolvers = buildResolvers([])
+
+      const result = await (resolvers['taxonomy'] as Function)(null, { handle: 'nonexistent' }, context)
+
+      expect(result).toBeNull()
+    })
+
+    it('logs full error server-side for INTERNAL_ERROR', async () => {
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const fsError = new Error('Permission denied')
+      const context = makeContext({
+        listEntries: vi.fn().mockRejectedValue(fsError),
+      })
+      const resolvers = buildResolvers([makeCollection('blog')])
+
+      try {
+        await (resolvers['blogs'] as Function)(null, {}, context)
+      } catch {
+        // expected
+      }
+
+      expect(consoleSpy).toHaveBeenCalledWith('[madori:graphql] Resolver error:', fsError)
+      consoleSpy.mockRestore()
+    })
+
+    it('re-throws GraphQLError instances without wrapping', async () => {
+      const gqlError = new GraphQLError('Custom error', { extensions: { code: 'CUSTOM' } })
+      const context = makeContext({
+        getEntry: vi.fn().mockRejectedValue(gqlError),
+      })
+      const resolvers = buildResolvers([makeCollection('blog')])
+
+      await expect(
+        (resolvers['blog'] as Function)(null, { slug: 'test' }, context)
+      ).rejects.toMatchObject({
+        extensions: { code: 'CUSTOM' },
+      })
     })
   })
 })

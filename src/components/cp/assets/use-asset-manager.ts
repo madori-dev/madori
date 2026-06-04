@@ -1,11 +1,28 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
+import { toast } from 'sonner'
 import type { Asset } from '@/lib/types'
+import {
+  validateUploadFile,
+  DEFAULT_UPLOAD_CONSTRAINTS,
+  type UploadConstraints,
+} from '@/lib/content/upload-constraints'
 
 export interface DirectoryListing {
   assets: Asset[]
   directories: string[]
+}
+
+export type UploadFileStatus = 'pending' | 'uploading' | 'success' | 'error'
+
+export interface UploadFileProgress {
+  id: string
+  filename: string
+  progress: number // 0-100
+  status: UploadFileStatus
+  error?: string
+  asset?: Asset
 }
 
 export interface AssetManagerState {
@@ -16,6 +33,7 @@ export interface AssetManagerState {
   loading: boolean
   uploading: boolean
   error: string | null
+  uploadQueue: UploadFileProgress[]
 }
 
 export function useAssetManager() {
@@ -26,6 +44,8 @@ export function useAssetManager() {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [uploadQueue, setUploadQueue] = useState<UploadFileProgress[]>([])
+  const uploadIdCounter = useRef(0)
 
   const fetchAssets = useCallback(async (directory?: string) => {
     try {
@@ -50,34 +70,128 @@ export function useAssetManager() {
     await fetchAssets(dir || undefined)
   }, [fetchAssets])
 
-  const uploadFiles = useCallback(async (files: File[]) => {
+  const uploadFiles = useCallback(async (files: File[], constraints: UploadConstraints = DEFAULT_UPLOAD_CONSTRAINTS) => {
     if (!files.length) return
     setUploading(true)
     setError(null)
 
-    try {
-      const formData = new FormData()
-      for (const file of files) {
-        formData.append('files', file)
-      }
-      if (currentDirectory) {
-        formData.append('directory', currentDirectory)
-      }
+    // Client-side validation: check file size/type constraints before uploading
+    const validFiles: File[] = []
+    const rejectedEntries: UploadFileProgress[] = []
 
-      const res = await fetch('/api/assets/upload-multiple', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
-      const json = await res.json()
-      setAssets((prev) => [...prev, ...(json.data ?? [])])
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed')
-    } finally {
-      setUploading(false)
+    for (const file of files) {
+      const validationError = validateUploadFile(
+        { name: file.name, size: file.size, type: file.type },
+        constraints
+      )
+      if (validationError) {
+        const entry: UploadFileProgress = {
+          id: `upload-${++uploadIdCounter.current}`,
+          filename: file.name,
+          progress: 0,
+          status: 'error',
+          error: validationError.message,
+        }
+        rejectedEntries.push(entry)
+        toast.error(validationError.message)
+      } else {
+        validFiles.push(file)
+      }
     }
+
+    // Create upload queue entries for valid files only
+    const queueEntries: UploadFileProgress[] = validFiles.map((file) => ({
+      id: `upload-${++uploadIdCounter.current}`,
+      filename: file.name,
+      progress: 0,
+      status: 'pending' as const,
+    }))
+
+    setUploadQueue((prev) => [...prev, ...rejectedEntries, ...queueEntries])
+
+    // If all files were rejected, we're done
+    if (!validFiles.length) {
+      setUploading(false)
+      return
+    }
+
+    const uploadedAssets: Asset[] = []
+    let failCount = 0
+
+    // Upload files individually for per-file progress
+    for (let i = 0; i < validFiles.length; i++) {
+      const file = validFiles[i]
+      const entry = queueEntries[i]
+
+      // Mark as uploading
+      setUploadQueue((prev) =>
+        prev.map((item) =>
+          item.id === entry.id ? { ...item, status: 'uploading' as const, progress: 0 } : item
+        )
+      )
+
+      try {
+        const asset = await uploadSingleFile(file, currentDirectory, (progress) => {
+          setUploadQueue((prev) =>
+            prev.map((item) =>
+              item.id === entry.id ? { ...item, progress } : item
+            )
+          )
+        })
+
+        uploadedAssets.push(asset)
+        setUploadQueue((prev) =>
+          prev.map((item) =>
+            item.id === entry.id
+              ? { ...item, status: 'success' as const, progress: 100, asset }
+              : item
+          )
+        )
+      } catch (err) {
+        failCount++
+        const errorMsg = err instanceof Error ? err.message : 'Upload failed'
+        setUploadQueue((prev) =>
+          prev.map((item) =>
+            item.id === entry.id
+              ? { ...item, status: 'error' as const, error: errorMsg }
+              : item
+          )
+        )
+      }
+    }
+
+    // Update assets list with successfully uploaded files
+    if (uploadedAssets.length > 0) {
+      setAssets((prev) => [...prev, ...uploadedAssets])
+    }
+
+    // Summary feedback
+    const successCount = validFiles.length - failCount
+    const totalFailed = failCount + rejectedEntries.length
+    if (totalFailed === 0) {
+      toast.success(
+        successCount === 1 ? 'File uploaded' : `${successCount} files uploaded`
+      )
+    } else if (successCount === 0 && rejectedEntries.length === 0) {
+      toast.error(
+        failCount === 1 ? 'Upload failed' : `All ${failCount} uploads failed`
+      )
+    } else if (successCount > 0) {
+      toast.warning(
+        `${successCount} uploaded, ${totalFailed} failed`
+      )
+    }
+
+    setUploading(false)
   }, [currentDirectory])
+
+  const clearUploadQueue = useCallback(() => {
+    setUploadQueue([])
+  }, [])
+
+  const dismissUploadItem = useCallback((id: string) => {
+    setUploadQueue((prev) => prev.filter((item) => item.id !== id))
+  }, [])
 
   const deleteAsset = useCallback(async (assetPath: string) => {
     try {
@@ -89,8 +203,10 @@ export function useAssetManager() {
         next.delete(assetPath)
         return next
       })
+      toast.success('Asset deleted')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed')
+      toast.error(err instanceof Error ? err.message : 'Delete failed')
     }
   }, [])
 
@@ -104,8 +220,10 @@ export function useAssetManager() {
       if (!res.ok) throw new Error(`Bulk delete failed: ${res.status}`)
       setAssets((prev) => prev.filter((a) => !paths.includes(a.path)))
       setSelectedPaths(new Set())
+      toast.success(`${paths.length} assets deleted`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bulk delete failed')
+      toast.error(err instanceof Error ? err.message : 'Bulk delete failed')
     }
   }, [])
 
@@ -135,8 +253,10 @@ export function useAssetManager() {
       if (!res.ok) throw new Error(`Bulk move failed: ${res.status}`)
       await fetchAssets(currentDirectory || undefined)
       setSelectedPaths(new Set())
+      toast.success(`${paths.length} assets moved`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Bulk move failed')
+      toast.error(err instanceof Error ? err.message : 'Bulk move failed')
     }
   }, [currentDirectory, fetchAssets])
 
@@ -149,11 +269,14 @@ export function useAssetManager() {
         body: JSON.stringify({ path: dirPath }),
       })
       if (!res.ok) throw new Error(`Create directory failed: ${res.status}`)
-      setDirectories((prev) => [...prev, name].sort())
+      toast.success('Folder created')
+      // Navigate into the newly created folder immediately
+      await navigateToDirectory(dirPath)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Create directory failed')
+      toast.error(err instanceof Error ? err.message : 'Create directory failed')
     }
-  }, [currentDirectory])
+  }, [currentDirectory, navigateToDirectory])
 
   const deleteDirectory = useCallback(async (name: string) => {
     try {
@@ -239,6 +362,7 @@ export function useAssetManager() {
     loading,
     uploading,
     error,
+    uploadQueue,
     // Actions
     fetchAssets,
     navigateToDirectory,
@@ -250,6 +374,8 @@ export function useAssetManager() {
     createDirectory,
     deleteDirectory,
     renameDirectory,
+    clearUploadQueue,
+    dismissUploadItem,
     // Selection
     toggleSelection,
     selectAll,
@@ -257,4 +383,58 @@ export function useAssetManager() {
     selectRange,
     setError,
   }
+}
+
+/**
+ * Upload a single file with progress tracking via XMLHttpRequest.
+ */
+function uploadSingleFile(
+  file: File,
+  directory: string,
+  onProgress: (percent: number) => void
+): Promise<Asset> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    const formData = new FormData()
+    formData.append('file', file)
+    if (directory) {
+      formData.append('directory', directory)
+    }
+
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const percent = Math.round((e.loaded / e.total) * 100)
+        onProgress(percent)
+      }
+    })
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const json = JSON.parse(xhr.responseText)
+          resolve(json.data as Asset)
+        } catch {
+          reject(new Error('Invalid response from server'))
+        }
+      } else {
+        try {
+          const json = JSON.parse(xhr.responseText)
+          reject(new Error(json.error?.message ?? `Upload failed: ${xhr.status}`))
+        } catch {
+          reject(new Error(`Upload failed: ${xhr.status}`))
+        }
+      }
+    })
+
+    xhr.addEventListener('error', () => {
+      reject(new Error('Network error during upload'))
+    })
+
+    xhr.addEventListener('abort', () => {
+      reject(new Error('Upload aborted'))
+    })
+
+    xhr.open('POST', '/api/assets/upload')
+    xhr.send(formData)
+  })
 }

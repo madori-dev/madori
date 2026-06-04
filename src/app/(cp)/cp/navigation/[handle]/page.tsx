@@ -3,11 +3,10 @@
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
-import { ChevronRight } from 'lucide-react'
+import { toast } from 'sonner'
+import { Settings2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
   Breadcrumb,
@@ -19,36 +18,63 @@ import {
 } from '@/components/ui/breadcrumb'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
+import { NavigationTreeEditor } from '@/components/cp/NavigationTreeEditor'
 
-interface NavigationItem {
-  title: string
-  url?: string
-  entry?: string
-  children?: NavigationItem[]
-}
+import type { NavigationItem } from '@/lib/types'
+import type { Blueprint } from '@/lib/blueprints/types'
 
-interface NavigationData {
-  items: NavigationItem[]
+interface NavigationDefinition {
+  title?: string
+  blueprint?: string
+  max_depth?: number
+  collections?: string[]
 }
 
 export default function EditNavigationPage() {
   const params = useParams()
   const handle = params.handle as string
 
-  const [jsonContent, setJsonContent] = useState('')
+  const [items, setItems] = useState<NavigationItem[]>([])
+  const [definition, setDefinition] = useState<NavigationDefinition | null>(null)
+  const [blueprint, setBlueprint] = useState<Blueprint | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
 
   useEffect(() => {
     async function fetchNavigation() {
       try {
+        // Fetch navigation data
         const res = await fetch(`/api/content/navigations/${handle}`)
         if (!res.ok) throw new Error(`Failed to fetch navigation: ${res.status}`)
         const json = await res.json()
-        const data: NavigationData = json.data ?? { items: [] }
-        setJsonContent(JSON.stringify(data, null, 2))
+        const data = json.data ?? { items: [] }
+        setItems(data.items ?? [])
+
+        // Try to fetch definition for max_depth and blueprint
+        try {
+          const defRes = await fetch(`/api/definitions/navigations/${handle}`)
+          if (defRes.ok) {
+            const defJson = await defRes.json()
+            const def = defJson.data ?? null
+            setDefinition(def)
+
+            // If definition has a blueprint, load it
+            if (def?.blueprint) {
+              try {
+                const bpRes = await fetch(`/api/blueprints/navigations/${def.blueprint}`)
+                if (bpRes.ok) {
+                  const bpJson = await bpRes.json()
+                  setBlueprint(bpJson.data ?? null)
+                }
+              } catch {
+                // Blueprint not found — continue without it
+              }
+            }
+          }
+        } catch {
+          // No definition available — no max_depth constraint
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load navigation')
       } finally {
@@ -58,52 +84,37 @@ export default function EditNavigationPage() {
     fetchNavigation()
   }, [handle])
 
-  async function handleSave(e?: React.FormEvent) {
-    e?.preventDefault()
+  async function handleSave() {
     setSaving(true)
-    setSuccess(false)
     setError(null)
 
     try {
-      let payload: NavigationData
-      try {
-        payload = JSON.parse(jsonContent)
-      } catch {
-        throw new Error('Invalid JSON. Please check the format.')
-      }
-
-      if (!payload.items || !Array.isArray(payload.items)) {
-        throw new Error('Navigation data must have an "items" array.')
-      }
-
       const res = await fetch(`/api/content/navigations/${handle}/_`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ items }),
       })
 
       if (!res.ok) {
         const json = await res.json().catch(() => null)
-        throw new Error(json?.error || `Failed to save: ${res.status}`)
+        if (json?.error?.code === 'DEPTH_EXCEEDED') {
+          throw new Error(
+            `Navigation tree depth (${json.error.actualDepth}) exceeds the maximum allowed depth (${json.error.maxDepth}).`
+          )
+        }
+        throw new Error(json?.error?.message || `Failed to save: ${res.status}`)
       }
-      setSuccess(true)
+      toast.success('Navigation saved')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save navigation')
+      const message = err instanceof Error ? err.message : 'Failed to save navigation'
+      setError(message)
+      toast.error(message)
     } finally {
       setSaving(false)
     }
   }
 
   if (loading) return <ListSkeleton rows={4} />
-  if (error && !jsonContent) return <ErrorAlert message={error} />
-
-  let parsedItems: NavigationItem[] = []
-  try {
-    const parsed = JSON.parse(jsonContent)
-    parsedItems = parsed?.items ?? []
-  } catch {
-    // invalid JSON — will show error on save
-  }
 
   return (
     <div className="space-y-6">
@@ -122,94 +133,40 @@ export default function EditNavigationPage() {
       </Breadcrumb>
 
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight capitalize">{handle}</h1>
-        <Button onClick={() => handleSave()} disabled={saving}>
-          {saving ? 'Saving…' : 'Save'}
-        </Button>
-      </div>
-
-      {success && (
-        <div className="rounded-lg border border-green-200 bg-green-50 p-3">
-          <p className="text-sm text-green-700">Navigation saved successfully.</p>
+        <div className="flex items-center gap-3">
+          <h1 className="text-2xl font-bold tracking-tight capitalize">{handle}</h1>
+          {definition?.blueprint && (
+            <Badge variant="secondary" className="text-xs">
+              Blueprint: {definition.blueprint}
+            </Badge>
+          )}
         </div>
-      )}
-
-      {error && jsonContent && <ErrorAlert message={error} />}
-
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* JSON Editor */}
-        <Card>
-          <CardContent>
-            <div className="space-y-2">
-              <Label htmlFor="nav-json">Navigation Data (JSON)</Label>
-              <textarea
-                id="nav-json"
-                value={jsonContent}
-                onChange={(e) => setJsonContent(e.target.value)}
-                rows={20}
-                spellCheck={false}
-                className="w-full rounded-lg border border-input bg-transparent px-2.5 py-2 font-mono text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              />
-              <p className="text-xs text-muted-foreground">
-                Edit the navigation structure as JSON with an &quot;items&quot; array.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Tree Preview */}
-        <Card>
-          <CardContent>
-            <Label className="mb-2">Preview</Label>
-            {parsedItems.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-6 text-center">
-                <p className="text-sm text-muted-foreground">No navigation items.</p>
-              </div>
-            ) : (
-              <div className="rounded-lg border overflow-hidden">
-                <ul className="divide-y py-1">
-                  {parsedItems.map((item, idx) => (
-                    <NavPreviewItem key={idx} item={item} depth={0} />
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <div className="flex items-center gap-2">
+          {definition?.blueprint && (
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={<Link href={`/cp/blueprints/navigations/${definition.blueprint}`} />}
+            >
+              <Settings2 className="size-3.5" />
+              Edit Blueprint
+            </Button>
+          )}
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </Button>
+        </div>
       </div>
+
+      {error && <ErrorAlert message={error} />}
+
+      <NavigationTreeEditor
+        items={items}
+        onChange={setItems}
+        maxDepth={definition?.max_depth}
+        blueprint={blueprint}
+      />
     </div>
-  )
-}
-
-function NavPreviewItem({ item, depth }: { item: NavigationItem; depth: number }) {
-  return (
-    <li>
-      <div
-        className="flex items-center gap-2 rounded px-3 py-2 hover:bg-muted/50 transition-colors"
-        style={{ paddingLeft: `${depth * 20 + 12}px` }}
-      >
-        {item.children && item.children.length > 0 ? (
-          <ChevronRight className="size-3 text-muted-foreground shrink-0" />
-        ) : (
-          <span className="w-3 shrink-0" />
-        )}
-        <span className="text-sm font-medium">{item.title}</span>
-        {item.url && (
-          <span className="text-xs text-muted-foreground ml-2">{item.url}</span>
-        )}
-        {item.entry && (
-          <Badge variant="secondary" className="text-[10px] ml-1">
-            {item.entry}
-          </Badge>
-        )}
-      </div>
-      {item.children && item.children.length > 0 && (
-        <ul>
-          {item.children.map((child, idx) => (
-            <NavPreviewItem key={idx} item={child} depth={depth + 1} />
-          ))}
-        </ul>
-      )}
-    </li>
   )
 }

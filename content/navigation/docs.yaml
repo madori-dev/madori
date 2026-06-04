@@ -1,6 +1,8 @@
 items:
   - label: Getting Started
-    url: /getting-started
+    url: /docs/getting-started
+  - label: Editor Guide
+    url: /docs/editor-guide
   - label: Configuration
     url: /docs/configuration
   - label: Collections

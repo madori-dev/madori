@@ -9,10 +9,12 @@ import {
   GraphQLInt,
   GraphQLList,
   GraphQLNonNull,
+  GraphQLUnionType,
   printSchema,
 } from 'graphql'
 import { SchemaGeneratorImpl } from '@/lib/graphql/schema-generator'
-import type { Blueprint } from '@/lib/blueprints/types'
+import type { FieldsetProvider } from '@/lib/graphql/schema-generator'
+import type { Blueprint, FieldDefinition } from '@/lib/blueprints/types'
 import type { CollectionConfig } from '@/lib/config/schema'
 
 function makeBlueprint(handle: string, fields: Array<{ handle: string; type: string; options?: Record<string, unknown> }>): Blueprint {
@@ -380,6 +382,190 @@ describe('SchemaGeneratorImpl', () => {
 
       expect(fields.title_field).toBeDefined()
       expect(fields.meta_desc).toBeDefined()
+    })
+  })
+
+  describe('replicator/grid structured type generation', () => {
+    const fieldsets: Record<string, FieldDefinition[]> = {
+      hero: [
+        { handle: 'heading', field: { type: 'text' } },
+        { handle: 'subtitle', field: { type: 'text' } },
+        { handle: 'image', field: { type: 'asset' } },
+      ],
+      cta: [
+        { handle: 'button_text', field: { type: 'text' } },
+        { handle: 'button_url', field: { type: 'text' } },
+        { handle: 'featured', field: { type: 'toggle' } },
+      ],
+      features: [
+        { handle: 'title', field: { type: 'text' } },
+        { handle: 'count', field: { type: 'number', options: { integer: true } } },
+      ],
+    }
+
+    const provider: FieldsetProvider = {
+      getFieldset(handle: string) {
+        return fieldsets[handle]
+      },
+    }
+
+    const generatorWithProvider = new SchemaGeneratorImpl(provider)
+
+    it('generates a dedicated GraphQLObjectType for a single replicator set', () => {
+      const blueprint = makeBlueprint('page', [
+        { handle: 'blocks', type: 'replicator', options: { sets: ['hero'] } },
+      ])
+      const collection = makeCollection('page', 'page')
+
+      const type = generatorWithProvider.generateCollectionType(collection, blueprint)
+      const blocksField = type.getFields().blocks
+
+      // Should be a GraphQLList wrapping the set type
+      expect(blocksField.type).toBeInstanceOf(GraphQLList)
+      const listType = blocksField.type as GraphQLList<GraphQLObjectType>
+      const setType = listType.ofType as GraphQLObjectType
+
+      expect(setType).toBeInstanceOf(GraphQLObjectType)
+      expect(setType.name).toBe('PageBlocksHeroSet')
+
+      // Verify the set type has the fieldset fields + _type discriminator
+      const setFields = setType.getFields()
+      expect(setFields._type).toBeDefined()
+      expect(setFields.heading).toBeDefined()
+      expect(setFields.subtitle).toBeDefined()
+      expect(setFields.image).toBeDefined()
+    })
+
+    it('generates a GraphQLUnionType for multiple replicator sets', () => {
+      const blueprint = makeBlueprint('page', [
+        { handle: 'blocks', type: 'replicator', options: { sets: ['hero', 'cta'] } },
+      ])
+      const collection = makeCollection('page', 'page')
+
+      const type = generatorWithProvider.generateCollectionType(collection, blueprint)
+      const blocksField = type.getFields().blocks
+
+      // Should be a GraphQLList wrapping a union type
+      expect(blocksField.type).toBeInstanceOf(GraphQLList)
+      const listType = blocksField.type as GraphQLList<GraphQLUnionType>
+      const unionType = listType.ofType as GraphQLUnionType
+
+      expect(unionType).toBeInstanceOf(GraphQLUnionType)
+      expect(unionType.name).toBe('PageBlocksUnion')
+
+      const unionMembers = unionType.getTypes()
+      expect(unionMembers).toHaveLength(2)
+      expect(unionMembers[0].name).toBe('PageBlocksHeroSet')
+      expect(unionMembers[1].name).toBe('PageBlocksCtaSet')
+    })
+
+    it('maps nested field types correctly within set types', () => {
+      const blueprint = makeBlueprint('page', [
+        { handle: 'items', type: 'replicator', options: { sets: ['features'] } },
+      ])
+      const collection = makeCollection('page', 'page')
+
+      const type = generatorWithProvider.generateCollectionType(collection, blueprint)
+      const itemsField = type.getFields().items
+
+      const listType = itemsField.type as GraphQLList<GraphQLObjectType>
+      const setType = listType.ofType as GraphQLObjectType
+      const setFields = setType.getFields()
+
+      expect(setFields.title.type).toBe(GraphQLString)
+      expect(setFields.count.type).toBe(GraphQLInt)
+    })
+
+    it('falls back to GraphQLString when no fieldset provider is given', () => {
+      const generatorNoProvider = new SchemaGeneratorImpl()
+      const blueprint = makeBlueprint('page', [
+        { handle: 'blocks', type: 'replicator', options: { sets: ['hero'] } },
+      ])
+      const collection = makeCollection('page', 'page')
+
+      const type = generatorNoProvider.generateCollectionType(collection, blueprint)
+      expect(type.getFields().blocks.type).toBe(GraphQLString)
+    })
+
+    it('falls back to GraphQLString when replicator has no sets in options', () => {
+      const blueprint = makeBlueprint('page', [
+        { handle: 'blocks', type: 'replicator' },
+      ])
+      const collection = makeCollection('page', 'page')
+
+      const type = generatorWithProvider.generateCollectionType(collection, blueprint)
+      expect(type.getFields().blocks.type).toBe(GraphQLString)
+    })
+
+    it('falls back to GraphQLString when sets array is empty', () => {
+      const blueprint = makeBlueprint('page', [
+        { handle: 'blocks', type: 'replicator', options: { sets: [] } },
+      ])
+      const collection = makeCollection('page', 'page')
+
+      const type = generatorWithProvider.generateCollectionType(collection, blueprint)
+      expect(type.getFields().blocks.type).toBe(GraphQLString)
+    })
+
+    it('falls back to GraphQLString when set handles are not resolvable', () => {
+      const blueprint = makeBlueprint('page', [
+        { handle: 'blocks', type: 'replicator', options: { sets: ['nonexistent'] } },
+      ])
+      const collection = makeCollection('page', 'page')
+
+      const type = generatorWithProvider.generateCollectionType(collection, blueprint)
+      expect(type.getFields().blocks.type).toBe(GraphQLString)
+    })
+
+    it('generates structured types for grid fields the same as replicator', () => {
+      const blueprint = makeBlueprint('page', [
+        { handle: 'rows', type: 'grid', options: { sets: ['hero'] } },
+      ])
+      const collection = makeCollection('page', 'page')
+
+      const type = generatorWithProvider.generateCollectionType(collection, blueprint)
+      const rowsField = type.getFields().rows
+
+      expect(rowsField.type).toBeInstanceOf(GraphQLList)
+      const listType = rowsField.type as GraphQLList<GraphQLObjectType>
+      const setType = listType.ofType as GraphQLObjectType
+
+      expect(setType).toBeInstanceOf(GraphQLObjectType)
+      expect(setType.name).toBe('PageRowsHeroSet')
+    })
+
+    it('includes _type discriminator field in each set type', () => {
+      const blueprint = makeBlueprint('page', [
+        { handle: 'blocks', type: 'replicator', options: { sets: ['hero', 'cta'] } },
+      ])
+      const collection = makeCollection('page', 'page')
+
+      const type = generatorWithProvider.generateCollectionType(collection, blueprint)
+      const blocksField = type.getFields().blocks as any
+      const unionType = (blocksField.type as GraphQLList<any>).ofType as GraphQLUnionType
+      const members = unionType.getTypes()
+
+      for (const member of members) {
+        const fields = member.getFields()
+        expect(fields._type).toBeDefined()
+        expect(fields._type.type).toBe(GraphQLString)
+      }
+    })
+
+    it('generates schema correctly with replicator fields and provider', () => {
+      const blueprint = makeBlueprint('page', [
+        { handle: 'blocks', type: 'replicator', options: { sets: ['hero', 'cta'] } },
+        { handle: 'meta_title', type: 'text' },
+      ])
+      const collection = makeCollection('page', 'page')
+
+      const schema = generatorWithProvider.generateSchema([blueprint], [collection])
+      expect(schema).toBeInstanceOf(GraphQLSchema)
+
+      // Verify the schema has proper types
+      const queryType = schema.getQueryType()!
+      const pageField = queryType.getFields().page
+      expect(pageField).toBeDefined()
     })
   })
 })

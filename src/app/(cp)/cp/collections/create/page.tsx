@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -111,8 +112,10 @@ export default function CreateCollectionPage() {
       }
 
       router.push('/cp/collections')
+      toast.success('Collection created')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred')
+      toast.error('Failed to create collection')
     } finally {
       setSubmitting(false)
     }
