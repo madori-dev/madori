@@ -253,7 +253,8 @@ describe('GraphQL Schema Generator Property Tests', () => {
               // The type should be a GraphQLList wrapping a GraphQLObjectType or GraphQLUnionType
               const fieldType = graphqlField.type
               expect(fieldType).toBeInstanceOf(GraphQLList)
-              const innerType = (fieldType as GraphQLList<unknown>).ofType
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const innerType = (fieldType as any).ofType
               const isObjectOrUnion =
                 innerType instanceof GraphQLObjectType ||
                 innerType instanceof GraphQLUnionType

@@ -320,7 +320,7 @@ export class BlueprintValidator {
   /** Map a Zod issue to a BlueprintValidationError. */
   private mapZodIssue(issue: z.core.$ZodIssue, path: string): BlueprintValidationError {
     // Determine error code based on the Zod issue
-    if (issue.code === 'invalid_value' || issue.code === 'invalid_enum_value') {
+    if (issue.code === 'invalid_value' || (issue as { code: string }).code === 'invalid_enum_value') {
       // Check if it's a field type issue by path
       if (path.includes('.field.type')) {
         return {
