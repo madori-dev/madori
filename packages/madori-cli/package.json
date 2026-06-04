@@ -1,5 +1,5 @@
 {
-  "name": "madori",
+  "name": "@madori/cli",
   "version": "0.1.0",
   "description": "MADORI CMS command-line tools",
   "type": "module",

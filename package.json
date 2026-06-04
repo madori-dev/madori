@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest --run",
+    "madori": "tsx packages/madori-cli/src/index.ts",
     "cache:clear": "tsx src/lib/static-cache/cli/clear.ts",
     "cache:warm": "tsx src/lib/static-cache/cli/warm.ts"
   },
