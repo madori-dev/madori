@@ -154,7 +154,7 @@ export function MultiSelect({
         )}
 
         <Popover.Portal>
-          <Popover.Positioner side="bottom" sideOffset={4} align="start" trackAnchor={false} className="z-50">
+          <Popover.Positioner side="bottom" sideOffset={4} align="start" className="z-50">
             <Popover.Popup className="w-(--anchor-width) min-w-[200px] origin-(--transform-origin) overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
               <Popover.Close className="sr-only">Close</Popover.Close>
               <div
