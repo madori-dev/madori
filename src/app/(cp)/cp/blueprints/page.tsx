@@ -1,11 +1,10 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Plus, FileCode2, ChevronRight } from 'lucide-react'
+import { FileCode2 } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/cp/PageHeader'
 import { EmptyState } from '@/components/cp/EmptyState'
@@ -23,7 +22,7 @@ const blueprintTypes: { type: BlueprintType; label: string; description: string 
   { type: 'forms', label: 'Forms', description: 'Define fields for form submissions' },
 ]
 
-export default function BlueprintsListPage() {
+function BlueprintsListContent() {
   const searchParams = useSearchParams()
   const filterType = searchParams.get('type') as BlueprintType | null
 
@@ -149,5 +148,13 @@ export default function BlueprintsListPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function BlueprintsListPage() {
+  return (
+    <Suspense fallback={<ListSkeleton />}>
+      <BlueprintsListContent />
+    </Suspense>
   )
 }
