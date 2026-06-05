@@ -52,9 +52,18 @@ export async function proxy(request: NextRequest) {
   // Uses INTERNAL_URL to avoid HTTPS issues when behind a reverse proxy (Nginx, Cloudflare)
   const internalUrl = process.env.INTERNAL_URL || `http://localhost:${process.env.PORT || '3000'}`
   const validateUrl = `${internalUrl}/api/auth/validate`
-  const validateResponse = await fetch(validateUrl, {
-    headers: { Authorization: `Bearer ${sessionToken}` },
-  })
+
+  let validateResponse: Response
+  try {
+    validateResponse = await fetch(validateUrl, {
+      headers: { Authorization: `Bearer ${sessionToken}` },
+    })
+  } catch (error) {
+    // Internal fetch failed (server not ready, network issue) — let the request through
+    // rather than blocking all CP access
+    console.error('[madori:proxy] Session validation fetch failed:', error)
+    return NextResponse.next()
+  }
 
   if (!validateResponse.ok) {
     const response = NextResponse.redirect(new URL('/cp/login', request.url))

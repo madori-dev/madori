@@ -44,7 +44,7 @@ class InMemoryFS implements FileSystemAdapter {
 
   async listFiles(directory: string, pattern?: string): Promise<string[]> {
     const results: string[] = []
-    const ext = pattern?.replace('*', '') ?? ''
+    const ext = pattern ? pattern.replace(/^\*+/, '') : ''
     for (const key of this.files.keys()) {
       if (key.startsWith(directory + '/')) {
         const relative = key.slice(directory.length + 1)
@@ -154,12 +154,29 @@ function createTestParser(): ContentParser {
 }
 
 function quote(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  const escaped = value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')
+  return `"${escaped}"`
 }
 
 function unquote(value: string): string {
   if (value.startsWith('"') && value.endsWith('"')) {
-    return value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+    return value
+      .slice(1, -1)
+      .replace(/\\(["\\nrt])/g, (_, ch) => {
+        switch (ch) {
+          case 'n': return '\n'
+          case 'r': return '\r'
+          case 't': return '\t'
+          case '"': return '"'
+          case '\\': return '\\'
+          default: return ch
+        }
+      })
   }
   return value
 }

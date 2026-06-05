@@ -96,9 +96,9 @@ function createMockCache(): ContentCache {
     set: <T>(key: string, value: T) => { store.set(key, value) },
     invalidate: (key: string) => { store.delete(key) },
     invalidatePattern: (pattern: string) => {
-      const prefix = pattern.replace('*', '')
+      const regex = new RegExp('^' + pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\*/g, '.*'))
       for (const key of store.keys()) {
-        if (key.startsWith(prefix)) store.delete(key)
+        if (regex.test(key)) store.delete(key)
       }
     },
     invalidateByFilePath: () => {},

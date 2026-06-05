@@ -115,7 +115,7 @@ function formatKey(key: string): string {
 }
 
 function serializeValue(value: unknown): string {
-  if (typeof value === 'string') return `'${value.replace(/'/g, "\\'")}'`
+  if (typeof value === 'string') return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
   if (typeof value === 'boolean' || typeof value === 'number') return String(value)
   if (Array.isArray(value)) {
     if (value.length === 0) return '[]'

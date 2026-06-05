@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  env: {
+    INTERNAL_URL: process.env.INTERNAL_URL || `http://localhost:${process.env.PORT || '3000'}`,
+  },
 };
 
 export default nextConfig;

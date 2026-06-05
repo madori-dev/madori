@@ -45,7 +45,7 @@ class InMemoryFS implements FileSystemAdapter {
 
   async listFiles(directory: string, pattern?: string): Promise<string[]> {
     const results: string[] = []
-    const ext = pattern?.replace('*', '') ?? ''
+    const ext = pattern ? pattern.replace(/^\*+/, '') : ''
     for (const key of this.files.keys()) {
       if (key.startsWith(directory + '/')) {
         const relative = key.slice(directory.length + 1)

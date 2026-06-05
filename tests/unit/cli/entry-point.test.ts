@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { execSync, type ExecSyncOptionsWithBufferEncoding } from 'child_process'
+import { execFileSync, type ExecSyncOptionsWithBufferEncoding } from 'child_process'
 import path from 'path'
 
 const CLI_ENTRY = path.resolve(__dirname, '../../../packages/madori-cli/src/index.ts')
 
 function runCli(args: string[]): { stdout: string; stderr: string; exitCode: number } {
-  const cmd = `npx tsx ${CLI_ENTRY} ${args.join(' ')}`
+  const cmd = 'npx'
+  const cmdArgs = ['tsx', CLI_ENTRY, ...args]
   const opts: ExecSyncOptionsWithBufferEncoding = {
     cwd: path.resolve(__dirname, '../../../'),
     encoding: 'utf-8' as BufferEncoding,
@@ -13,7 +14,7 @@ function runCli(args: string[]): { stdout: string; stderr: string; exitCode: num
   }
 
   try {
-    const stdout = execSync(cmd, { ...opts, stdio: ['pipe', 'pipe', 'pipe'] }) as unknown as string
+    const stdout = execFileSync(cmd, cmdArgs, { ...opts, stdio: ['pipe', 'pipe', 'pipe'] }) as unknown as string
     return { stdout: stdout ?? '', stderr: '', exitCode: 0 }
   } catch (error: unknown) {
     const execError = error as { stdout?: string; stderr?: string; status?: number }
