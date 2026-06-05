@@ -3,7 +3,7 @@ title: Authentication
 slug: authentication
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-06-05T10:00:00.000Z
 ---
 
 # Authentication
@@ -73,6 +73,10 @@ Sessions use cryptographically random tokens stored as JSON files (SHA-256 hashe
 |--------|---------------|-------------|
 | Cookie | `madori_session` | httpOnly, secure in production. Used by browser-based CP |
 | Bearer token | `Authorization: Bearer {token}` | Used by API clients and scripts |
+
+For Control Panel page requests, the Next.js Proxy performs an optimistic cookie-presence check. It does not call an internal HTTP endpoint or session store. Protected API handlers validate the session token and permissions before reading or changing data. An expired or invalid cookie therefore cannot authorize API access; a `401` response sends the browser back to `/cp/login`.
+
+This split keeps route checks fast and avoids loopback HTTP requests when Madori runs behind Nginx, Cloudflare, or another SSL-terminating reverse proxy.
 
 ### Roles and Permissions
 
@@ -349,4 +353,3 @@ Use the CLI to create users per environment:
 ```bash
 pnpm madori make:user
 ```
-

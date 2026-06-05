@@ -13,7 +13,7 @@ const PUBLIC_ASSET_PATTERN = /\.(js|css|ico|png|jpg|svg|woff2?)$/
  * Next.js Proxy — handles static caching and CP route protection.
  *
  * 1. Checks static cache for frontend pages (returns cached HTML on hit)
- * 2. Protects /cp routes via server-side session validation
+ * 2. Protects /cp routes via an optimistic session-cookie check
  */
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -42,38 +42,11 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Extract session token from cookie
+  // Keep Proxy checks optimistic. API handlers perform authoritative session
+  // validation close to protected data.
   const sessionToken = request.cookies.get('madori_session')?.value
   if (!sessionToken) {
     return NextResponse.redirect(new URL('/cp/login', request.url))
-  }
-
-  // Validate session server-side via internal API call
-  // Uses INTERNAL_URL to avoid HTTPS issues when behind a reverse proxy (Nginx, Cloudflare)
-  const internalUrl = process.env.INTERNAL_URL || `http://localhost:${process.env.PORT || '3000'}`
-  const validateUrl = `${internalUrl}/api/auth/validate`
-
-  let validateResponse: Response
-  try {
-    validateResponse = await fetch(validateUrl, {
-      headers: { Authorization: `Bearer ${sessionToken}` },
-    })
-  } catch (error) {
-    // Internal fetch failed (server not ready, network issue) — let the request through
-    // rather than blocking all CP access
-    console.error('[madori:proxy] Session validation fetch failed:', error)
-    return NextResponse.next()
-  }
-
-  if (!validateResponse.ok) {
-    const response = NextResponse.redirect(new URL('/cp/login', request.url))
-    // Clear invalid cookie
-    response.cookies.set('madori_session', '', {
-      httpOnly: true,
-      path: '/',
-      expires: new Date(0),
-    })
-    return response
   }
 
   return NextResponse.next()

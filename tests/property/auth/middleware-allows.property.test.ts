@@ -1,6 +1,6 @@
 // Property 13: Middleware allows authenticated requests
 
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import * as fc from 'fast-check'
 import { NextRequest } from 'next/server'
 import { proxy } from '@/proxy'
@@ -8,9 +8,9 @@ import { proxy } from '@/proxy'
 /**
  * Validates: Requirements 7.5
  *
- * Property: For any protected /cp request with a valid unexpired session cookie
- * (mock fetch returns 200), the middleware allows passage (returns NextResponse.next()
- * with no redirect).
+ * Property: For any protected /cp request with a session cookie, Proxy performs
+ * an optimistic check without making a network request. API handlers remain
+ * responsible for authoritative session validation.
  */
 
 // --- Generators ---
@@ -47,21 +47,8 @@ const validTokenArb = fc
 // --- Property Tests ---
 
 describe('Property 13: Middleware allows authenticated requests', () => {
-  const originalFetch = globalThis.fetch
-
-  afterEach(() => {
-    globalThis.fetch = originalFetch
-    vi.restoreAllMocks()
-  })
-
-  it('for any protected CP path with valid session cookie, middleware allows passage (no redirect)', async () => {
-    // Mock fetch to return 200 (valid session)
-    globalThis.fetch = vi.fn().mockResolvedValue(
-      new Response(JSON.stringify({ valid: true, userId: 'user-1' }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      }),
-    )
+  it('for any protected CP path with a session cookie, middleware allows passage without fetching', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
 
     await fc.assert(
       fc.asyncProperty(
@@ -85,5 +72,8 @@ describe('Property 13: Middleware allows authenticated requests', () => {
       ),
       { numRuns: 100 },
     )
+
+    expect(fetchSpy).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
   })
 })

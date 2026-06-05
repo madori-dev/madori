@@ -3,7 +3,7 @@ title: Deployment
 slug: deployment
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-06-05T10:00:00.000Z
 ---
 
 # Deployment
@@ -23,7 +23,6 @@ For full Control Panel functionality (content editing, asset uploads, user manag
 | `NODE_ENV` | No | `development` | Set to `production` for secure cookies, disabled introspection, and optimised builds |
 | `PORT` | No | `3000` | Port for the Node.js server |
 | `HOSTNAME` | No | `0.0.0.0` | Bind address for the server |
-| `INTERNAL_URL` | No | `http://localhost:{PORT}` | Internal HTTP URL for server-to-server requests. Required when behind a reverse proxy with SSL termination (Nginx + Cloudflare, etc.) |
 | `DISABLE_CP` | No | — | Set to `true` to disable the Control Panel in production |
 
 ### Build Commands
@@ -82,15 +81,11 @@ pm2 restart madori
 
 ### Nginx Reverse Proxy
 
-When running behind a reverse proxy that terminates SSL (Nginx, Caddy, Cloudflare), set `INTERNAL_URL` so the server uses HTTP for internal requests:
+Run Next.js on a private local port and point Nginx to that exact port. SSL can terminate at Nginx or Cloudflare; Madori does not need an internal callback URL for Control Panel authentication.
 
 ```bash
-# .env
-INTERNAL_URL=http://localhost:3001
-PORT=3001
+pnpm start -p 3001
 ```
-
-Without this, the server inherits the HTTPS protocol from incoming requests and tries to call itself over SSL — which fails because the local port only speaks HTTP.
 
 ```nginx
 server {
@@ -98,7 +93,7 @@ server {
     server_name yoursite.com;
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -111,6 +106,8 @@ server {
 }
 ```
 
+The Control Panel Proxy only checks for the `madori_session` cookie before rendering. Protected API handlers perform authoritative session validation. This avoids a request from the Next.js Proxy back into the same server and works with custom ports, SSL termination, and Cloudflare proxying without extra environment variables.
+
 ### Process Management with systemd
 
 ```ini
@@ -122,7 +119,7 @@ After=network.target
 Type=simple
 User=deploy
 WorkingDirectory=/var/www/my-site
-ExecStart=/usr/bin/pnpm start
+ExecStart=/usr/bin/pnpm start -p 3001
 Restart=on-failure
 Environment=NODE_ENV=production
 
@@ -133,10 +130,12 @@ WantedBy=multi-user.target
 ### Process Management with PM2
 
 ```bash
-pm2 start pnpm --name madori -- start
+pm2 start pnpm --name madori -- start -p 3001
 pm2 save
 pm2 startup
 ```
+
+Keep PM2 and Nginx ports identical. If PM2 starts Madori on `3001`, `proxy_pass` must use `http://127.0.0.1:3001`.
 
 ### Vercel / Netlify (Frontend Only)
 
@@ -211,6 +210,35 @@ sudo certbot --nginx -d yoursite.com
 
 Most server management tools (Ploi, Forge, Coolify) handle SSL with one click.
 
+### Troubleshooting Control Panel 502 Errors
+
+If the marketing site works but `/cp` returns `502 Bad Gateway`:
+
+1. Confirm PM2 is running the expected command and port:
+
+   ```bash
+   pm2 show madori
+   pm2 logs madori
+   ```
+
+2. Request the Control Panel directly from the server, bypassing Nginx and Cloudflare:
+
+   ```bash
+   curl -I http://127.0.0.1:3001/cp
+   ```
+
+   A `307` redirect to `/cp/login` without a session is expected.
+
+3. Confirm Nginx `proxy_pass` uses the same host and port as the PM2 process.
+4. Remove obsolete `INTERNAL_URL` configuration from older deployments. Current Madori versions do not make an internal session-validation HTTP request.
+5. Reload Nginx and restart Madori after configuration or build changes:
+
+   ```bash
+   sudo nginx -t
+   sudo systemctl reload nginx
+   pm2 restart madori
+   ```
+
 ### Health Check Endpoint
 
 Use the GraphQL endpoint as a health check:
@@ -229,4 +257,3 @@ Back up uploaded assets separately since they're not always in Git:
 # Rsync assets to backup location
 rsync -avz /var/www/my-site/public/assets/ /backups/assets/
 ```
-
