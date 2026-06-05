@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { useEffect, useState, useCallback } from 'react'
 import {
   Save,
@@ -67,7 +67,6 @@ function makeEmptyField(): FieldDefinition {
 
 export default function BlueprintEditorPage() {
   const params = useParams()
-  const router = useRouter()
   const type = params.type as BlueprintType
   const handle = params.handle as string
 
