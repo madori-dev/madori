@@ -1,6 +1,6 @@
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { useEffect, useState, useCallback } from 'react'
 import {
   Save,
@@ -64,7 +64,6 @@ const FIELD_TYPES: { value: FieldType; label: string }[] = [
 
 export default function FieldsetEditorPage() {
   const params = useParams()
-  const router = useRouter()
   const handle = params.handle as string
 
   const [fields, setFields] = useState<FieldDefinition[]>([])
