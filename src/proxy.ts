@@ -49,7 +49,9 @@ export async function proxy(request: NextRequest) {
   }
 
   // Validate session server-side via internal API call
-  const validateUrl = new URL('/api/auth/validate', request.url)
+  // Uses INTERNAL_URL to avoid HTTPS issues when behind a reverse proxy (Nginx, Cloudflare)
+  const internalUrl = process.env.INTERNAL_URL || `http://localhost:${process.env.PORT || '3000'}`
+  const validateUrl = `${internalUrl}/api/auth/validate`
   const validateResponse = await fetch(validateUrl, {
     headers: { Authorization: `Bearer ${sessionToken}` },
   })

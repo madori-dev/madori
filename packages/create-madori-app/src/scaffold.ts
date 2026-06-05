@@ -205,6 +205,14 @@ Welcome to MADORI. This is your first blog post.
     fs.mkdirSync(path.join(projectDir, dir), { recursive: true })
   }
 
+  // Copy .env.example to .env
+  const envExamplePath = path.join(projectDir, '.env.example')
+  const envPath = path.join(projectDir, '.env')
+  if (fs.existsSync(envExamplePath)) {
+    fs.copyFileSync(envExamplePath, envPath)
+    console.log('  ✓ Created .env from .env.example')
+  }
+
   // Write initial admin user
   const adminPassword = 'password'
   const adminId = crypto.randomUUID()

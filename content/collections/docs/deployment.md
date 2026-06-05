@@ -23,6 +23,7 @@ For full Control Panel functionality (content editing, asset uploads, user manag
 | `NODE_ENV` | No | `development` | Set to `production` for secure cookies, disabled introspection, and optimised builds |
 | `PORT` | No | `3000` | Port for the Node.js server |
 | `HOSTNAME` | No | `0.0.0.0` | Bind address for the server |
+| `INTERNAL_URL` | No | `http://localhost:{PORT}` | Internal HTTP URL for server-to-server requests. Required when behind a reverse proxy with SSL termination (Nginx + Cloudflare, etc.) |
 | `DISABLE_CP` | No | — | Set to `true` to disable the Control Panel in production |
 
 ### Build Commands
@@ -80,6 +81,16 @@ pm2 restart madori
 ```
 
 ### Nginx Reverse Proxy
+
+When running behind a reverse proxy that terminates SSL (Nginx, Caddy, Cloudflare), set `INTERNAL_URL` so the server uses HTTP for internal requests:
+
+```bash
+# .env
+INTERNAL_URL=http://localhost:3001
+PORT=3001
+```
+
+Without this, the server inherits the HTTPS protocol from incoming requests and tries to call itself over SSL — which fails because the local port only speaks HTTP.
 
 ```nginx
 server {
