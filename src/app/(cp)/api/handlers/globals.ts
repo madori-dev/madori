@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { GlobalOperations } from '@/lib/content/globals'
-import { NotFoundError } from '@/lib/errors'
 import { getInvalidationEngine } from '@/lib/static-cache/instance'
 
 export function createGlobalHandlers(globalOps: GlobalOperations) {
