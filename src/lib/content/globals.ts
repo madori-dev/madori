@@ -3,7 +3,6 @@ import type { FileSystemAdapter } from '@/lib/fs/adapter'
 import type { ContentParser } from '@/lib/fs/parser'
 import type { ContentCache } from '@/lib/cache/store'
 import type { Global } from '@/lib/types'
-import { NotFoundError } from '@/lib/errors'
 
 export class GlobalOperations {
   constructor(
