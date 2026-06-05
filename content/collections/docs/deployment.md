@@ -95,6 +95,11 @@ server {
     location / {
         proxy_pass http://127.0.0.1:3001;
         proxy_http_version 1.1;
+
+        proxy_buffer_size 16k;
+        proxy_buffers 8 16k;
+        proxy_busy_buffers_size 32k;
+
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
@@ -231,7 +236,16 @@ If the marketing site works but `/cp` returns `502 Bad Gateway`:
 
 3. Confirm Nginx `proxy_pass` uses the same host and port as the PM2 process.
 4. Remove obsolete `INTERNAL_URL` configuration from older deployments. Current Madori versions do not make an internal session-validation HTTP request.
-5. Reload Nginx and restart Madori after configuration or build changes:
+5. Check the Nginx error log. `upstream sent too big header while reading response header from upstream` means the upstream response headers exceeded Nginx's buffer. Deploy the latest Madori build and ensure the location block includes:
+
+   ```nginx
+   proxy_buffer_size 16k;
+   proxy_buffers 8 16k;
+   proxy_busy_buffers_size 32k;
+   ```
+
+   These values provide headroom for framework-generated headers and future application changes.
+6. Reload Nginx and restart Madori after configuration or build changes:
 
    ```bash
    sudo nginx -t

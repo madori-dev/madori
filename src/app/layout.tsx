@@ -7,6 +7,7 @@ const bizUDPGothic = BIZ_UDPGothic({
   variable: "--font-biz-udp-gothic",
   weight: ["400", "700"],
   subsets: ["latin"],
+  preload: false,
 });
 
 const josefinSans = Josefin_Sans({
