@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -32,7 +32,6 @@ interface UserData {
 
 export default function EditUserPage() {
   const params = useParams()
-  const router = useRouter()
   const userId = params.id as string
 
   const [user, setUser] = useState<UserData | null>(null)
