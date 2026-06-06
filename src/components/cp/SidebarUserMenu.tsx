@@ -1,6 +1,6 @@
 "use client"
 
-import { useTheme } from "next-themes"
+import { useCPTheme } from "@/components/cp/CPThemeProvider"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/sidebar"
 
 export function SidebarUserMenu() {
-  const { theme, setTheme } = useTheme()
+  const { theme, setTheme } = useCPTheme()
   const router = useRouter()
 
   const toggleTheme = () => {

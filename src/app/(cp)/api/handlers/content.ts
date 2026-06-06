@@ -138,6 +138,14 @@ export function createContentHandlers(contentStore: ContentStore) {
           if (!slug || typeof slug !== 'string') {
             return jsonError('Validation failed', 422, { slug: ['slug is required and must be a string'] })
           }
+          // Check for duplicate slug within this taxonomy
+          const existing = await contentStore.getTerm(handle, slug)
+          if (existing) {
+            return NextResponse.json(
+              { error: { code: 'CONFLICT', message: 'A term with this slug already exists' } },
+              { status: 422 }
+            )
+          }
           const entry = await contentStore.createTerm(handle, slug, data)
           return NextResponse.json({ data: { id: entry.id, ...entry.data } }, { status: 201 })
         }

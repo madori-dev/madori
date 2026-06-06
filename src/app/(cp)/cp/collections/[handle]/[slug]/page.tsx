@@ -44,6 +44,7 @@ interface EntryData {
   collection: string
   createdAt: string
   updatedAt: string
+  contentHash?: string
 }
 
 export default function EntryEditorPage() {
@@ -162,6 +163,7 @@ export default function EntryEditorPage() {
           status,
           content: contentStr,
           data,
+          contentHash: entry?.contentHash,
         }),
       })
 

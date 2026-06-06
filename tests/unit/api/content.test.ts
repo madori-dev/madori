@@ -186,6 +186,20 @@ describe('Content API Handler', () => {
       expect(body.error).toContain('do not support create')
     })
 
+    it('returns 422 with CONFLICT when taxonomy term slug already exists', async () => {
+      // Create an existing term
+      const dir = path.join(tmpDir, 'taxonomies', 'tags')
+      await fs.mkdir(dir, { recursive: true })
+      await fs.writeFile(path.join(dir, 'react.yaml'), 'title: React\n')
+
+      const req = makeRequest('POST', { slug: 'react', title: 'React Duplicate' })
+      const res = await handlers.handleCreateContent(req, 'taxonomies', 'tags')
+      expect(res.status).toBe(422)
+      const body = await res.json()
+      expect(body.error.code).toBe('CONFLICT')
+      expect(body.error.message).toBe('A term with this slug already exists')
+    })
+
     it('returns 422 for invalid JSON body', async () => {
       const url = 'http://localhost:3000/api/content/test'
       const req = new NextRequest(url, {

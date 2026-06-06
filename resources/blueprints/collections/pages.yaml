@@ -1,16 +1,14 @@
 tabs:
   main:
-    label: Main
+    display: Main
     fields:
       - handle: title
         field:
           type: text
           required: true
-
       - handle: slug
         field:
           type: slug
-
       - handle: blocks
         field:
           type: replicator
@@ -21,12 +19,8 @@ tabs:
               - basic_cta
               - features_grid
               - about_the_creator
-
-      - handle: content
-        field:
-          type: tiptap
   seo:
-    label: SEO
+    display: SEO
     fields:
       - handle: meta_title
         field:
@@ -47,7 +41,6 @@ tabs:
       - handle: template
         field:
           type: text
-
       - handle: parent
         field:
           type: entries

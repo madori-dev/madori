@@ -20,6 +20,9 @@ import {
 } from '@/components/ui/breadcrumb'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
+import { FieldRenderer } from '@/components/cp/fields/FieldRenderer'
+import { getAllFields } from '@/lib/blueprints/defaults'
+import type { Blueprint, FieldDefinition } from '@/lib/blueprints/types'
 
 export default function EditTermPage() {
   const params = useParams()
@@ -27,36 +30,70 @@ export default function EditTermPage() {
   const handle = params.handle as string
   const termSlug = params.termSlug as string
 
+  const [blueprintFields, setBlueprintFields] = useState<FieldDefinition[]>([])
+  const [blueprintFormData, setBlueprintFormData] = useState<Record<string, unknown>>({})
   const [fields, setFields] = useState<{ key: string; value: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    async function fetchTerm() {
+    async function loadData() {
       try {
-        const res = await fetch(`/api/content/taxonomies/${handle}/${termSlug}`)
-        if (!res.ok) throw new Error(`Failed to fetch term: ${res.status}`)
-        const json = await res.json()
-        const data = json.data ?? {}
+        const [termRes, blueprintRes] = await Promise.all([
+          fetch(`/api/content/taxonomies/${handle}/${termSlug}`),
+          fetch(`/api/blueprints/taxonomies/${handle}`),
+        ])
 
-        const entries: { key: string; value: string }[] = []
-        for (const [key, val] of Object.entries(data)) {
-          if (key === 'id') continue
-          entries.push({
-            key,
-            value: typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val ?? ''),
-          })
+        if (!termRes.ok) throw new Error(`Failed to fetch term: ${termRes.status}`)
+        const termJson = await termRes.json()
+        const termData = termJson.data ?? {}
+
+        // Parse blueprint if available
+        let bpFields: FieldDefinition[] = []
+        if (blueprintRes.ok) {
+          const bpJson = await blueprintRes.json()
+          const bp = bpJson.data as Blueprint | undefined
+          if (bp) {
+            const allFields = getAllFields(bp)
+            bpFields = allFields.filter(
+              (f) => !['slug', 'title'].includes(f.handle)
+            )
+            setBlueprintFields(bpFields)
+          }
         }
-        setFields(entries)
+
+        // Separate term data into blueprint fields and extra manual fields
+        const bpHandles = new Set(bpFields.map((f) => f.handle))
+        const bpData: Record<string, unknown> = {}
+        const extraFields: { key: string; value: string }[] = []
+
+        for (const [key, val] of Object.entries(termData)) {
+          if (key === 'id' || key === 'slug' || key === 'title') continue
+          if (bpHandles.has(key)) {
+            bpData[key] = val
+          } else {
+            extraFields.push({
+              key,
+              value: typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val ?? ''),
+            })
+          }
+        }
+
+        setBlueprintFormData(bpData)
+        setFields(extraFields)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load term')
       } finally {
         setLoading(false)
       }
     }
-    fetchTerm()
+    loadData()
   }, [handle, termSlug])
+
+  function handleBlueprintFieldChange(fieldHandle: string, value: unknown) {
+    setBlueprintFormData((prev) => ({ ...prev, [fieldHandle]: value }))
+  }
 
   function addField() {
     setFields([...fields, { key: '', value: '' }])
@@ -77,6 +114,13 @@ export default function EditTermPage() {
 
     try {
       const data: Record<string, unknown> = {}
+
+      // Include blueprint field values
+      for (const [key, value] of Object.entries(blueprintFormData)) {
+        data[key] = value
+      }
+
+      // Include manual key-value fields
       for (const field of fields) {
         if (field.key.trim()) {
           try {
@@ -146,9 +190,24 @@ export default function EditTermPage() {
       <Card className="max-w-lg">
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Blueprint-defined custom fields */}
+            {blueprintFields.length > 0 && (
+              <div className="space-y-4">
+                {blueprintFields.map((fieldDef) => (
+                  <FieldRenderer
+                    key={fieldDef.handle}
+                    fieldDefinition={fieldDef}
+                    value={blueprintFormData[fieldDef.handle]}
+                    onChange={(value) => handleBlueprintFieldChange(fieldDef.handle, value)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Manual additional fields (extra data not in blueprint) */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label>Fields</Label>
+                <Label>{blueprintFields.length > 0 ? 'Additional Fields' : 'Fields'}</Label>
                 <Button
                   type="button"
                   variant="ghost"
@@ -160,11 +219,11 @@ export default function EditTermPage() {
                 </Button>
               </div>
 
-              {fields.length === 0 ? (
+              {fields.length === 0 && blueprintFields.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   No fields. Click &quot;Add field&quot; to add data.
                 </p>
-              ) : (
+              ) : fields.length === 0 ? null : (
                 <div className="space-y-2">
                   {fields.map((field, index) => {
                     const isMultiline = field.value.includes('\n') || field.value.length > 80

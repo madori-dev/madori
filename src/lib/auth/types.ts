@@ -13,6 +13,7 @@ export interface User {
   passwordHash: string
   createdAt: string
   lastLogin?: string
+  theme?: 'light' | 'dark'
 }
 
 export interface CreateUserInput {
@@ -29,4 +30,5 @@ export interface UpdateUserInput {
   password?: string
   roles?: string[]
   lastLogin?: string
+  theme?: 'light' | 'dark'
 }

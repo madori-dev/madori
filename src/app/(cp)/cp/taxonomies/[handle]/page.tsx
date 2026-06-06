@@ -114,7 +114,7 @@ export default function TaxonomyTermsPage() {
                   className="flex-1 cursor-pointer"
                 >
                   <CardTitle className="text-sm">{term.title || term.id}</CardTitle>
-                  <CardDescription className="text-xs">{term.id}</CardDescription>
+                  <CardDescription className="text-xs">{term.slug || term.id}</CardDescription>
                 </Link>
                 <div className="flex items-center gap-1">
                   <Button

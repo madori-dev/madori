@@ -122,12 +122,17 @@ afterEach(async () => {
 const safeFilename = fc.stringMatching(/^[a-z][a-z0-9-]{0,10}$/).map(s => `${s}.yaml`)
 
 /**
+ * Generator for a unique set of filenames (no duplicates within a type)
+ */
+const uniqueFilenames = fc.uniqueArray(safeFilename, { minLength: 1, maxLength: 3 })
+
+/**
  * Generator for files per resource type
  */
 const filesPerType = fc.record({
-  blueprints: fc.array(safeFilename, { minLength: 1, maxLength: 3 }),
-  collections: fc.array(safeFilename, { minLength: 1, maxLength: 3 }),
-  fieldsets: fc.array(safeFilename, { minLength: 1, maxLength: 3 }),
+  blueprints: uniqueFilenames,
+  collections: uniqueFilenames,
+  fieldsets: uniqueFilenames,
 }) as fc.Arbitrary<Record<ResourceType, string[]>>
 
 /**

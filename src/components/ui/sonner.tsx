@@ -1,11 +1,13 @@
 "use client"
 
-import { useTheme } from "next-themes"
+import { useContext } from "react"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
+import { CPThemeContext } from "@/components/cp/CPThemeProvider"
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
+  const cpTheme = useContext(CPThemeContext)
+  const theme = cpTheme?.theme ?? "light"
 
   return (
     <Sonner

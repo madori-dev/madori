@@ -15,6 +15,7 @@ interface UserYaml {
   password_hash: string
   created_at: string
   last_login?: string
+  theme?: 'light' | 'dark'
 }
 
 function userFromYaml(yaml: UserYaml): User {
@@ -26,6 +27,7 @@ function userFromYaml(yaml: UserYaml): User {
     passwordHash: yaml.password_hash,
     createdAt: yaml.created_at,
     lastLogin: yaml.last_login,
+    theme: yaml.theme,
   }
 }
 
@@ -40,6 +42,9 @@ function userToYaml(user: User): UserYaml {
   }
   if (user.lastLogin) {
     yaml.last_login = user.lastLogin
+  }
+  if (user.theme) {
+    yaml.theme = user.theme
   }
   return yaml
 }
@@ -115,6 +120,7 @@ export class YamlUserProvider implements UserProvider {
     if (input.name !== undefined) user.name = input.name
     if (input.roles !== undefined) user.roles = input.roles
     if (input.lastLogin !== undefined) user.lastLogin = input.lastLogin
+    if (input.theme !== undefined) user.theme = input.theme
     if (input.password !== undefined) {
       user.passwordHash = await hashPassword(input.password)
     }

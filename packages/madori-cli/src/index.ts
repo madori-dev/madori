@@ -13,6 +13,7 @@ import { registerExport } from './commands/export.js'
 import { registerImport } from './commands/import.js'
 import { registerInitPreset } from './commands/init-preset.js'
 import { registerMigrateMarkdown } from './commands/migrate-markdown.js'
+import { registerGenerate } from './commands/generate.js'
 
 const program = new Command()
 
@@ -35,6 +36,7 @@ registerMigrateMarkdown(program)
 registerRegistryPull(program)
 registerRegistryPush(program)
 registerInitPreset(program)
+registerGenerate(program)
 
 program.parseAsync(process.argv).catch((error: Error) => {
   console.error(`Error: ${error.message}`)

@@ -1,5 +1,0 @@
-fields:
-  - handle: field_a
-    field:
-      type: text
-  - import: circular_b

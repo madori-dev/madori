@@ -1,14 +1,12 @@
 'use client'
 
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { useEffect, useState, useCallback } from 'react'
 import {
   Save,
   Plus,
   Trash2,
   GripVertical,
-  ChevronDown,
-  ChevronRight,
   ArrowLeft,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -18,8 +16,8 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
+import { FieldConfigSheet } from '@/components/cp/FieldConfigSheet'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,30 +34,8 @@ import type {
   Blueprint,
   BlueprintTab,
   BlueprintType,
-  FieldConfig,
   FieldDefinition,
-  FieldType,
 } from '@/lib/blueprints/types'
-
-const FIELD_TYPES: { value: FieldType; label: string }[] = [
-  { value: 'text', label: 'Text' },
-  { value: 'slug', label: 'Slug' },
-  { value: 'markdown', label: 'Markdown' },
-  { value: 'tiptap', label: 'Rich Text (Tiptap)' },
-  { value: 'number', label: 'Number' },
-  { value: 'toggle', label: 'Toggle' },
-  { value: 'select', label: 'Select' },
-  { value: 'multiselect', label: 'Multi-select' },
-  { value: 'date', label: 'Date' },
-  { value: 'asset', label: 'Asset' },
-  { value: 'entries', label: 'Entries' },
-  { value: 'taxonomy', label: 'Taxonomy' },
-  { value: 'replicator', label: 'Replicator' },
-  { value: 'grid', label: 'Grid' },
-  { value: 'yaml', label: 'YAML' },
-  { value: 'code', label: 'Code' },
-  { value: 'hidden', label: 'Hidden' },
-]
 
 function makeEmptyField(): FieldDefinition {
   return { handle: '', field: { type: 'text' } }
@@ -67,7 +43,6 @@ function makeEmptyField(): FieldDefinition {
 
 export default function BlueprintEditorPage() {
   const params = useParams()
-  const router = useRouter()
   const type = params.type as BlueprintType
   const handle = params.handle as string
 
@@ -75,7 +50,12 @@ export default function BlueprintEditorPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set())
+
+  // Field Config Sheet state
+  const [selectedField, setSelectedField] = useState<FieldDefinition | null>(null)
+  const [selectedFieldTab, setSelectedFieldTab] = useState<string | null>(null)
+  const [selectedFieldIndex, setSelectedFieldIndex] = useState<number | null>(null)
+  const [sheetOpen, setSheetOpen] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -204,13 +184,30 @@ export default function BlueprintEditorPage() {
     })
   }, [blueprint])
 
-  const toggleFieldExpanded = useCallback((id: string) => {
-    setExpandedFields((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+  const openFieldSheet = useCallback((tabKey: string, index: number, field: FieldDefinition) => {
+    setSelectedField(field)
+    setSelectedFieldTab(tabKey)
+    setSelectedFieldIndex(index)
+    setSheetOpen(true)
+  }, [])
+
+  const handleSheetSave = useCallback((updatedField: FieldDefinition) => {
+    if (selectedFieldTab != null && selectedFieldIndex != null) {
+      updateField(selectedFieldTab, selectedFieldIndex, updatedField)
+    }
+    setSheetOpen(false)
+    setSelectedField(null)
+    setSelectedFieldTab(null)
+    setSelectedFieldIndex(null)
+  }, [selectedFieldTab, selectedFieldIndex, updateField])
+
+  const handleSheetOpenChange = useCallback((open: boolean) => {
+    setSheetOpen(open)
+    if (!open) {
+      setSelectedField(null)
+      setSelectedFieldTab(null)
+      setSelectedFieldIndex(null)
+    }
   }, [])
 
   if (loading) {
@@ -263,12 +260,10 @@ export default function BlueprintEditorPage() {
             tabKey={tabKey}
             tab={tab}
             canDelete={Object.keys(blueprint.tabs).length > 1}
-            expandedFields={expandedFields}
-            onToggleField={toggleFieldExpanded}
+            onFieldClick={(index, field) => openFieldSheet(tabKey, index, field)}
             onUpdateDisplay={(display) => updateTabDisplay(tabKey, display)}
             onAddField={() => addField(tabKey)}
             onRemoveField={(i) => removeField(tabKey, i)}
-            onUpdateField={(i, f) => updateField(tabKey, i, f)}
             onMoveField={(from, to) => moveField(tabKey, from, to)}
             onRemoveTab={() => removeTab(tabKey)}
           />
@@ -281,6 +276,14 @@ export default function BlueprintEditorPage() {
           Add Tab
         </Button>
       </div>
+
+      {/* Field Config Sheet */}
+      <FieldConfigSheet
+        open={sheetOpen}
+        onOpenChange={handleSheetOpenChange}
+        field={selectedField}
+        onSave={handleSheetSave}
+      />
     </div>
   )
 }
@@ -291,24 +294,20 @@ function TabEditor({
   tabKey,
   tab,
   canDelete,
-  expandedFields,
-  onToggleField,
+  onFieldClick,
   onUpdateDisplay,
   onAddField,
   onRemoveField,
-  onUpdateField,
   onMoveField,
   onRemoveTab,
 }: {
   tabKey: string
   tab: BlueprintTab
   canDelete: boolean
-  expandedFields: Set<string>
-  onToggleField: (id: string) => void
+  onFieldClick: (index: number, field: FieldDefinition) => void
   onUpdateDisplay: (display: string) => void
   onAddField: () => void
   onRemoveField: (index: number) => void
-  onUpdateField: (index: number, field: FieldDefinition) => void
   onMoveField: (from: number, to: number) => void
   onRemoveTab: () => void
 }) {
@@ -362,25 +361,18 @@ function TabEditor({
             </Button>
           </div>
         ) : (
-          tab.fields.map((field, index) => {
-            const fieldId = `${tabKey}-${index}`
-            const isExpanded = expandedFields.has(fieldId)
-
-            return (
-              <FieldRow
-                key={fieldId}
-                field={field}
-                index={index}
-                totalFields={tab.fields.length}
-                isExpanded={isExpanded}
-                onToggle={() => onToggleField(fieldId)}
-                onUpdate={(f) => onUpdateField(index, f)}
-                onRemove={() => onRemoveField(index)}
-                onMoveUp={index > 0 ? () => onMoveField(index, index - 1) : undefined}
-                onMoveDown={index < tab.fields.length - 1 ? () => onMoveField(index, index + 1) : undefined}
-              />
-            )
-          })
+          tab.fields.map((field, index) => (
+            <FieldRow
+              key={`${tabKey}-${index}`}
+              field={field}
+              index={index}
+              totalFields={tab.fields.length}
+              onClick={() => onFieldClick(index, field)}
+              onRemove={() => onRemoveField(index)}
+              onMoveUp={index > 0 ? () => onMoveField(index, index - 1) : undefined}
+              onMoveDown={index < tab.fields.length - 1 ? () => onMoveField(index, index + 1) : undefined}
+            />
+          ))
         )}
       </div>
     </Card>
@@ -393,9 +385,7 @@ function FieldRow({
   field,
   index,
   totalFields,
-  isExpanded,
-  onToggle,
-  onUpdate,
+  onClick,
   onRemove,
   onMoveUp,
   onMoveDown,
@@ -403,37 +393,26 @@ function FieldRow({
   field: FieldDefinition
   index: number
   totalFields: number
-  isExpanded: boolean
-  onToggle: () => void
-  onUpdate: (f: FieldDefinition) => void
+  onClick: () => void
   onRemove: () => void
   onMoveUp?: () => void
   onMoveDown?: () => void
 }) {
-  const updateHandle = (handle: string) => {
-    onUpdate({ ...field, handle })
-  }
-
-  const updateFieldConfig = (config: Partial<FieldConfig>) => {
-    onUpdate({ ...field, field: { ...field.field, ...config } })
-  }
-
   return (
     <div className="group">
-      {/* Collapsed row */}
       <div
         className="flex items-center gap-2 px-4 py-2.5 cursor-pointer hover:bg-muted/30 transition-colors"
-        onClick={onToggle}
+        onClick={onClick}
       >
         <GripVertical className="size-3.5 text-muted-foreground/50 shrink-0" />
-        {isExpanded ? (
-          <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
-        ) : (
-          <ChevronRight className="size-3.5 text-muted-foreground shrink-0" />
-        )}
         <span className="text-sm font-medium min-w-0 truncate flex-1">
           {field.handle || <span className="italic text-muted-foreground">unnamed</span>}
         </span>
+        {field.field.display && (
+          <span className="text-xs text-muted-foreground truncate max-w-32">
+            {field.field.display}
+          </span>
+        )}
         <Badge variant="secondary" className="text-xs shrink-0">
           {field.field.type}
         </Badge>
@@ -441,6 +420,26 @@ function FieldRow({
           <Badge variant="outline" className="text-xs shrink-0">
             required
           </Badge>
+        )}
+        {onMoveUp && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={(e) => { e.stopPropagation(); onMoveUp() }}
+          >
+            <span className="text-xs">↑</span>
+          </Button>
+        )}
+        {onMoveDown && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={(e) => { e.stopPropagation(); onMoveDown() }}
+          >
+            <span className="text-xs">↓</span>
+          </Button>
         )}
         <AlertDialog>
           <AlertDialogTrigger
@@ -471,218 +470,6 @@ function FieldRow({
           </AlertDialogContent>
         </AlertDialog>
       </div>
-
-      {/* Expanded config */}
-      {isExpanded && (
-        <div className="border-t bg-muted/10 px-4 py-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs">Handle</Label>
-              <Input
-                value={field.handle}
-                onChange={(e) => updateHandle(e.target.value)}
-                placeholder="field_handle"
-                className="h-8 text-sm"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Display Name</Label>
-              <Input
-                value={field.field.display ?? ''}
-                onChange={(e) => updateFieldConfig({ display: e.target.value || undefined })}
-                placeholder="Field Label"
-                className="h-8 text-sm"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Type</Label>
-              <select
-                value={field.field.type}
-                onChange={(e) => updateFieldConfig({ type: e.target.value as FieldType })}
-                className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                {FIELD_TYPES.map((ft) => (
-                  <option key={ft.value} value={ft.value}>
-                    {ft.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Required</Label>
-              <div className="flex h-8 items-center">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={field.field.required ?? false}
-                    onChange={(e) => updateFieldConfig({ required: e.target.checked || undefined })}
-                    className="size-4 rounded border-input"
-                  />
-                  <span className="text-sm text-muted-foreground">This field is required</span>
-                </label>
-              </div>
-            </div>
-          </div>
-
-          {/* Select/multiselect options */}
-          {(field.field.type === 'select' || field.field.type === 'multiselect') && (
-            <div className="mt-4 space-y-1.5">
-              <Label className="text-xs">Options (one per line)</Label>
-              <textarea
-                value={
-                  Array.isArray(field.field.options?.options)
-                    ? (field.field.options.options as string[]).join('\n')
-                    : ''
-                }
-                onChange={(e) => {
-                  const options = e.target.value.split('\n').filter(Boolean)
-                  updateFieldConfig({ options: { options } })
-                }}
-                placeholder="option_1&#10;option_2&#10;option_3"
-                rows={3}
-                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </div>
-          )}
-
-          {/* Asset max_files */}
-          {field.field.type === 'asset' && (
-            <div className="mt-4 space-y-1.5">
-              <Label className="text-xs">Max Files</Label>
-              <Input
-                type="number"
-                min={0}
-                value={(field.field.options?.max_files as number) ?? 0}
-                onChange={(e) => {
-                  const max_files = parseInt(e.target.value, 10) || 0
-                  updateFieldConfig({ options: { ...field.field.options, max_files } })
-                }}
-                placeholder="0 = unlimited"
-                className="text-sm"
-              />
-              <p className="text-xs text-muted-foreground">
-                1 = single file, &gt;1 = multi (up to limit), 0 = unlimited
-              </p>
-            </div>
-          )}
-
-          {/* Replicator sets (fieldsets) */}
-          {field.field.type === 'replicator' && (
-            <ReplicatorSetsEditor
-              sets={(field.field.options?.sets as string[]) ?? []}
-              onChange={(sets) => updateFieldConfig({ options: { ...field.field.options, sets } })}
-            />
-          )}
-
-          {/* Validation rules */}
-          <div className="mt-4 space-y-1.5">
-            <Label className="text-xs">Validation Rules (one per line)</Label>
-            <textarea
-              value={(field.field.validate ?? []).join('\n')}
-              onChange={(e) => {
-                const validate = e.target.value.split('\n').filter(Boolean)
-                updateFieldConfig({ validate: validate.length > 0 ? validate : undefined })
-              }}
-              placeholder="max:255&#10;min:1"
-              rows={2}
-              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
-
-          {/* Move buttons */}
-          <div className="mt-3 flex items-center gap-2">
-            {onMoveUp && (
-              <Button variant="ghost" size="xs" onClick={onMoveUp}>
-                ↑ Move Up
-              </Button>
-            )}
-            {onMoveDown && (
-              <Button variant="ghost" size="xs" onClick={onMoveDown}>
-                ↓ Move Down
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// --- Replicator Sets Editor ---
-
-function ReplicatorSetsEditor({
-  sets,
-  onChange,
-}: {
-  sets: string[]
-  onChange: (sets: string[]) => void
-}) {
-  const [fieldsets, setFieldsets] = useState<string[]>([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    async function fetchFieldsets() {
-      try {
-        const res = await fetch('/api/fieldsets')
-        if (res.ok) {
-          const json = await res.json()
-          setFieldsets((json.data ?? []).map((f: { handle: string }) => f.handle))
-        }
-      } catch {
-        // fallback: try listing from known path
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchFieldsets()
-  }, [])
-
-  function toggleSet(handle: string) {
-    if (sets.includes(handle)) {
-      onChange(sets.filter((s) => s !== handle))
-    } else {
-      onChange([...sets, handle])
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="mt-4 space-y-1.5">
-        <Label className="text-xs">Sets (Fieldsets)</Label>
-        <div className="h-8 rounded bg-muted animate-pulse" />
-      </div>
-    )
-  }
-
-  return (
-    <div className="mt-4 space-y-1.5">
-      <Label className="text-xs">Sets (Fieldsets)</Label>
-      <p className="text-xs text-muted-foreground">
-        Select which fieldsets are available as block types in this replicator.
-      </p>
-      {fieldsets.length === 0 ? (
-        <p className="text-xs text-muted-foreground py-2">
-          No fieldsets found. Add YAML files to <code className="text-[11px]">resources/fieldsets/</code>.
-        </p>
-      ) : (
-        <div className="rounded-lg border divide-y mt-1">
-          {fieldsets.map((handle) => (
-            <button
-              key={handle}
-              type="button"
-              onClick={() => toggleSet(handle)}
-              className={`flex items-center justify-between w-full px-3 py-2 text-left text-sm transition-colors ${
-                sets.includes(handle) ? 'bg-accent' : 'hover:bg-accent/50'
-              }`}
-            >
-              <span className="font-medium">{handle}</span>
-              {sets.includes(handle) && (
-                <Badge variant="secondary" className="text-xs">selected</Badge>
-              )}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

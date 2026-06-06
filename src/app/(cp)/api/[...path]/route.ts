@@ -37,6 +37,8 @@ import { DefinitionLoader } from '@/lib/definitions/loader'
 import { ContentStore } from '@/lib/content/store'
 import { FileConfigWriter } from '@/lib/config/writer'
 import { initInvalidationEngine } from '@/lib/static-cache/instance'
+import { RuntimeSettingsService } from '@/lib/settings/runtime'
+import { MadoriConfigService } from '@/lib/settings/config'
 import type { User, CreateUserInput, UpdateUserInput } from '@/lib/auth/types'
 import type { ResourceType, Action } from '@/lib/auth/permissions'
 import { AuthenticationError, AuthorizationError as AuthorizationErr } from '@/lib/errors'
@@ -92,6 +94,8 @@ let collectionHandlers: ReturnType<typeof createCollectionHandlers>
 let definitionHandlers: ReturnType<typeof createDefinitionHandlers>
 let contentHandlers: ReturnType<typeof createContentHandlers>
 let dashboardHandlers: ReturnType<typeof createDashboardHandlers>
+let runtimeSettingsService: RuntimeSettingsService
+let madoriConfigService: MadoriConfigService
 let contentEngineInstance: MadoriContentEngine
 let blueprintRegistryInstance: BlueprintRegistry
 
@@ -241,6 +245,11 @@ async function initializeServices(): Promise<AuthService> {
 
   // Dashboard handler for recent activity
   dashboardHandlers = createDashboardHandlers(contentEngineInstance)
+
+  // Settings services
+  const settingsPath = path.join(resolvedConfig.contentPath, 'settings.yaml')
+  runtimeSettingsService = new RuntimeSettingsService(fs, parser, settingsPath)
+  madoriConfigService = new MadoriConfigService(path.join(process.cwd(), 'madori.config.ts'))
 
   // Initialize static cache invalidation engine
   initInvalidationEngine({
@@ -543,6 +552,20 @@ async function dispatch(
   }
 
   // --- Users ---
+
+  // GET /api/users/me — return current authenticated user profile
+  if (routePath === 'users/me' && method === 'GET') {
+    const handler = withAuth(
+      async (_req, context) => {
+        const { id, email, name, roles, createdAt, lastLogin, theme } = context.user
+        return NextResponse.json({
+          data: { id, email, name, roles, createdAt, lastLogin, theme: theme ?? 'light' },
+        })
+      }
+    )
+    return handler(request, authService, pathSegments)
+  }
+
   if (routePath === 'users' && method === 'GET') {
     const handler = withAuth(withPermission('users', 'view')(
       async () => userHandlers.handleListUsers()
@@ -577,6 +600,20 @@ async function dispatch(
     const userId = pathSegments[1]
     const handler = withAuth(withPermission('users', 'delete')(
       async (req) => userHandlers.handleDeleteUser(req, userId)
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
+  // POST /api/users/{id}/password — change password (validates current password)
+  if (
+    pathSegments[0] === 'users' &&
+    pathSegments.length === 3 &&
+    pathSegments[2] === 'password' &&
+    method === 'POST'
+  ) {
+    const userId = pathSegments[1]
+    const handler = withAuth(withPermission('users', 'edit')(
+      async (req) => userHandlers.handleChangePassword(req, userId)
     ))
     return handler(request, authService, pathSegments)
   }
@@ -749,6 +786,57 @@ async function dispatch(
     const handle = pathSegments[1]
     const handler = withAuth(withPermission('forms', 'view')(
       async (req) => formHandlers.handleExportJson(req, handle)
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
+  // --- Settings ---
+  // GET /api/settings/runtime — read runtime settings
+  if (routePath === 'settings/runtime' && method === 'GET') {
+    const handler = withAuth(withPermission('globals', 'view')(
+      async () => {
+        const settings = await runtimeSettingsService.read()
+        return NextResponse.json({ data: settings })
+      }
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
+  // PUT /api/settings/runtime — write runtime settings
+  if (routePath === 'settings/runtime' && method === 'PUT') {
+    const handler = withAuth(withPermission('globals', 'edit')(
+      async (req) => {
+        const body = await req.json()
+        await runtimeSettingsService.write(body)
+        return NextResponse.json({ data: body, success: true })
+      }
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
+  // GET /api/settings/config — read madori config values
+  if (routePath === 'settings/config' && method === 'GET') {
+    const handler = withAuth(withPermission('globals', 'view')(
+      async () => {
+        const config = await madoriConfigService.read()
+        return NextResponse.json({ data: config })
+      }
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
+  // PUT /api/settings/config — write madori config values (restart required)
+  if (routePath === 'settings/config' && method === 'PUT') {
+    const handler = withAuth(withPermission('globals', 'edit')(
+      async (req) => {
+        const body = await req.json()
+        const validation = await madoriConfigService.validate(body)
+        if (!validation.valid) {
+          return jsonError('VALIDATION_ERROR', 'Config validation failed', 422, validation.errors)
+        }
+        await madoriConfigService.write(body)
+        return NextResponse.json({ data: body, success: true, restartRequired: true })
+      }
     ))
     return handler(request, authService, pathSegments)
   }

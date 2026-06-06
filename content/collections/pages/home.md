@@ -3,7 +3,7 @@ title: Home
 slug: home
 status: published
 createdAt: 2026-06-03T08:15:33.462Z
-updatedAt: 2026-06-04T12:40:15.787Z
+updatedAt: 2026-06-06T20:11:30.885Z
 template: home
 order: 1
 meta_title: MADORI — The flat-file CMS for React

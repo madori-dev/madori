@@ -408,6 +408,7 @@ export class MadoriContentEngine implements ContentEngine {
       collection,
       createdAt: existing.createdAt,
       updatedAt: now,
+      contentHash: computeContentHash(fileContent),
     }
 
     return entry

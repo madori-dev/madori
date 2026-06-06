@@ -5,6 +5,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      '@madori/lib': path.resolve(__dirname, './src/lib'),
+      '@madori/sdk': path.resolve(__dirname, './packages/madori-sdk/src/index.ts'),
     },
   },
   test: {

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist_Mono, BIZ_UDPGothic, Josefin_Sans } from "next/font/google";
-import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 const bizUDPGothic = BIZ_UDPGothic({
@@ -50,15 +49,8 @@ export default function RootLayout({
       className={`${bizUDPGothic.variable} ${josefinSans.variable} ${geistMono.variable} antialiased`}
       suppressHydrationWarning
     >
-      <body className="min-h-svh">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-        </ThemeProvider>
+      <body className="min-h-svh bg-background text-foreground">
+        {children}
       </body>
     </html>
   );

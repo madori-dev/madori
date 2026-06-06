@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Plus, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -19,6 +19,10 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
+import { ListSkeleton } from '@/components/cp/ListSkeleton'
+import { FieldRenderer } from '@/components/cp/fields/FieldRenderer'
+import { getAllFields, getDefaultsFromBlueprint } from '@/lib/blueprints/defaults'
+import type { Blueprint, FieldDefinition } from '@/lib/blueprints/types'
 
 export default function CreateTermPage() {
   const params = useParams()
@@ -27,9 +31,50 @@ export default function CreateTermPage() {
 
   const [slug, setSlug] = useState('')
   const [title, setTitle] = useState('')
+  const [blueprintFields, setBlueprintFields] = useState<FieldDefinition[]>([])
+  const [blueprintFormData, setBlueprintFormData] = useState<Record<string, unknown>>({})
   const [fields, setFields] = useState<{ key: string; value: string }[]>([])
   const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function loadBlueprint() {
+      try {
+        const res = await fetch(`/api/blueprints/taxonomies/${handle}`)
+        if (res.ok) {
+          const json = await res.json()
+          const bp = json.data as Blueprint | undefined
+          if (bp) {
+            const allFields = getAllFields(bp)
+            // Filter out slug and title as those are handled separately
+            const customFields = allFields.filter(
+              (f) => !['slug', 'title'].includes(f.handle)
+            )
+            setBlueprintFields(customFields)
+            const defaults = getDefaultsFromBlueprint(bp)
+            // Only keep defaults for custom fields
+            const customDefaults: Record<string, unknown> = {}
+            for (const f of customFields) {
+              if (defaults[f.handle] !== undefined) {
+                customDefaults[f.handle] = defaults[f.handle]
+              }
+            }
+            setBlueprintFormData(customDefaults)
+          }
+        }
+      } catch {
+        // Blueprint loading is optional — form still works with manual fields
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadBlueprint()
+  }, [handle])
+
+  function handleBlueprintFieldChange(fieldHandle: string, value: unknown) {
+    setBlueprintFormData((prev) => ({ ...prev, [fieldHandle]: value }))
+  }
 
   function addField() {
     setFields([...fields, { key: '', value: '' }])
@@ -50,6 +95,13 @@ export default function CreateTermPage() {
 
     try {
       const data: Record<string, unknown> = { slug, title }
+
+      // Include blueprint field values
+      for (const [key, value] of Object.entries(blueprintFormData)) {
+        data[key] = value
+      }
+
+      // Include manual key-value fields
       for (const field of fields) {
         if (field.key.trim()) {
           try {
@@ -83,6 +135,8 @@ export default function CreateTermPage() {
       setSaving(false)
     }
   }
+
+  if (loading) return <ListSkeleton rows={3} />
 
   return (
     <div className="space-y-6">
@@ -144,6 +198,21 @@ export default function CreateTermPage() {
               />
             </div>
 
+            {/* Blueprint-defined custom fields */}
+            {blueprintFields.length > 0 && (
+              <div className="space-y-4">
+                {blueprintFields.map((fieldDef) => (
+                  <FieldRenderer
+                    key={fieldDef.handle}
+                    fieldDefinition={fieldDef}
+                    value={blueprintFormData[fieldDef.handle]}
+                    onChange={(value) => handleBlueprintFieldChange(fieldDef.handle, value)}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* Manual additional fields (fallback when no blueprint or for extra data) */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label>Additional Fields</Label>
@@ -158,11 +227,11 @@ export default function CreateTermPage() {
                 </Button>
               </div>
 
-              {fields.length === 0 ? (
+              {fields.length === 0 && blueprintFields.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   No additional fields. Click &quot;Add field&quot; to add key-value data.
                 </p>
-              ) : (
+              ) : fields.length === 0 ? null : (
                 <div className="space-y-2">
                   {fields.map((field, index) => (
                     <div key={index} className="flex items-center gap-2">
