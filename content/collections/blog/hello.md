@@ -1,0 +1,1 @@
+content of content/collections/blog/hello.md

@@ -1,8 +1,12 @@
 <p align="center">
-  <img src="public/madori_logo.svg" alt="Madori" width="200" />
+  <a href="https://madori.dev">
+    <img src="public/madori_logo.svg" alt="Madori" width="250" />
+  </a>
 </p>
 
-# MADORI
+<a href="https://madori.dev">
+  <h1>MADORI</h1>
+</a>
 
 A flat-file CMS for React/Next.js applications. Inspired by Statamic, powered by TypeScript.
 

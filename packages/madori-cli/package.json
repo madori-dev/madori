@@ -10,12 +10,26 @@
     "build": "tsc",
     "dev": "tsx src/index.ts"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",
-    "commander": "^13.0.0"
+    "archiver": "^8.0.0",
+    "commander": "^13.0.0",
+    "extract-zip": "^2.0.1",
+    "gray-matter": "^4.0.3",
+    "sax": "^1.6.0",
+    "simple-git": "^3.36.0",
+    "tar": "^7.5.16",
+    "turndown": "^7.2.4",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/archiver": "^7.0.0",
+    "@types/sax": "^1.2.7",
+    "@types/turndown": "^5.0.6",
     "tsx": "^4.22.3",
     "typescript": "^5.0.0"
   }
