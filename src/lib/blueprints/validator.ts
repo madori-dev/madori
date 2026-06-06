@@ -58,7 +58,7 @@ const BlueprintSectionSchema = z.object({
 const BlueprintTabSchema = z.object({
   display: z.string().optional(),
   sections: z.record(z.string(), BlueprintSectionSchema).optional(),
-  fields: z.array(FieldDefinitionSchema),
+  fields: z.array(FieldDefinitionSchema).default([]),
 })
 
 const BlueprintSchema = z.object({

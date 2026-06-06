@@ -53,7 +53,7 @@ export class MadoriConfigService {
     }
 
     // Re-serialise the config preserving file structure
-    const updated = rewriteConfigFile(content, merged)
+    const updated = rewriteConfigFile(content, merged as MadoriConfig)
     await fs.writeFile(absolutePath, updated, 'utf-8')
   }
 

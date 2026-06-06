@@ -56,6 +56,7 @@ export interface FieldConfigSheetProps {
 
 export function FieldConfigSheet({ open, onOpenChange, field, onSave }: FieldConfigSheetProps) {
   const [handle, setHandle] = useState('')
+  const [handleManuallyEdited, setHandleManuallyEdited] = useState(false)
   const [display, setDisplay] = useState('')
   const [type, setType] = useState<FieldType>('text')
   const [required, setRequired] = useState(false)
@@ -64,6 +65,14 @@ export function FieldConfigSheet({ open, onOpenChange, field, onSave }: FieldCon
   const [instructions, setInstructions] = useState('')
   const [validate, setValidate] = useState('')
   const [fieldOptions, setFieldOptions] = useState<Record<string, unknown>>({})
+
+  /** Convert a display name to a snake_case handle */
+  function toHandle(displayName: string): string {
+    return displayName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '')
+  }
 
   // Re-initialize local state when a new field is opened
   useEffect(() => {
@@ -77,6 +86,8 @@ export function FieldConfigSheet({ open, onOpenChange, field, onSave }: FieldCon
       setInstructions(field.field.instructions ?? '')
       setValidate(field.field.validate?.join(', ') ?? '')
       setFieldOptions(field.field.options ?? {})
+      // If the field already has a handle, consider it manually set
+      setHandleManuallyEdited(!!field.handle)
     } else {
       resetState()
     }
@@ -84,6 +95,7 @@ export function FieldConfigSheet({ open, onOpenChange, field, onSave }: FieldCon
 
   function resetState() {
     setHandle('')
+    setHandleManuallyEdited(false)
     setDisplay('')
     setType('text')
     setRequired(false)
@@ -172,20 +184,6 @@ export function FieldConfigSheet({ open, onOpenChange, field, onSave }: FieldCon
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4 px-4 py-2">
-          {/* Handle */}
-          <div className="space-y-1.5">
-            <Label htmlFor="field-handle" className="text-xs font-medium">
-              Handle
-            </Label>
-            <Input
-              id="field-handle"
-              value={handle}
-              onChange={(e) => setHandle(e.target.value)}
-              placeholder="field_handle"
-              className="h-8 text-sm"
-            />
-          </div>
-
           {/* Display Name */}
           <div className="space-y-1.5">
             <Label htmlFor="field-display" className="text-xs font-medium">
@@ -194,8 +192,32 @@ export function FieldConfigSheet({ open, onOpenChange, field, onSave }: FieldCon
             <Input
               id="field-display"
               value={display}
-              onChange={(e) => setDisplay(e.target.value)}
+              onChange={(e) => {
+                const newDisplay = e.target.value
+                setDisplay(newDisplay)
+                // Auto-generate handle from display name if not manually edited
+                if (!handleManuallyEdited) {
+                  setHandle(toHandle(newDisplay))
+                }
+              }}
               placeholder="Display Name"
+              className="h-8 text-sm"
+            />
+          </div>
+
+          {/* Handle */}
+          <div className="space-y-1.5">
+            <Label htmlFor="field-handle" className="text-xs font-medium">
+              Handle
+            </Label>
+            <Input
+              id="field-handle"
+              value={handle}
+              onChange={(e) => {
+                setHandle(e.target.value)
+                setHandleManuallyEdited(true)
+              }}
+              placeholder="field_handle"
               className="h-8 text-sm"
             />
           </div>

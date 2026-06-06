@@ -73,7 +73,7 @@ export default function DefinitionForm({ entityType, mode, handle, listPath, tit
   const [submitting, setSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string[]>>({})
   const [generalError, setGeneralError] = useState<string | null>(null)
-  const [createNewBlueprint, setCreateNewBlueprint] = useState(false)
+  const [createNewBlueprint, setCreateNewBlueprint] = useState(mode === 'create')
   const [collectionOptions, setCollectionOptions] = useState<MultiSelectOption[]>([])
 
   // Fetch available collections for the multi-select picker

@@ -129,9 +129,7 @@ export class BlueprintLoader {
     for (const [tabKey, tab] of Object.entries(blueprint.tabs)) {
       const tabOutput: Record<string, unknown> = {}
       if (tab.display) tabOutput.display = tab.display
-      if (tab.fields.length > 0) {
-        tabOutput.fields = tab.fields.map((f) => this.serializeField(f))
-      }
+      tabOutput.fields = tab.fields.map((f) => this.serializeField(f))
       if (tab.sections) {
         tabOutput.sections = {}
         for (const [secKey, sec] of Object.entries(tab.sections)) {

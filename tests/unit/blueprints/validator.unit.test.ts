@@ -97,14 +97,13 @@ describe('BlueprintValidator — edge cases', () => {
       expect(result.errors.some((e) => e.code === 'MISSING_PROPERTY')).toBe(true)
     })
 
-    it('fails when fields array is missing from a tab', () => {
+    it('succeeds when fields array is missing from a tab (defaults to empty)', () => {
       const result = validator.validate({
         tabs: {
           main: { display: 'Main' },
         },
       })
-      expect(result.success).toBe(false)
-      expect(result.errors.length).toBeGreaterThan(0)
+      expect(result.success).toBe(true)
     })
 
     it('fails when field handle is empty string', () => {
