@@ -12,6 +12,7 @@ import { renderTipTapToHtml } from '@/lib/editor/renderer'
 import { BlockRenderer } from '@/components/blocks'
 import { SiteLayout } from '@/components/site/SiteLayout'
 import { DocsLayout } from '@/components/site/DocsLayout'
+import { DownloadMarkdown } from '@/components/site/DownloadMarkdown'
 import type { TipTapDocument } from '@/lib/editor/types'
 
 interface Block {
@@ -93,6 +94,11 @@ export default async function DynamicPage({ params }: PageProps) {
 
       {html && (
         <div className={isDocsPage ? '' : 'mx-auto max-w-3xl px-6 py-16'}>
+          {isDocsPage && (
+            <div className="flex justify-end mb-4">
+              <DownloadMarkdown />
+            </div>
+          )}
           <div
             className="prose dark:prose-invert max-w-none"
             dangerouslySetInnerHTML={{ __html: html }}
