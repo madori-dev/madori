@@ -96,6 +96,9 @@ export class TypeGenerator implements TypeGeneratorInterface {
       case 'replicator':
         return this.buildReplicatorType(field)
 
+      case 'blocks':
+        return this.buildReplicatorType(field)
+
       case 'grid':
         return this.buildGridType(field)
 

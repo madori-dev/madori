@@ -94,6 +94,9 @@ export class SchemaGenerator implements SchemaGeneratorInterface {
       case 'replicator':
         return this.buildReplicatorZod(field)
 
+      case 'blocks':
+        return this.buildReplicatorZod(field)
+
       case 'grid':
         return this.buildGridZod(field)
 

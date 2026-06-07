@@ -4,13 +4,12 @@ fields:
       type: text
       display: Title
       required: true
-
   - handle: subtitle
     field:
       type: text
       display: Subtitle
-
   - handle: content
     field:
       type: markdown
       display: Content
+is_block: true

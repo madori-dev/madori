@@ -3,12 +3,10 @@ fields:
     field:
       type: text
       display: Title
-
   - handle: subtitle
     field:
       type: text
       display: Subtitle
-
   - handle: features
     field:
       type: replicator
@@ -16,3 +14,4 @@ fields:
       options:
         sets:
           - feature_item
+is_block: true

@@ -26,6 +26,19 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -117,13 +130,11 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
 
   useEffect(() => {
     async function loadFieldsets() {
-      if (configuredSets.length === 0) {
-        setLoading(false)
-        return
-      }
-
       try {
         const results: FieldsetData[] = []
+        const loadedHandles = new Set<string>()
+
+        // Load explicitly configured sets first
         for (const handle of configuredSets) {
           const res = await fetch(`/api/fieldsets/${handle}`)
           if (res.ok) {
@@ -132,8 +143,29 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
               (f: { field?: unknown }) => f.field
             )
             results.push({ handle, fields })
+            loadedHandles.add(handle)
           }
         }
+
+        // Also load all fieldsets marked as blocks
+        const listRes = await fetch('/api/fieldsets')
+        if (listRes.ok) {
+          const listJson = await listRes.json()
+          const blockFieldsets = (listJson.data ?? []).filter(
+            (f: { handle: string; is_block?: boolean }) => f.is_block && !loadedHandles.has(f.handle)
+          )
+          for (const { handle } of blockFieldsets) {
+            const res = await fetch(`/api/fieldsets/${handle}`)
+            if (res.ok) {
+              const json = await res.json()
+              const fields = (json.data?.fields ?? []).filter(
+                (f: { field?: unknown }) => f.field
+              )
+              results.push({ handle, fields })
+            }
+          }
+        }
+
         setFieldsets(results)
       } catch {
         // Fieldsets failed to load — fallback to raw mode
@@ -227,8 +259,8 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
     ? fieldsets.find((f) => f.handle === activeBlock._type)
     : undefined
 
-  // No sets configured
-  if (configuredSets.length === 0) {
+  // No sets configured and no block fieldsets loaded
+  if (fieldsets.length === 0 && configuredSets.length === 0) {
     return (
       <div className="flex flex-col gap-1">
         {field.display && (
@@ -242,7 +274,7 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
             No fieldsets configured for this replicator.
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Edit the blueprint to assign fieldsets as block types.
+            Edit the blueprint to assign fieldsets as block types, or mark fieldsets as blocks.
           </p>
         </div>
       </div>
@@ -315,20 +347,24 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
       )}
 
       {/* Add block buttons */}
-      <div className="flex flex-wrap gap-2">
-        {fieldsets.map((fs) => (
-          <Button
-            key={fs.handle}
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => addBlock(fs.handle)}
-          >
-            <Plus className="size-3.5" />
-            {fs.handle}
-          </Button>
-        ))}
-      </div>
+      {fieldsets.length <= 5 ? (
+        <div className="flex flex-wrap gap-2">
+          {fieldsets.map((fs) => (
+            <Button
+              key={fs.handle}
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => addBlock(fs.handle)}
+            >
+              <Plus className="size-3.5" />
+              {fs.handle}
+            </Button>
+          ))}
+        </div>
+      ) : (
+        <AddBlockPopover fieldsets={fieldsets} onAddBlock={addBlock} />
+      )}
 
       {/* Errors */}
       {error && error.length > 0 && (
@@ -538,6 +574,52 @@ function SortableBlockOverlay({ block, fieldset }: SortableBlockOverlayProps) {
         </div>
       </div>
     </Card>
+  )
+}
+
+// ─── Add Block Popover ───────────────────────────────────────────────────────
+
+interface AddBlockPopoverProps {
+  fieldsets: FieldsetData[]
+  onAddBlock: (type: string) => void
+}
+
+function AddBlockPopover({ fieldsets, onAddBlock }: AddBlockPopoverProps) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button type="button" variant="outline" size="sm">
+            <Plus className="size-3.5" />
+            Add Block
+          </Button>
+        }
+      />
+      <PopoverContent className="w-64 p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search blocks..." />
+          <CommandList>
+            <CommandEmpty>No blocks found.</CommandEmpty>
+            <CommandGroup>
+              {fieldsets.map((fs) => (
+                <CommandItem
+                  key={fs.handle}
+                  value={fs.handle}
+                  onSelect={() => {
+                    onAddBlock(fs.handle)
+                    setOpen(false)
+                  }}
+                >
+                  {fs.handle}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
 }
 

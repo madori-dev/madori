@@ -15,6 +15,7 @@ import { EntriesField } from './EntriesField'
 import { TaxonomyField } from './TaxonomyField'
 import { ReplicatorField } from './ReplicatorField'
 import { GridField } from './GridField'
+import { BlocksField } from './BlocksField'
 import { YamlField } from './YamlField'
 import { CodeField } from './CodeField'
 import { HiddenField } from './HiddenField'
@@ -44,6 +45,7 @@ const fieldComponentMap: Record<FieldType, FieldComponent> = {
   taxonomy: TaxonomyField,
   replicator: ReplicatorField,
   grid: GridField,
+  blocks: BlocksField,
   yaml: YamlField,
   code: CodeField,
   hidden: HiddenField,

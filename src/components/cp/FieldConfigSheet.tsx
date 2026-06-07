@@ -45,6 +45,7 @@ const FIELD_TYPES: FieldType[] = [
   'taxonomy',
   'replicator',
   'grid',
+  'blocks',
 ]
 
 export interface FieldConfigSheetProps {

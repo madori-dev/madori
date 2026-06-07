@@ -166,6 +166,9 @@ export class BlueprintRegistry {
       case 'replicator':
         return z.array(z.record(z.string(), z.unknown()))
 
+      case 'blocks':
+        return z.array(z.record(z.string(), z.unknown()))
+
       case 'grid':
         return z.array(z.record(z.string(), z.unknown()))
 

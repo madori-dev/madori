@@ -6,3 +6,5 @@ items:
   - label: GitHub
     url: https://github.com/madori-dev/madori
     external: true
+  - label: Product Hunt
+    url: https://www.producthunt.com/products/madori?launch=madori

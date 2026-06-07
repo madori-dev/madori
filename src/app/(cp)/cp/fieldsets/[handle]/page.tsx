@@ -16,6 +16,7 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -57,6 +58,7 @@ const FIELD_TYPES: { value: FieldType; label: string }[] = [
   { value: 'taxonomy', label: 'Taxonomy' },
   { value: 'replicator', label: 'Replicator' },
   { value: 'grid', label: 'Grid' },
+  { value: 'blocks', label: 'Blocks' },
   { value: 'yaml', label: 'YAML' },
   { value: 'code', label: 'Code' },
   { value: 'hidden', label: 'Hidden' },
@@ -68,6 +70,8 @@ export default function FieldsetEditorPage() {
   const handle = params.handle as string
 
   const [fields, setFields] = useState<FieldDefinition[]>([])
+  const [isBlock, setIsBlock] = useState(false)
+  const [displayName, setDisplayName] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -80,6 +84,8 @@ export default function FieldsetEditorPage() {
         if (res.ok) {
           const json = await res.json()
           setFields(json.data?.fields ?? [])
+          setIsBlock(json.data?.is_block ?? false)
+          setDisplayName(json.data?.display ?? '')
         } else if (res.status === 404) {
           setFields([])
         } else {
@@ -98,10 +104,14 @@ export default function FieldsetEditorPage() {
     setSaving(true)
     setError(null)
     try {
+      const body: Record<string, unknown> = { fields, is_block: isBlock }
+      if (displayName.trim()) {
+        body.display = displayName.trim()
+      }
       const res = await fetch(`/api/fieldsets/${handle}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields }),
+        body: JSON.stringify(body),
       })
       if (!res.ok) {
         const json = await res.json().catch(() => null)
@@ -114,7 +124,7 @@ export default function FieldsetEditorPage() {
     } finally {
       setSaving(false)
     }
-  }, [handle, fields])
+  }, [handle, fields, isBlock, displayName])
 
   function addField() {
     setFields([...fields, { handle: '', field: { type: 'text' } }])
@@ -173,6 +183,41 @@ export default function FieldsetEditorPage() {
       </div>
 
       {error && <ErrorAlert message={error} />}
+
+      {/* Block availability settings */}
+      <Card className="p-4">
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="fieldset-display" className="text-xs font-medium">
+              Display Name
+            </Label>
+            <Input
+              id="fieldset-display"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder={handle.replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+              className="h-8 text-sm"
+            />
+            <p className="text-xs text-muted-foreground">
+              Human-readable name shown in the block picker. Defaults to the handle if empty.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="fieldset-is-block"
+              checked={isBlock}
+              onCheckedChange={(checked) => setIsBlock(checked === true)}
+            />
+            <Label htmlFor="fieldset-is-block" className="text-sm font-medium cursor-pointer">
+              Available as block
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-2 ml-6">
+            When enabled, this fieldset appears in the block picker for Replicator fields configured to use blocks.
+          </p>
+        </div>
+      </Card>
 
       <Card className="p-0 overflow-hidden">
         <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3">

@@ -2,6 +2,7 @@ import { HeroBlock } from './HeroBlock'
 import { BasicCtaBlock } from './BasicCtaBlock'
 import { FeaturesGridBlock } from './FeaturesGridBlock'
 import { AboutTheCreatorBlock } from './AboutTheCreatorBlock'
+import { HtmlEmbedBlock } from './HtmlEmbedBlock'
 
 interface Block {
   _type: string
@@ -59,6 +60,15 @@ export function BlockRenderer({ blocks }: BlockRendererProps) {
                 title={props.title as string}
                 subtitle={props.subtitle as string | undefined}
                 content={props.content as string | undefined}
+              />
+            )
+            break
+
+          case 'html_embed':
+            content = (
+              <HtmlEmbedBlock
+                html={props.html as string}
+                caption={props.caption as string | undefined}
               />
             )
             break

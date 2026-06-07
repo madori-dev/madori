@@ -25,7 +25,7 @@ export interface BlueprintValidationWarning {
 const FieldTypeSchema = z.enum([
   'text', 'slug', 'markdown', 'tiptap', 'number', 'toggle',
   'select', 'multiselect', 'date', 'asset', 'entries',
-  'taxonomy', 'replicator', 'grid', 'yaml', 'code', 'hidden',
+  'taxonomy', 'replicator', 'grid', 'blocks', 'yaml', 'code', 'hidden',
 ])
 
 const VisibilityConditionSchema = z.object({
@@ -93,7 +93,7 @@ export class BlueprintValidator {
     this.validFieldTypes = new Set([
       'text', 'slug', 'markdown', 'tiptap', 'number', 'toggle',
       'select', 'multiselect', 'date', 'asset', 'entries',
-      'taxonomy', 'replicator', 'grid', 'yaml', 'code', 'hidden',
+      'taxonomy', 'replicator', 'grid', 'blocks', 'yaml', 'code', 'hidden',
     ])
 
     this.validRuleNames = new Set([

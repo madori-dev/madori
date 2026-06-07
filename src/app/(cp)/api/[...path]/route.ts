@@ -892,15 +892,26 @@ async function dispatch(
     const handler = withAuth(withPermission('collections', 'view')(
       async () => {
         const fs = new NodeFileSystemAdapter()
+        const parser = new MarkdownYamlParser()
         const fieldsetsDir = path.join(process.cwd(), 'resources', 'fieldsets')
         const exists = await fs.exists(fieldsetsDir)
         if (!exists) {
           return NextResponse.json({ data: [] })
         }
         const files = await fs.listFiles(fieldsetsDir, '*.yaml')
-        const data = files.map((f) => ({
-          handle: path.basename(f, path.extname(f)),
-        }))
+        const data = await Promise.all(
+          files.map(async (f) => {
+            const handle = path.basename(f, path.extname(f))
+            const filePath = path.join(fieldsetsDir, f)
+            const content = await fs.readFile(filePath)
+            const parsed = parser.parseYaml<{ is_block?: boolean; display?: string }>(content)
+            return {
+              handle,
+              is_block: parsed.is_block ?? false,
+              display: parsed.display ?? undefined,
+            }
+          })
+        )
         return NextResponse.json({ data })
       }
     ))
@@ -920,8 +931,15 @@ async function dispatch(
           return jsonError('NOT_FOUND', `Fieldset "${handle}" not found`, 404)
         }
         const content = await fs.readFile(filePath)
-        const parsed = parser.parseYaml<{ fields: unknown[] }>(content)
-        return NextResponse.json({ data: { handle, fields: parsed.fields ?? [] } })
+        const parsed = parser.parseYaml<{ fields: unknown[]; is_block?: boolean; display?: string }>(content)
+        return NextResponse.json({
+          data: {
+            handle,
+            fields: parsed.fields ?? [],
+            is_block: parsed.is_block ?? false,
+            display: parsed.display ?? undefined,
+          },
+        })
       }
     ))
     return handler(request, authService, pathSegments)
@@ -941,9 +959,18 @@ async function dispatch(
         const dir = path.join(process.cwd(), 'resources', 'fieldsets')
         await fs.mkdir(dir)
         const filePath = path.join(dir, `${handle}.yaml`)
-        const content = parser.serializeYaml({ fields: body.fields })
+        const yamlData: Record<string, unknown> = { fields: body.fields }
+        if (body.is_block) {
+          yamlData.is_block = true
+        }
+        if (body.display) {
+          yamlData.display = body.display
+        }
+        const content = parser.serializeYaml(yamlData)
         await fs.writeFile(filePath, content)
-        return NextResponse.json({ data: { handle, fields: body.fields } })
+        return NextResponse.json({
+          data: { handle, fields: body.fields, is_block: body.is_block ?? false, display: body.display ?? undefined },
+        })
       }
     ))
     return handler(request, authService, pathSegments)

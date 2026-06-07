@@ -13,6 +13,7 @@ export type FieldType =
   | 'taxonomy'
   | 'replicator'
   | 'grid'
+  | 'blocks'
   | 'yaml'
   | 'code'
   | 'hidden'

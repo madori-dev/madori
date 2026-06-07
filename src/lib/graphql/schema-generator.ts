@@ -49,6 +49,7 @@ function fieldTypeToGraphQL(fieldDef: FieldDefinition, replicatorType?: GraphQLO
 
     case 'replicator':
     case 'grid':
+    case 'blocks':
       return replicatorType ?? GraphQLString
 
     case 'number': {
@@ -289,7 +290,7 @@ export class SchemaGeneratorImpl implements SchemaGenerator {
     parentTypeName: string,
     fieldDef: FieldDefinition
   ): GraphQLOutputType | undefined {
-    if (fieldDef.field.type !== 'replicator' && fieldDef.field.type !== 'grid') {
+    if (fieldDef.field.type !== 'replicator' && fieldDef.field.type !== 'grid' && fieldDef.field.type !== 'blocks') {
       return undefined
     }
 

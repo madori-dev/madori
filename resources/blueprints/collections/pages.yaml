@@ -11,14 +11,8 @@ tabs:
           type: slug
       - handle: blocks
         field:
-          type: replicator
+          type: blocks
           display: Blocks
-          options:
-            sets:
-              - hero
-              - basic_cta
-              - features_grid
-              - about_the_creator
   seo:
     display: SEO
     fields:

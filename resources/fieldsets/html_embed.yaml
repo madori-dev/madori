@@ -1,0 +1,14 @@
+is_block: true
+display: HTML Embed
+fields:
+  - handle: html
+    field:
+      type: code
+      display: HTML Code
+      required: true
+      options:
+        language: html
+  - handle: caption
+    field:
+      type: text
+      display: Caption
