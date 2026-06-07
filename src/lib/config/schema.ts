@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AiConfigSchema, McpConfigSchema } from '@/lib/ai/schema'
 
 /**
  * @deprecated CollectionConfigSchema is retained for backward compatibility
@@ -120,6 +121,9 @@ export const MadoriConfigSchema = z.object({
     warmOnInvalidate: false,
     invalidationRules: [],
   }),
+
+  ai: AiConfigSchema.optional(),
+  mcp: McpConfigSchema.optional(),
 })
 
 export type MadoriConfig = z.infer<typeof MadoriConfigSchema>

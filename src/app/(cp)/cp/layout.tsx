@@ -13,6 +13,7 @@ import {
   Users,
   FileCode2,
   Layers,
+  Bot,
 } from 'lucide-react'
 
 import {
@@ -70,6 +71,7 @@ const navGroups = [
     label: 'System',
     items: [
       { label: 'Users', href: '/cp/users', icon: Users },
+      { label: 'AI', href: '/cp/ai', icon: Bot },
     ],
   },
 ]
