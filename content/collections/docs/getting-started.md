@@ -3,7 +3,7 @@ title: Getting Started
 slug: getting-started
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-06-07T09:00:00.000Z
 ---
 
 # Getting Started
@@ -47,6 +47,8 @@ Scaffold a complete MADORI project:
 ```bash
 pnpm dlx create-madori-app@latest my-site
 ```
+
+You can optionally choose a starter template during scaffolding. Available starters: `marketing`, `blog`, `documentation`, `saas`, `agency`. These provide pre-configured collections, blueprints, and navigation for common project types.
 
 This creates a `my-site` directory with all CMS files, blueprints, and configuration ready to go.
 
@@ -147,7 +149,7 @@ Now that you have a working project with content, here are common next steps:
 
 ### Customise your blueprint
 
-Add more field types to capture richer content — images, dates, select options, and rich text editors. See the [Field Types](/docs/field-types) reference for all 17 types.
+Add more field types to capture richer content — images, dates, select options, and rich text editors. See the [Field Types](/docs/field-types) reference for all 18 types.
 
 ### Add validation
 
@@ -169,7 +171,17 @@ Add tags or categories to group entries. See [Taxonomies](/docs/taxonomies) for 
 
 ### Build page layouts
 
-Use Replicator fields with [Fieldsets](/docs/fieldsets) to let editors compose flexible page layouts from reusable blocks.
+Use Replicator fields with [Fieldsets](/docs/fieldsets) to let editors compose flexible page layouts from reusable blocks. Or use the simpler `blocks` field type which auto-discovers all fieldsets marked with `is_block: true`.
+
+### Generate a typed SDK
+
+Run the code generator to get full TypeScript types and a typed client from your blueprints:
+
+```bash
+pnpm madori generate
+```
+
+This creates typed interfaces, Zod schemas, and a GraphQL SDK at `.madori/generated/`. See the [CLI](/docs/cli) reference for details.
 
 ---
 
@@ -177,8 +189,9 @@ Use Replicator fields with [Fieldsets](/docs/fieldsets) to let editors compose f
 
 - [Blueprints](/docs/blueprints) — tabs, sections, visibility conditions, and validation rules
 - [Collections](/docs/collections) — routes, sorting, filtering, and multiple blueprints
-- [Field Types](/docs/field-types) — all 17 field types with configuration options
+- [Field Types](/docs/field-types) — all 18 field types with configuration options
 - [GraphQL](/docs/graphql) — auto-generated schema, queries, and client library usage
+- [CLI](/docs/cli) — scaffolding, migrations, code generation, and portability commands
 - [Assets](/docs/assets) — uploading, organising, and selecting media files
 - [Navigation](/docs/navigation) — managing site navigation structures
 - [Forms](/docs/forms) — collecting submissions with validation and export

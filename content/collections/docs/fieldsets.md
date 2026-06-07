@@ -3,7 +3,7 @@ title: Fieldsets
 slug: fieldsets
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-06-07T09:00:00.000Z
 ---
 
 # Fieldsets
@@ -26,6 +26,7 @@ Fieldsets live at `resources/fieldsets/{handle}.yaml`. The handle is used to ref
 |----------|------|----------|-------------|
 | `fields` | `FieldConfig[]` | Yes | Array of field definitions (same format as blueprint fields) |
 | `display` | `string` | No | Display name shown in the Replicator block picker. Auto-generated from handle if omitted |
+| `is_block` | `boolean` | No | When `true`, the fieldset is automatically available in `blocks` fields without explicit configuration |
 
 ### Field Configuration
 
@@ -63,6 +64,7 @@ All [field types](/docs/field-types) and [validation rules](/docs/blueprints#val
 
 ```yaml
 # resources/fieldsets/hero.yaml
+is_block: true
 fields:
   - handle: title
     field:
@@ -97,6 +99,20 @@ fields:
       validate:
         - url
 ```
+
+### Using Fieldsets as Blocks
+
+Fieldsets with `is_block: true` are automatically available when using the `blocks` field type:
+
+```yaml
+# In a blueprint — no sets configuration needed
+- handle: page_content
+  field:
+    type: blocks
+    display: Page Content
+```
+
+All fieldsets marked `is_block: true` become available block types. This is the simplest way to build page builders — just add a `blocks` field and create block fieldsets.
 
 ### Using Fieldsets in Replicators
 

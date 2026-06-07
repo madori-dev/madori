@@ -3,7 +3,7 @@ title: GraphQL API
 slug: graphql
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-06-07T09:00:00.000Z
 ---
 
 # GraphQL API
@@ -68,7 +68,7 @@ Every collection type includes these built-in fields:
 | `number` | `Float` (or `Int` with `options.integer: true`) |
 | `toggle` | `Boolean` |
 | `multiselect`, `entries`, `taxonomy`, `asset` (multiple) | `[String]` |
-| `replicator`, `grid` | `String` (serialized JSON) |
+| `replicator`, `blocks`, `grid` | `String` (serialized JSON) |
 
 ### List Query Arguments
 
@@ -406,4 +406,74 @@ export async function generateStaticParams() {
   return data.blogs.map((post) => ({ slug: post.slug }))
 }
 ```
+
+### Using the Typed SDK
+
+For type-safe content queries without writing GraphQL manually, use the `@madori/sdk` package.
+
+**Server Components:**
+
+```tsx
+import { madoriClient } from '@madori/sdk/hooks/server'
+import type { Collections } from '@/.madori/generated'
+
+const client = madoriClient<Collections>()
+
+export default async function BlogList() {
+  const posts = await client.listEntries('blog', {
+    sort: '-createdAt',
+    status: 'published',
+    limit: 10,
+  })
+
+  return (
+    <ul>
+      {posts.map((post) => (
+        <li key={post.slug}>{post.title}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+**With Next.js Cache Tags (for on-demand revalidation):**
+
+```tsx
+import { madoriClient, taggedListEntries } from '@madori/sdk/hooks/server'
+import type { Collections } from '@/.madori/generated'
+
+const client = madoriClient<Collections>()
+const listEntries = taggedListEntries(client)
+
+// Entries are cached with tag 'madori:collection:blog'
+// Revalidate with: revalidateTag('madori:collection:blog')
+const posts = await listEntries('blog', { status: 'published' })
+```
+
+**Client Components:**
+
+```tsx
+'use client'
+import { useMadoriEntries } from '@madori/sdk/hooks/client'
+
+export function RecentPosts() {
+  const { data: posts, isLoading, error } = useMadoriEntries('blog', {
+    limit: 5,
+    sort: '-createdAt',
+  })
+
+  if (isLoading) return <p>Loading...</p>
+  if (error) return <p>Error loading posts</p>
+
+  return (
+    <ul>
+      {posts.map((post) => (
+        <li key={post.slug}>{post.title}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+Generate types by running `pnpm madori generate`. See the [CLI](/docs/cli) reference for full details on code generation.
 

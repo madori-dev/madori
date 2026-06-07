@@ -3,12 +3,12 @@ title: Field Types
 slug: field-types
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-06-07T09:00:00.000Z
 ---
 
 # Field Types
 
-Madori includes 17 built-in field types for constructing content schemas via blueprints. Each field type defines how content is captured in the Control Panel and how data is stored in flat-file entries.
+Madori includes 18 built-in field types for constructing content schemas via blueprints. Each field type defines how content is captured in the Control Panel and how data is stored in flat-file entries.
 
 This reference documents every field type with its configuration options, supported validation rules, stored value format, and example YAML configuration.
 
@@ -41,7 +41,7 @@ All field types share a common configuration structure defined in blueprints:
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `type` | `string` | One of the 17 field type identifiers (required) |
+| `type` | `string` | One of the 18 field type identifiers (required) |
 | `display` | `string` | Label shown in the Control Panel. Auto-generated from handle if omitted |
 | `required` | `boolean` | Whether the field must have a value. Default: `false` |
 | `default` | `any` | Default value pre-populated on create forms |
@@ -674,6 +674,52 @@ Stored as a `string` containing the raw code content.
 
 ---
 
+## Blocks
+
+A page-building field that automatically includes all fieldsets marked with `is_block: true`. Unlike Replicator, which requires you to specify available sets explicitly, Blocks auto-discovers all block fieldsets — no configuration needed.
+
+### Configuration Options
+
+No type-specific options. Simply add a `blocks` field to a blueprint and all fieldsets with `is_block: true` become available as block types.
+
+### Features
+
+- Auto-discovers all fieldsets with `is_block: true`
+- Same editing experience as Replicator (add, reorder, collapse, delete blocks)
+- No explicit `sets` configuration required
+- Adding a new fieldset with `is_block: true` makes it immediately available
+
+### Supported Validation
+
+`required`
+
+### Value Format
+
+Stored identically to Replicator — an array of objects with `_type` identifying the fieldset:
+
+```yaml
+blocks:
+  - _type: hero
+    title: Welcome to Madori
+    subtitle: A flat-file CMS for Next.js
+  - _type: html_embed
+    html: '<iframe src="https://example.com"></iframe>'
+    caption: Demo video
+```
+
+### Example
+
+```yaml
+- handle: page_blocks
+  field:
+    type: blocks
+    display: Page Blocks
+```
+
+No `options.sets` needed — all `is_block: true` fieldsets are included automatically.
+
+---
+
 ## Hidden
 
 A hidden field that is not displayed in the Control Panel interface. Used for internal metadata, computed values, or system-managed data that editors should not modify directly.
@@ -866,7 +912,8 @@ tabs:
 | `asset` | `string` or `string[]` | Files and images |
 | `entries` | `string[]` | Cross-references to entries |
 | `taxonomy` | `string[]` | Term assignments |
-| `replicator` | `object[]` | Flexible page blocks |
+| `replicator` | `object[]` | Flexible page blocks (explicit sets) |
+| `blocks` | `object[]` | Page blocks (auto-discovers `is_block` fieldsets) |
 | `grid` | `object[]` | Tabular repeatable data |
 | `yaml` | `string` | Arbitrary structured data |
 | `code` | `string` | Code snippets, embeds |

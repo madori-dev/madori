@@ -3,7 +3,7 @@ title: Blueprints
 slug: blueprints
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-06-07T09:00:00.000Z
 ---
 
 # Blueprints
@@ -167,7 +167,7 @@ Each field in a blueprint is defined with a `handle` (the storage key) and a `fi
 
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
-| `type` | `string` | Yes | One of the 17 field type identifiers |
+| `type` | `string` | Yes | One of the 18 field type identifiers |
 | `display` | `string` | No | Label shown in the CP. Auto-generated from handle if omitted |
 | `required` | `boolean` | No | Whether the field must have a value. Default: `false` |
 | `default` | `any` | No | Default value pre-populated on create forms |
@@ -230,7 +230,7 @@ Add instructions below a field using the `instructions` property within options:
       placeholder: e.g. my-page-title
 ```
 
-### The 17 Field Types
+### The 18 Field Types
 
 Madori supports these built-in field types:
 
@@ -248,7 +248,8 @@ Madori supports these built-in field types:
 | `asset` | `string` or `string[]` | Files and images |
 | `entries` | `string[]` | Cross-references to entries |
 | `taxonomy` | `string[]` | Term assignments |
-| `replicator` | `object[]` | Flexible page blocks |
+| `replicator` | `object[]` | Flexible page blocks (explicit sets) |
+| `blocks` | `object[]` | Page blocks (auto-discovers `is_block` fieldsets) |
 | `grid` | `object[]` | Tabular repeatable data |
 | `yaml` | `string` | Arbitrary structured data |
 | `code` | `string` | Code snippets, embeds |

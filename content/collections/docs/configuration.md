@@ -3,7 +3,7 @@ title: Configuration
 slug: configuration
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-06-07T09:00:00.000Z
 ---
 
 # Configuration
@@ -279,6 +279,10 @@ const config: MadoriConfigInput = {
 
 export default config
 ```
+
+### Managing Settings in the Control Panel
+
+The Control Panel includes a **Settings** page at `/cp/settings` where you can view and modify configuration values without editing `madori.config.ts` directly. Changes are validated before being written and take effect on the next request.
 
 ### Git-Ignored Sessions Directory
 
