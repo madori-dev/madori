@@ -1,6 +1,6 @@
 // Feature: auth-adapter-system, Property 3: Invalid token validation returns null
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import * as fc from 'fast-check'
 import { FileSessionStore } from '@/lib/auth/stores/file'
 import type { FileSystemAdapter } from '@/lib/fs/adapter'
