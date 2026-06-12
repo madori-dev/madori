@@ -44,13 +44,6 @@ const validRuleArb = fc.constantFrom(...VALID_RULE_NAMES).chain((rule) =>
   ),
 )
 
-/** Visibility condition referencing a known handle */
-const visibilityArb = (handles: string[]) =>
-  fc.tuple(
-    fc.constantFrom(...handles),
-    fc.constantFrom(...VISIBILITY_OPERATORS),
-  ).map(([field, operator]) => ({ field, operator }))
-
 /** A well-formed field definition (no visibility) */
 const validFieldDefArb = fc.tuple(handleArb, fieldTypeArb, fc.option(fc.array(validRuleArb, { minLength: 1, maxLength: 3 }), { nil: undefined })).map(
   ([handle, type, validate]) => ({
