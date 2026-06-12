@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { FileCode2, Plus, Check } from 'lucide-react'
 
 import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 
 interface BlueprintPickerProps {
