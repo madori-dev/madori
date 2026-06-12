@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
-import { ChevronRight, Navigation, Pencil } from 'lucide-react'
+import { Navigation, Pencil } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/cp/PageHeader'
