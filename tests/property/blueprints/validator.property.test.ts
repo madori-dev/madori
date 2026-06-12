@@ -195,12 +195,7 @@ const blueprintWithDuplicateHandleArb = validBlueprintArb.chain((bp) => {
   })
 })
 
-/** One of the three defect types */
-const invalidBlueprintArb = fc.oneof(
-  blueprintWithInvalidTypeArb,
-  blueprintWithUnknownRuleArb,
-  blueprintWithDuplicateHandleArb,
-)
+
 
 // --- Dangling visibility arbitrary ---
 
