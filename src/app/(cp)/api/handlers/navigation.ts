@@ -4,6 +4,7 @@ import { DefinitionLoader } from '@/lib/definitions/loader'
 import { getTreeDepth, enforceMaxDepth } from '@/lib/navigation/tree'
 import { getInvalidationEngine } from '@/lib/static-cache/instance'
 import type { NavigationItem } from '@/lib/types'
+import type { ContentEngine } from '@/lib/content/engine'
 
 interface NavigationDefinition {
   title: string
@@ -12,7 +13,7 @@ interface NavigationDefinition {
   collections?: string[]
 }
 
-export function createNavigationHandlers(navigationOps: NavigationOperations, definitionLoader?: DefinitionLoader) {
+export function createNavigationHandlers(navigationOps: NavigationOperations, definitionLoader?: DefinitionLoader, contentEngine?: Pick<ContentEngine, 'getCollection' | 'getEntry'>) {
   async function handleListNavigations(): Promise<NextResponse> {
     const navigations = await navigationOps.listNavigations()
     return NextResponse.json({ data: navigations })
@@ -75,6 +76,12 @@ export function createNavigationHandlers(navigationOps: NavigationOperations, de
             )
           }
         }
+        if (contentEngine && definition.collections?.length) {
+          const errors = await validateEntryReferences(items, definition.collections, contentEngine)
+          if (errors.length) {
+            return NextResponse.json({ error: { code: 'INVALID_ENTRY_REFERENCE', message: 'Navigation contains invalid entry references', fields: errors } }, { status: 422 })
+          }
+        }
       } catch {
         // Definition not found — no max_depth constraint to enforce
       }
@@ -97,4 +104,25 @@ export function createNavigationHandlers(navigationOps: NavigationOperations, de
   }
 
   return { handleListNavigations, handleGetNavigation, handleSaveNavigation, fireNavigationInvalidation }
+}
+
+async function validateEntryReferences(items: NavigationItem[], allowedCollections: string[], content: Pick<ContentEngine, 'getCollection' | 'getEntry'>, path = 'items'): Promise<Array<{ path: string; entry: string; reason: string }>> {
+  const errors: Array<{ path: string; entry: string; reason: string }> = []
+  for (const [index, item] of items.entries()) {
+    const itemPath = `${path}[${index}]`
+    if (typeof item.entry === 'string') {
+      const separator = item.entry.indexOf('/')
+      const collection = separator > 0 ? item.entry.slice(0, separator) : ''
+      const slug = separator > 0 ? item.entry.slice(separator + 1) : ''
+      if (!collection || !slug || !allowedCollections.includes(collection)) {
+        errors.push({ path: itemPath, entry: item.entry, reason: 'Collection is not allowed for this navigation.' })
+      } else {
+        // Collections without an explicit route use runtime's /{slug} default.
+        const entry = await content.getEntry(collection, slug)
+        if (!entry) errors.push({ path: itemPath, entry: item.entry, reason: 'Referenced entry does not exist.' })
+      }
+    }
+    if (Array.isArray(item.children)) errors.push(...await validateEntryReferences(item.children, allowedCollections, content, `${itemPath}.children`))
+  }
+  return errors
 }

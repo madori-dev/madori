@@ -2,8 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as fs from 'fs/promises'
 import { parseFieldDefinitions, generateCollection } from '../collection-generator.js'
 
-import type { ScaffoldCollectionOptions } from '../collection-generator.js'
-
 // Mock fs/promises
 vi.mock('fs/promises', () => ({
   access: vi.fn(),

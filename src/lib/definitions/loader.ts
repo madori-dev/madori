@@ -10,6 +10,9 @@ import {
   DefinitionNotFoundError,
 } from '@/lib/definitions/errors'
 import { deriveHandle } from '@/lib/definitions/utils'
+import { ConflictError, ValidationError } from '@/lib/errors'
+import type { ContentMutationReporter } from '@/lib/mutations'
+import { noOpContentMutationReporter } from '@/lib/mutations'
 
 export interface DefinitionFile {
   handle: string
@@ -21,7 +24,7 @@ export class DefinitionLoader {
   private parser: UniversalFileParser
   private resourcesPath: string
 
-  constructor(resourcesPath: string = './resources') {
+  constructor(resourcesPath: string = './resources', private readonly mutations: ContentMutationReporter = noOpContentMutationReporter) {
     this.parser = new UniversalFileParser()
     this.resourcesPath = resourcesPath
   }
@@ -87,6 +90,7 @@ export class DefinitionLoader {
    * Creates the directory if it doesn't exist.
    */
   async create(entityType: EntityType, handle: string, data: unknown): Promise<void> {
+    this.validateHandle(handle)
     this.validate(entityType, handle, data)
 
     const dir = path.join(this.resourcesPath, entityType)
@@ -94,7 +98,15 @@ export class DefinitionLoader {
 
     const filePath = path.join(dir, `${handle}.yaml`)
     const content = this.parser.serialize(data, 'yaml')
-    await fs.writeFile(filePath, content, 'utf-8')
+    try {
+      await fs.writeFile(filePath, content, { encoding: 'utf-8', flag: 'wx' })
+      this.report('create', filePath, entityType, handle)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
+        throw new ConflictError(`Definition "${entityType}/${handle}" already exists`)
+      }
+      throw error
+    }
   }
 
   /**
@@ -103,6 +115,7 @@ export class DefinitionLoader {
    * Validates data against schema before writing.
    */
   async update(entityType: EntityType, handle: string, data: unknown): Promise<void> {
+    this.validateHandle(handle)
     const definitions = await this.discover(entityType)
     const def = definitions.get(handle)
 
@@ -113,7 +126,8 @@ export class DefinitionLoader {
     this.validate(entityType, handle, data)
 
     const content = this.parser.serialize(data, def.format)
-    await fs.writeFile(def.path, content, 'utf-8')
+    await this.writeFileAtomic(def.path, content)
+    this.report('update', def.path, entityType, handle)
   }
 
   /**
@@ -121,6 +135,7 @@ export class DefinitionLoader {
    * Throws DefinitionNotFoundError if the file doesn't exist.
    */
   async delete(entityType: EntityType, handle: string): Promise<void> {
+    this.validateHandle(handle)
     const definitions = await this.discover(entityType)
     const def = definitions.get(handle)
 
@@ -129,6 +144,7 @@ export class DefinitionLoader {
     }
 
     await fs.unlink(def.path)
+    this.report('delete', def.path, entityType, handle)
   }
 
   /**
@@ -145,6 +161,30 @@ export class DefinitionLoader {
       const filePath = path.join(this.resourcesPath, entityType, `${handle}`)
       throw new DefinitionValidationError(filePath, field, issue.message)
     }
+  }
+
+  private validateHandle(handle: string): void {
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(handle)) {
+      throw new ValidationError('Handle must use lowercase letters, numbers, and hyphens', {
+        handle: ['Use lowercase letters, numbers, and hyphens only'],
+      })
+    }
+  }
+
+  private async writeFileAtomic(filePath: string, content: string): Promise<void> {
+    const dir = path.dirname(filePath)
+    const temporaryPath = path.join(dir, `.${path.basename(filePath)}.${process.pid}.${Date.now()}.tmp`)
+    try {
+      await fs.writeFile(temporaryPath, content, 'utf-8')
+      await fs.rename(temporaryPath, filePath)
+    } catch (error) {
+      await fs.unlink(temporaryPath).catch(() => undefined)
+      throw error
+    }
+  }
+
+  private report(action: 'create' | 'update' | 'delete', filePath: string, entityType: EntityType, handle: string): void {
+    this.mutations.report({ action, paths: [path.resolve(filePath)], resource: { type: 'definition', handle: entityType, id: handle }, message: `${action[0].toUpperCase()}${action.slice(1)}d ${entityType} definition ${handle}`, source: 'system', timestamp: Date.now() })
   }
 
   /**

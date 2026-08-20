@@ -42,7 +42,12 @@ function createInMemoryFs(): FileSystemAdapter {
     },
     async mkdir() {},
     async copyFile() {},
-    async moveFile() {},
+    async moveFile(from: string, to: string) {
+      const content = store.get(from)
+      if (content === undefined) throw new Error(`File not found: ${from}`)
+      store.set(to, content)
+      store.delete(from)
+    },
   }
 }
 

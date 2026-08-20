@@ -7,10 +7,13 @@ import { toast } from 'sonner'
 import { FieldRenderer } from '@/components/cp/fields/FieldRenderer'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { DeleteDialog } from '@/components/cp/DeleteDialog'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 import { useFieldValidation } from '@/hooks/use-field-validation'
 import { useUnsavedChanges } from '@/hooks/use-unsaved-changes'
 import type { FieldDefinition as TypedFieldDefinition } from '@/lib/blueprints/types'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { SeoRecordEditor } from '@/components/cp/seo/seo-record-editor'
+import { filterPayloadByVisibility } from '@/lib/blueprints/visibility'
 
 interface FieldDefinition {
   handle: string
@@ -30,6 +33,7 @@ interface Blueprint {
     {
       display?: string
       fields: FieldDefinition[]
+      sections?: Record<string, { display?: string; fields: FieldDefinition[] }>
     }
   >
 }
@@ -67,9 +71,9 @@ export default function EntryEditorPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [entryRes, blueprintRes] = await Promise.all([
+        const [entryRes, collectionRes] = await Promise.all([
           fetch(`/api/entries/${handle}/${slug}`),
-          fetch(`/api/blueprints/collections/${handle}`),
+          fetch(`/api/collections/${handle}`),
         ])
 
         if (!entryRes.ok) {
@@ -91,16 +95,22 @@ export default function EntryEditorPage() {
           ...entryData.data,
         })
 
-        if (blueprintRes.ok) {
+        if (collectionRes.ok) {
+          const collectionJson = await collectionRes.json()
+          const blueprintRes = await fetch(`/api/blueprints/collections/${collectionJson.data.blueprint}`)
+          if (!blueprintRes.ok) return
           const blueprintJson = await blueprintRes.json()
           setBlueprint(blueprintJson.data)
 
           // Extract all fields for client-side validation
           const fields: TypedFieldDefinition[] = []
           if (blueprintJson.data?.tabs) {
-            for (const tab of Object.values(blueprintJson.data.tabs) as { fields: FieldDefinition[] }[]) {
+            for (const tab of Object.values(blueprintJson.data.tabs) as { fields: FieldDefinition[]; sections?: Record<string, { fields: FieldDefinition[] }> }[]) {
               for (const field of tab.fields) {
-                fields.push(field as TypedFieldDefinition)
+                if (field.handle !== 'seo') fields.push(field as TypedFieldDefinition)
+              }
+              for (const section of Object.values(tab.sections ?? {}) as { fields: FieldDefinition[] }[]) {
+                for (const field of section.fields) if (field.handle !== 'seo') fields.push(field as TypedFieldDefinition)
               }
             }
           }
@@ -144,15 +154,21 @@ export default function EntryEditorPage() {
 
     try {
       const { title, slug: formSlug, status, content, ...data } = formData
-
       // If content is a tiptap JSON object, store JSON in data and serialize markdown for content
       let contentStr = content as string
-      if (typeof content === 'object' && content !== null) {
-        data.content_json = content
+      const structuredContent = typeof content === 'object' && content !== null ? content : undefined
+      if (structuredContent) {
         // Serialize to markdown for the file body (used by frontend rendering)
         const { serializeTipTapToMarkdown } = await import('@/lib/editor/serializer')
         contentStr = serializeTipTapToMarkdown(content as import('@/lib/editor/types').TipTapDocument)
       }
+      const visibleData = filterPayloadByVisibility(allBlueprintFields.map((field) => ({ handle: field.handle, visibility: field.field.visibility })), data)
+      if (structuredContent) visibleData.content_json = structuredContent
+      // JSON omits undefined. Preserve an editor clear as null so updateEntry can
+      // remove stale frontmatter before validating the optional field.
+      const serializableData = Object.fromEntries(
+        Object.entries(visibleData).map(([key, value]) => [key, value === undefined ? null : value])
+      )
 
       const res = await fetch(`/api/entries/${handle}/${slug}`, {
         method: 'PUT',
@@ -162,7 +178,7 @@ export default function EntryEditorPage() {
           slug: formSlug,
           status,
           content: contentStr,
-          data,
+          data: serializableData,
           contentHash: entry?.contentHash,
         }),
       })
@@ -225,15 +241,21 @@ export default function EntryEditorPage() {
   }
 
   // Separate tabs into content tabs and sidebar
-  const contentTabs: { key: string; label: string; fields: FieldDefinition[] }[] = []
+  const contentTabs: { key: string; label: string; fields: FieldDefinition[]; sections: { key: string; label: string; fields: FieldDefinition[] }[] }[] = []
   const sidebarFields: FieldDefinition[] = []
   if (blueprint) {
     for (const [tabKey, tab] of Object.entries(blueprint.tabs)) {
+      const visibleFields = tab.fields.filter(field => field.handle !== 'seo')
+      const sections = Object.entries(tab.sections ?? {}).map(([sectionKey, section]) => ({
+        key: sectionKey,
+        label: section.display ?? sectionKey.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        fields: section.fields.filter((field) => field.handle !== 'seo'),
+      })).filter((section) => section.fields.length > 0)
       if (tabKey === 'sidebar') {
-        sidebarFields.push(...tab.fields)
-      } else {
+        sidebarFields.push(...visibleFields, ...sections.flatMap((section) => section.fields))
+      } else if (visibleFields.length > 0 || sections.length > 0) {
         const label = tab.display ?? tabKey.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-        contentTabs.push({ key: tabKey, label, fields: tab.fields })
+        contentTabs.push({ key: tabKey, label, fields: visibleFields, sections })
       }
     }
   }
@@ -257,11 +279,11 @@ export default function EntryEditorPage() {
             Edit Entry
           </h1>
         </div>
-        <DeleteDialog
+        <CapabilityGate resource="entries" action="delete" scope={handle}><DeleteDialog
           title="Delete entry"
           description={`Are you sure you want to delete "${entry?.title}"? This action cannot be undone.`}
           onConfirm={handleDelete}
-        />
+        /></CapabilityGate>
       </div>
 
       {error && (
@@ -294,7 +316,14 @@ export default function EntryEditorPage() {
                       value={formData[fieldDef.handle]}
                       onChange={(value) => handleFieldChange(fieldDef.handle, value)}
                       error={fieldErrors[fieldDef.handle]}
+                      values={formData}
                     />
+                  ))}
+                  {tab.sections.map((section) => (
+                    <section key={section.key} className="space-y-5 rounded-lg border p-4">
+                      <h2 className="text-sm font-semibold">{section.label}</h2>
+                      {section.fields.map((fieldDef) => <FieldRenderer key={fieldDef.handle} fieldDefinition={fieldDef as TypedFieldDefinition} value={formData[fieldDef.handle]} onChange={(value) => handleFieldChange(fieldDef.handle, value)} error={fieldErrors[fieldDef.handle]} values={formData} />)}
+                    </section>
                   ))}
                 </TabsContent>
               ))}
@@ -321,13 +350,13 @@ export default function EntryEditorPage() {
             </Tabs>
 
             <div className="flex items-center gap-3 border-t border-border pt-5 mt-5">
-              <button
+              <CapabilityGate resource="entries" action="edit" scope={handle}><button
                 type="submit"
                 disabled={saving}
                 className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
               >
                 {saving ? 'Saving…' : 'Save'}
-              </button>
+              </button></CapabilityGate>
               <Link
                 href={`/cp/collections/${handle}`}
                 className="rounded-md px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -341,28 +370,30 @@ export default function EntryEditorPage() {
           </div>
 
           {/* Sidebar panel */}
-          {sidebarFields.length > 0 && (
-            <aside className="w-full lg:w-72 lg:shrink-0">
-              <div className="lg:sticky lg:top-6 space-y-5 rounded-lg border border-border bg-card p-4">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Settings
-                </h3>
-                {sidebarFields.map((fieldDef) => (
-                  <FieldRenderer
-                    key={fieldDef.handle}
-                    fieldDefinition={fieldDef as TypedFieldDefinition}
-                    value={formData[fieldDef.handle]}
-                    onChange={(value) => handleFieldChange(fieldDef.handle, value)}
-                    error={fieldErrors[fieldDef.handle]}
-                  />
-                ))}
-              </div>
-            </aside>
-          )}
+          <aside className="w-full lg:w-72 lg:shrink-0">
+            <div className="lg:sticky lg:top-6 space-y-5">
+              {sidebarFields.length > 0 && (
+                <div className="space-y-5 rounded-lg border border-border bg-card p-4">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Settings
+                  </h3>
+                  {sidebarFields.map((fieldDef) => (
+                    <FieldRenderer
+                      key={fieldDef.handle}
+                      fieldDefinition={fieldDef as TypedFieldDefinition}
+                      value={formData[fieldDef.handle]}
+                      onChange={(value) => handleFieldChange(fieldDef.handle, value)}
+                      error={fieldErrors[fieldDef.handle]}
+                      values={formData}
+                    />
+                  ))}
+                </div>
+              )}
+              <SeoRecordEditor value={formData.seo} onChange={(value) => handleFieldChange('seo', value)} />
+            </div>
+          </aside>
         </div>
       </form>
     </div>
   )
 }
-
-

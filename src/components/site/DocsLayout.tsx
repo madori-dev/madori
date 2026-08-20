@@ -1,22 +1,13 @@
-import { loadConfig, resolveConfigPaths } from '@/lib/config/loader'
-import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
-import { MarkdownYamlParser } from '@/lib/fs/parser'
-import { InMemoryContentCache } from '@/lib/cache/store'
-import { NavigationOperations } from '@/lib/content/navigation'
+import { getMadori } from '@/lib/madori'
+import { resolveNavigationItems } from '@/lib/navigation/resolve'
+import { getRequestSite } from '@/lib/seo/next'
 import { DocsSidebar } from './DocsSidebar'
 import { DocsMobileNav } from './DocsMobileNav'
 
 async function getDocsNav() {
-  const config = await loadConfig()
-  const resolvedConfig = resolveConfigPaths(config, process.cwd())
-
-  const fs = new NodeFileSystemAdapter()
-  const parser = new MarkdownYamlParser()
-  const cache = new InMemoryContentCache()
-  const navOps = new NavigationOperations(fs, parser, cache, resolvedConfig.contentPath)
-
-  const nav = await navOps.getNavigation('docs')
-  return nav?.items ?? []
+  const [{ contentEngine, urlResolver }, site] = await Promise.all([getMadori(), getRequestSite()])
+  const [nav, collections] = await Promise.all([contentEngine.getNavigation('docs'), contentEngine.listCollections()])
+  return resolveNavigationItems(nav?.items ?? [], { collections, content: contentEngine, urlResolver, site })
 }
 
 export async function DocsLayout({ children }: { children: React.ReactNode }) {

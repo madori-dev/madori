@@ -151,7 +151,7 @@ describe('TypeGenerator', () => {
 
     it('maps unknown field type to unknown and warns', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      const result = generator.mapFieldToType({ type: 'nonexistent' as any })
+      const result = generator.mapFieldToType({ type: 'nonexistent' as unknown as FieldConfig['type'] })
       expect(result).toBe('unknown')
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown field type'))
     })

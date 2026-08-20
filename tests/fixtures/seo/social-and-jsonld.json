@@ -1,0 +1,24 @@
+{
+  "schema": "madori.seo.structured.v1",
+  "cases": [
+    {
+      "id": "article-social-and-schema",
+      "input": { "title": "Launch notes", "description": "What changed", "canonical": "https://example.com/journal/launch", "siteImage": "assets::defaults/social.jpg", "recordImage": "assets::journal/launch.jpg", "author": "Madori Team", "publishedAt": "2026-08-19T09:00:00Z" },
+      "expected": {
+        "openGraph": { "type": "article", "title": "Launch notes", "description": "What changed", "url": "https://example.com/journal/launch", "image": "assets::journal/launch.jpg" },
+        "twitter": { "card": "summary_large_image", "title": "Launch notes", "image": "assets::journal/launch.jpg" },
+        "jsonLd": [{ "@context": "https://schema.org", "@type": "Article", "headline": "Launch notes", "url": "https://example.com/journal/launch", "author": { "@type": "Organization", "name": "Madori Team" }, "datePublished": "2026-08-19T09:00:00Z" }]
+      }
+    },
+    {
+      "id": "site-image-fallback",
+      "input": { "title": "No featured image", "canonical": "https://example.com/about", "siteImage": "assets::defaults/social.jpg", "recordImage": null },
+      "expected": { "openGraph": { "type": "website", "title": "No featured image", "url": "https://example.com/about", "image": "assets::defaults/social.jpg" }, "twitter": { "card": "summary_large_image", "title": "No featured image", "image": "assets::defaults/social.jpg" }, "jsonLd": [] }
+    },
+    {
+      "id": "structured-data-disabled",
+      "input": { "title": "Plain page", "canonical": "https://example.com/plain", "jsonLdEnabled": false },
+      "expected": { "jsonLd": [] }
+    }
+  ]
+}

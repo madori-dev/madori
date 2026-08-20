@@ -3,6 +3,8 @@ import { BlueprintLoader } from '@/lib/blueprints/loader'
 import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
 import { MarkdownYamlParser } from '@/lib/fs/parser'
 import * as path from 'path'
+import type { BlueprintType } from '@/lib/blueprints/types'
+import { ValidationError } from '@/lib/errors'
 
 const resourcesPath = path.resolve(__dirname, '../../../resources')
 
@@ -70,11 +72,39 @@ describe('BlueprintLoader', () => {
     })
 
     it('returns empty array for non-existent type directory', async () => {
-      const blueprints = await loader.listBlueprints('taxonomies' as any)
-      // taxonomies directory exists, so this tests a type with at least one blueprint
-      // Use a truly non-existent type
-      const empty = await loader.listBlueprints('nonexistent_type' as any)
+      const empty = await loader.listBlueprints('nonexistent_type' as unknown as BlueprintType)
       expect(empty).toEqual([])
+    })
+  })
+
+  describe('untrusted persistence inputs', () => {
+    it('rejects traversal handles and unsupported types before accessing filesystem', async () => {
+      const mockFs = {
+        exists: async () => { throw new Error('filesystem should not be accessed') },
+        readFile: async () => '', listFiles: async () => [], writeFile: async () => {}, deleteFile: async () => {},
+      } as unknown as typeof fs
+      const safeLoader = new BlueprintLoader(mockFs, parser, resourcesPath)
+
+      expect(await safeLoader.loadBlueprint('collections', '../outside')).toBeNull()
+      expect(await safeLoader.listBlueprints('not-a-type' as BlueprintType)).toEqual([])
+      await expect(safeLoader.saveBlueprint('collections', '../outside', { handle: 'outside', tabs: {} })).rejects.toBeInstanceOf(ValidationError)
+      await expect(safeLoader.saveBlueprint('not-a-type' as BlueprintType, 'safe', { handle: 'safe', tabs: {} })).rejects.toBeInstanceOf(ValidationError)
+    })
+
+    it('validates entire blueprint before writing it', async () => {
+      const writes: string[] = []
+      const mockFs = {
+        exists: async () => false, readFile: async () => '', listFiles: async () => [],
+        writeFile: async (file: string) => { writes.push(file) }, deleteFile: async () => {},
+        moveFile: async () => {},
+      } as unknown as typeof fs
+      const safeLoader = new BlueprintLoader(mockFs, parser, resourcesPath)
+
+      await expect(safeLoader.saveBlueprint('collections', 'unsafe', {
+        handle: 'unsafe',
+        tabs: { main: { fields: [{ handle: 'title', field: { type: 'made_up_type' as never } }] } },
+      })).rejects.toBeInstanceOf(ValidationError)
+      expect(writes).toEqual([])
     })
   })
 })

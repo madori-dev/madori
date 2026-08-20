@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import { parse, stringify } from 'yaml'
 import { PluginRegistry } from '@/lib/auth/registry'
 import { YamlUserProviderFactory } from '@/lib/auth/providers/yaml'
 import { FileSessionStoreFactory } from '@/lib/auth/stores/file'
@@ -84,11 +85,9 @@ function createMockParser(): ContentParser {
       return content
     },
     parseYaml<T>(raw: string): T {
-      const { parse } = require('yaml')
       return parse(raw) as T
     },
     serializeYaml(data) {
-      const { stringify } = require('yaml')
       return stringify(data)
     },
   }

@@ -51,7 +51,12 @@ function createInMemoryFs(): FileSystemAdapter {
     listDirectories: async () => [],
     mkdir: async () => {},
     copyFile: async () => {},
-    moveFile: async () => {},
+    moveFile: async (source: string, destination: string) => {
+      const content = store.get(source)
+      if (content === undefined) throw new Error(`File not found: ${source}`)
+      store.delete(source)
+      store.set(destination, content)
+    },
   }
 }
 

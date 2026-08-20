@@ -40,6 +40,11 @@ For full Control Panel functionality (content editing, asset uploads, user manag
 | `graphql.introspection` | `boolean` | `true` in dev | Set to `false` in production to hide schema from public inspection |
 | `cp.enabled` | `boolean` | `true` | Disable the CP if deploying frontend-only |
 | `auth.storeConfig.sessionDurationMs` | `number` | `86400000` | Session expiry — consider shortening for production |
+| `sites` | `SiteDefinitionConfig[]` | one local default | Public origins/locales used for canonical URLs and host routing |
+| `seo.operationalStoragePath` | `string` | `./storage/seo` | Writable runtime storage for SEO cache, 404 observations, metrics, and reports |
+| `seo.errorTracking` | `boolean` | `false` | Enable bounded, normalized public 404 observation recording |
+| `seo.redirects` | `boolean` | `true` | Enable authored redirects and public redirect execution |
+| `seo.reports` | `boolean` | `true` | Enable audit report generation and report API |
 
 ### System Requirements
 
@@ -156,7 +161,28 @@ Persistent filesystem with always-on processes. Full Control Panel support witho
 
 ## Common Patterns
 
+### SEO Runtime Storage
+
+SEO has two storage classes:
+
+- Versioned content: `resources/seo/sites`, `resources/seo/sections`, and `content/seo/redirects`. These files can live in the application repository or an explicitly tracked separate content repository.
+- Operational state: `seo.operationalStoragePath` (cache, 404 observations, redirect counters, and report snapshots). Keep this directory writable, persistent, backed up, and outside Git sync paths.
+
+Do not deploy a shared writable operational directory across unrelated sites. Give each site or deployment its own storage scope. Never expose this directory through static hosting.
+
+### Multi-Site Routing
+
+Configure every public origin in `sites`. Domain sites are selected from the request host; a shared-host deployment may use a path prefix in its reverse proxy and still keeps canonical URLs scoped to the configured site. Set a trusted `Host`/forwarded-host policy at the edge and do not let clients select a site through arbitrary headers.
+
+Public SEO routes are generated dynamically: `/sitemap.xml`, `/robots.txt`, and `/humans.txt`. Authored redirects run before page rendering for `GET` and `HEAD` requests. Control Panel and API paths are excluded from public redirect handling.
+
+### SEO in Serverless Deployments
+
+Read-only metadata and sitemap rendering can run on serverless infrastructure when content is bundled or fetched from a stable source. 404 tracking, report snapshots, redirect counters, and CP writes require a persistent writable filesystem or an equivalent adapter. Disable `seo.errorTracking` and `seo.reports` when no durable operational store is available; do not rely on ephemeral local storage for those features.
+
 ### Content in Git
+
+For automatic commits and GitHub pushes from the Control Panel, see [Git Content Sync](/docs/git-sync). Automatic sync needs persistent writable storage for content, each `.git` directory, and `git.statePath`; ephemeral serverless filesystems are not suitable.
 
 Since all content is flat files, commit content to your repository:
 

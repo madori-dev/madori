@@ -73,7 +73,7 @@ describe('Property 1: User profile update round-trip', () => {
     await fc.assert(
       fc.asyncProperty(nameArb, validEmailArb, async (name, email) => {
         // Create in-memory user store
-        let storedUser: User = {
+        const storedUser: User = {
           id: 'user-1',
           email: 'original@example.com',
           name: 'Original Name',

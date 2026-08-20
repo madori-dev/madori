@@ -42,11 +42,15 @@ function MobileNavItem({ item, onClose, depth = 0 }: { item: NavigationItem; onC
   const icon = item.icon as string | undefined
   const hasChildren = Array.isArray(item.children) && item.children.length > 0
 
+  if (!url && !hasChildren) {
+    return <span className="flex rounded-md px-3 py-2 text-sm text-muted-foreground" role="note" aria-label={`${label ?? 'Navigation item'} is unavailable`}>{label}</span>
+  }
+
   return (
     <div>
       <div className="flex items-center">
-        <Link
-          href={url ?? '#'}
+        {url ? <Link
+          href={url}
           target={external ? '_blank' : undefined}
           rel={external ? 'noopener noreferrer' : undefined}
           onClick={onClose}
@@ -59,7 +63,7 @@ function MobileNavItem({ item, onClose, depth = 0 }: { item: NavigationItem; onC
           {icon && <span className="text-xs" aria-hidden="true">{icon}</span>}
           {label}
           {external && <ExternalLink className="size-3 text-muted-foreground/70" aria-hidden="true" />}
-        </Link>
+        </Link> : <span className="flex-1 px-3 py-2 text-sm text-muted-foreground" role="note" aria-label={`${label ?? 'Navigation item'} is unavailable`}>{label}</span>}
         {hasChildren && (
           <button
             type="button"

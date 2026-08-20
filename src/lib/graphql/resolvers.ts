@@ -6,6 +6,7 @@ import type { Entry, ListOptions } from '@/lib/types'
 import type { AuthContext } from '@/lib/auth/guard'
 import type { PermissionGuard } from '@/lib/auth/guard'
 import { NotFoundError, AuthorizationError } from '@/lib/errors'
+import { buildSeoGraphQLResolvers, type SeoGraphQLPort } from '@/lib/seo/graphql'
 
 /**
  * Context object passed to all GraphQL resolvers.
@@ -92,7 +93,7 @@ function withErrorHandling<TArgs, TResult>(
       }
 
       if (error instanceof AuthorizationError) {
-        throw createGraphQLError(error.message, 'UNAUTHORIZED')
+        throw createGraphQLError('Unauthorized', 'UNAUTHORIZED')
       }
 
       if (error instanceof NotFoundError) {
@@ -101,8 +102,7 @@ function withErrorHandling<TArgs, TResult>(
 
       // Log the full error server-side, expose only a safe message to clients
       console.error('[madori:graphql] Resolver error:', error)
-      const message = error instanceof Error ? error.message : 'An internal error occurred'
-      throw createGraphQLError(message, 'INTERNAL_ERROR')
+      throw createGraphQLError('Internal server error', 'INTERNAL_ERROR')
     }
   }
 }
@@ -113,11 +113,13 @@ function withErrorHandling<TArgs, TResult>(
 export interface BuildResolversOptions {
   /** Optional permission guard for enforcing access control on resolvers. */
   guard?: PermissionGuard
+  /** Optional SEO boundary. Omit to keep SEO fields out of generated schema. */
+  seo?: SeoGraphQLPort
 }
 
 /**
  * Builds GraphQL resolver functions for all configured collections,
- * plus stubs for taxonomies, globals, navigation, and assets.
+ * plus resolvers for taxonomies, globals, navigation, and assets.
  *
  * All resolvers are wrapped with error handling that:
  * - Returns [] for empty collections (list queries)
@@ -133,6 +135,12 @@ export interface BuildResolversOptions {
 export function buildResolvers(collections: CollectionConfig[], options?: BuildResolversOptions) {
   const resolvers: Record<string, unknown> = {}
   const guard = options?.guard
+  const protect = <TArgs, TResult>(
+    resource: Parameters<PermissionGuard['wrapResolver']>[0],
+    action: Parameters<PermissionGuard['wrapResolver']>[1],
+    resolver: (parent: unknown, args: TArgs, context: GraphQLContext) => Promise<TResult>,
+    scope?: (args: TArgs) => string | undefined
+  ) => withErrorHandling(guard ? guard.wrapResolver(resource, action, resolver, scope) : resolver)
 
   // Collection resolvers
   for (const collection of collections) {
@@ -150,9 +158,7 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
     })
 
     // Wrap with permission guard if available (read access, scoped to collection)
-    resolvers[handle] = guard
-      ? guard.wrapResolver('entries', 'view', singularResolver, () => handle)
-      : singularResolver
+    resolvers[handle] = protect('entries', 'view', singularResolver, () => handle)
 
     // List resolver: e.g. blogs(filter: {...}, limit: 10, offset: 0, sort: "title:asc")
     const pluralHandle = pluralize(handle)
@@ -181,9 +187,7 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
     })
 
     // Wrap with permission guard if available (read access, scoped to collection)
-    resolvers[pluralHandle] = guard
-      ? guard.wrapResolver('entries', 'view', listResolver, () => handle)
-      : listResolver
+    resolvers[pluralHandle] = protect('entries', 'view', listResolver, () => handle)
   }
 
   // ─── Taxonomy resolvers ─────────────────────────────────────────────────
@@ -196,9 +200,7 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
     const taxonomies = await context.contentEngine.listTaxonomies()
     return taxonomies ?? []
   })
-  resolvers['taxonomies'] = guard
-    ? guard.wrapResolver('taxonomies', 'view', taxonomiesResolver)
-    : taxonomiesResolver
+  resolvers['taxonomies'] = protect('taxonomies', 'view', taxonomiesResolver)
 
   const taxonomyResolver = withErrorHandling(async (
     _parent: unknown,
@@ -208,9 +210,7 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
     const taxonomy = await context.contentEngine.getTaxonomy(args.handle)
     return taxonomy ?? null
   })
-  resolvers['taxonomy'] = guard
-    ? guard.wrapResolver('taxonomies', 'view', taxonomyResolver)
-    : taxonomyResolver
+  resolvers['taxonomy'] = protect('taxonomies', 'view', taxonomyResolver)
 
   const termsResolver = withErrorHandling(async (
     _parent: unknown,
@@ -220,9 +220,7 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
     const terms = await context.contentEngine.listTerms(args.taxonomy)
     return terms ?? []
   })
-  resolvers['terms'] = guard
-    ? guard.wrapResolver('taxonomies', 'view', termsResolver)
-    : termsResolver
+  resolvers['terms'] = protect('taxonomies', 'view', termsResolver)
 
   // ─── Global resolvers ───────────────────────────────────────────────────
 
@@ -234,9 +232,7 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
     const globals = await context.contentEngine.listGlobals()
     return globals ?? []
   })
-  resolvers['globals'] = guard
-    ? guard.wrapResolver('globals', 'view', globalsResolver)
-    : globalsResolver
+  resolvers['globals'] = protect('globals', 'view', globalsResolver)
 
   const globalResolver = withErrorHandling(async (
     _parent: unknown,
@@ -246,9 +242,7 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
     const global = await context.contentEngine.getGlobal(args.handle)
     return global ?? null
   })
-  resolvers['global'] = guard
-    ? guard.wrapResolver('globals', 'view', globalResolver)
-    : globalResolver
+  resolvers['global'] = protect('globals', 'view', globalResolver)
 
   // ─── Navigation resolvers ──────────────────────────────────────────────
 
@@ -260,9 +254,7 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
     const navigations = await context.contentEngine.listNavigations()
     return navigations ?? []
   })
-  resolvers['navigations'] = guard
-    ? guard.wrapResolver('navigation', 'view', navigationsResolver)
-    : navigationsResolver
+  resolvers['navigations'] = protect('navigation', 'view', navigationsResolver)
 
   const navigationResolver = withErrorHandling(async (
     _parent: unknown,
@@ -272,9 +264,7 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
     const navigation = await context.contentEngine.getNavigation(args.handle)
     return navigation ?? null
   })
-  resolvers['navigation'] = guard
-    ? guard.wrapResolver('navigation', 'view', navigationResolver)
-    : navigationResolver
+  resolvers['navigation'] = protect('navigation', 'view', navigationResolver)
 
   // ─── Asset resolvers ───────────────────────────────────────────────────
 
@@ -286,9 +276,7 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
     const assets = await context.contentEngine.listAssets(args.directory)
     return assets ?? []
   })
-  resolvers['assets'] = guard
-    ? guard.wrapResolver('assets', 'view', assetsResolver)
-    : assetsResolver
+  resolvers['assets'] = protect('assets', 'view', assetsResolver)
 
   const assetResolver = withErrorHandling(async (
     _parent: unknown,
@@ -298,9 +286,11 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
     const asset = await context.contentEngine.getAsset(args.path)
     return asset ?? null
   })
-  resolvers['asset'] = guard
-    ? guard.wrapResolver('assets', 'view', assetResolver)
-    : assetResolver
+  resolvers['asset'] = protect('assets', 'view', assetResolver)
+
+  if (options?.seo) {
+    Object.assign(resolvers, buildSeoGraphQLResolvers({ port: options.seo, guard }))
+  }
 
   return resolvers
 }

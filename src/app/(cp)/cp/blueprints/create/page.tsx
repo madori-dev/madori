@@ -11,6 +11,8 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { useCapabilities } from '@/components/cp/use-capabilities'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 
 import type { BlueprintType } from '@/lib/blueprints/types'
 
@@ -20,13 +22,22 @@ const TYPE_OPTIONS: { value: BlueprintType; label: string; description: string }
   { value: 'globals', label: 'Global', description: 'Fields for global configuration sets' },
   { value: 'forms', label: 'Form', description: 'Fields for form submissions' },
 ]
+const BLUEPRINT_RESOURCE: Record<BlueprintType, string> = {
+  collections: 'collections', taxonomies: 'taxonomies', globals: 'globals', forms: 'forms', navigations: 'navigation',
+}
 
 export default function CreateBlueprintPage() {
+  const capabilities = useCapabilities()
   const router = useRouter()
   const [handle, setHandle] = useState('')
   const [type, setType] = useState<BlueprintType>('collections')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const availableTypes = TYPE_OPTIONS.filter((option) => capabilities?.[`${BLUEPRINT_RESOURCE[option.value]}:create`] === true)
+  const selectedType = availableTypes.some((option) => option.value === type)
+    ? type
+    : (availableTypes[0]?.value ?? type)
+  const resource = BLUEPRINT_RESOURCE[selectedType]
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -40,7 +51,7 @@ export default function CreateBlueprintPage() {
     setError(null)
 
     try {
-      const res = await fetch(`/api/blueprints/${type}/${sanitized}`, {
+      const res = await fetch(`/api/blueprints/${selectedType}/${sanitized}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -54,7 +65,7 @@ export default function CreateBlueprintPage() {
         throw new Error(json.error?.message ?? 'Failed to create blueprint')
       }
 
-      router.push(`/cp/blueprints/${type}/${sanitized}`)
+      router.push(`/cp/blueprints/${selectedType}/${sanitized}`)
       toast.success('Blueprint created')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Creation failed')
@@ -102,11 +113,11 @@ export default function CreateBlueprintPage() {
           <div className="space-y-1.5">
             <Label>Type</Label>
             <div className="grid grid-cols-2 gap-2">
-              {TYPE_OPTIONS.map((opt) => (
+              {availableTypes.map((opt) => (
                 <label
                   key={opt.value}
                   className={`flex cursor-pointer flex-col rounded-lg border p-3 transition-colors ${
-                    type === opt.value
+                    selectedType === opt.value
                       ? 'border-primary bg-primary/5'
                       : 'border-border hover:border-primary/50'
                   }`}
@@ -115,7 +126,7 @@ export default function CreateBlueprintPage() {
                     type="radio"
                     name="type"
                     value={opt.value}
-                    checked={type === opt.value}
+                    checked={selectedType === opt.value}
                     onChange={() => setType(opt.value)}
                     className="sr-only"
                   />
@@ -132,9 +143,9 @@ export default function CreateBlueprintPage() {
             <Button variant="outline" type="button" nativeButton={false} render={<Link href="/cp/blueprints" />}>
               Cancel
             </Button>
-            <Button type="submit" disabled={saving}>
+            <CapabilityGate resource={resource} action="create"><Button type="submit" disabled={saving}>
               {saving ? 'Creating...' : 'Create Blueprint'}
-            </Button>
+            </Button></CapabilityGate>
           </div>
         </form>
       </Card>

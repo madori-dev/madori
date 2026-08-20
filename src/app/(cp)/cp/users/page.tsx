@@ -19,6 +19,8 @@ import { EmptyState } from '@/components/cp/EmptyState'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { DeleteDialog } from '@/components/cp/DeleteDialog'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
+import { useCapabilities } from '@/components/cp/use-capabilities'
 
 interface User {
   id: string
@@ -30,13 +32,10 @@ interface User {
 }
 
 export default function UsersListPage() {
+  const capabilities = useCapabilities()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    fetchUsers()
-  }, [])
 
   async function fetchUsers() {
     try {
@@ -52,6 +51,10 @@ export default function UsersListPage() {
     }
   }
 
+  useEffect(() => {
+    queueMicrotask(() => { void fetchUsers() })
+  }, [])
+
   async function handleDelete(userId: string) {
     const res = await fetch(`/api/users/${userId}`, { method: 'DELETE' })
     if (!res.ok) throw new Error(`Failed to delete user: ${res.status}`)
@@ -66,21 +69,22 @@ export default function UsersListPage() {
       <PageHeader
         title="Users"
         description={`${users.length} ${users.length === 1 ? 'user' : 'users'}`}
-        createHref="/cp/users/create"
+        createHref={capabilities?.['users:create'] ? '/cp/users/create' : undefined}
         createLabel="Create User"
       />
+      <CapabilityGate resource="users" action="edit"><div><Button variant="outline" nativeButton={false} render={<Link href="/cp/users/roles" />}>Manage roles</Button></div></CapabilityGate>
 
       {users.length === 0 ? (
         <EmptyState
           icon={Users}
           title="No users yet."
         >
-          <Link
+          <CapabilityGate resource="users" action="create"><Link
             href="/cp/users/create"
             className="mt-2 text-sm font-medium text-foreground underline hover:no-underline"
           >
             Create your first user
-          </Link>
+          </Link></CapabilityGate>
         </EmptyState>
       ) : (
         <div className="rounded-lg border">
@@ -124,19 +128,19 @@ export default function UsersListPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button
+                      <CapabilityGate resource="users" action="edit"><Button
                         variant="ghost"
                         size="sm"
                         nativeButton={false}
                         render={<Link href={`/cp/users/${user.id}`} />}
                       >
                         Edit
-                      </Button>
-                      <DeleteDialog
+                      </Button></CapabilityGate>
+                      <CapabilityGate resource="users" action="delete"><DeleteDialog
                         title="Delete user"
                         description={`Are you sure you want to delete "${user.name}"? This cannot be undone.`}
                         onConfirm={() => handleDelete(user.id)}
-                      />
+                      /></CapabilityGate>
                     </div>
                   </TableCell>
                 </TableRow>

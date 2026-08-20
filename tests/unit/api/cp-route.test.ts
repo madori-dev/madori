@@ -1,18 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
+import { parse, stringify } from 'yaml'
 import { PluginRegistry } from '@/lib/auth/registry'
 import { YamlUserProviderFactory } from '@/lib/auth/providers/yaml'
 import { FileSessionStoreFactory } from '@/lib/auth/stores/file'
 import { PasswordAuthDriverFactory } from '@/lib/auth/drivers/password'
 import { compose } from '@/lib/auth/composer'
-import type { ComposedAuthService, AuthConfig } from '@/lib/auth/composer'
+import type { AuthConfig } from '@/lib/auth/composer'
 import { PermissionChecker } from '@/lib/auth/permissions'
 import { _setAuthServiceForTesting, _setComposedAuthForTesting, _setEntryHandlersForTesting, GET, POST, PUT, DELETE } from '@/app/(cp)/api/[...path]/route'
 import { createEntryHandlers } from '@/app/(cp)/api/handlers/entries'
 import type { FileSystemAdapter } from '@/lib/fs/adapter'
 import type { ContentParser } from '@/lib/fs/parser'
 import type { ContentEngine, EntryInput } from '@/lib/content/engine'
-import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors'
+import { NotFoundError, ConflictError } from '@/lib/errors'
 import type { Entry, ListOptions } from '@/lib/types'
 import type { User } from '@/lib/auth/types'
 import type { ResourceType, Action } from '@/lib/auth/permissions'
@@ -95,11 +96,9 @@ function createMockParser(): ContentParser {
       return content
     },
     parseYaml<T>(raw: string): T {
-      const { parse } = require('yaml')
       return parse(raw) as T
     },
     serializeYaml(data) {
-      const { stringify } = require('yaml')
       return stringify(data)
     },
   }

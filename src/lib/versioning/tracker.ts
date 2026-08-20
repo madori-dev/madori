@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import * as path from 'path'
 import type { FileSystemAdapter } from '@/lib/fs/adapter'
+import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
 
 export const ManifestSchema = z.object({
   schemaVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
@@ -94,6 +95,7 @@ export class VersionTracker {
       await this.fs.mkdir(dir)
     }
     const content = JSON.stringify(manifest, null, 2)
-    await this.fs.writeFile(this.manifestPath, content)
+    const result = await new AtomicFileWriter(this.fs).writeFileAtomic(this.manifestPath, content)
+    if (!result.success) throw result.error ?? new Error(`Could not write version manifest: ${this.manifestPath}`)
   }
 }

@@ -11,6 +11,8 @@ import { EmptyState } from '@/components/cp/EmptyState'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { DeleteDialog } from '@/components/cp/DeleteDialog'
+import { useCapabilities } from '@/components/cp/use-capabilities'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 
 import type { Blueprint, BlueprintType } from '@/lib/blueprints/types'
 
@@ -23,6 +25,7 @@ const blueprintTypes: { type: BlueprintType; label: string; description: string 
 ]
 
 function BlueprintsListContent() {
+  const capabilities = useCapabilities()
   const searchParams = useSearchParams()
   const filterType = searchParams.get('type') as BlueprintType | null
 
@@ -59,7 +62,7 @@ function BlueprintsListContent() {
   }
 
   useEffect(() => {
-    fetchAll()
+    queueMicrotask(() => { void fetchAll() })
   }, [])
 
   async function handleDelete(type: string, handle: string) {
@@ -76,7 +79,7 @@ function BlueprintsListContent() {
       <PageHeader
         title={filterType ? `Blueprints — ${visibleTypes[0]?.label ?? filterType}` : 'Blueprints'}
         description="Define the field schemas for your content types."
-        createHref="/cp/blueprints/create"
+        createHref={capabilities?.['collections:create'] || capabilities?.['taxonomies:create'] || capabilities?.['globals:create'] || capabilities?.['navigation:create'] || capabilities?.['forms:create'] ? '/cp/blueprints/create' : undefined}
         createLabel="New Blueprint"
       />
 
@@ -125,11 +128,11 @@ function BlueprintsListContent() {
                         <Badge variant="secondary" className="text-xs">
                           {type}
                         </Badge>
-                        <DeleteDialog
+                        <CapabilityGate resource={{ collections: 'collections', taxonomies: 'taxonomies', globals: 'globals', navigations: 'navigation', forms: 'forms' }[type] ?? 'collections'} action="delete"><DeleteDialog
                           title="Delete blueprint"
                           description={`Are you sure you want to delete the "${bp.handle}" blueprint? This cannot be undone.`}
                           onConfirm={() => handleDelete(type, bp.handle)}
-                        />
+                        /></CapabilityGate>
                       </div>
                     </div>
                   )

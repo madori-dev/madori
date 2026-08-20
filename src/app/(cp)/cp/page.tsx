@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useCapabilities } from '@/components/cp/use-capabilities'
 import {
   FolderOpen,
   Tags,
@@ -76,6 +77,7 @@ function RecentActivitySkeleton() {
 }
 
 export default function DashboardPage() {
+  const capabilities = useCapabilities()
   const [recentEntries, setRecentEntries] = useState<RecentEntry[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -164,7 +166,11 @@ export default function DashboardPage() {
       <div>
         <h2 className="text-sm font-medium text-muted-foreground mb-3">Quick Access</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {quickAccessSections.map((section) => (
+          {quickAccessSections.filter(section => {
+            const resource = section.href.split('/').at(-1)
+            const capability = resource === 'navigation' ? 'navigation:view' : resource === 'collections' ? 'collections:view' : resource === 'taxonomies' ? 'taxonomies:view' : resource === 'globals' ? 'globals:view' : resource === 'assets' ? 'assets:view' : resource === 'forms' ? 'forms:view' : resource === 'users' ? 'users:view' : undefined
+            return capability ? capabilities?.[capability] === true : false
+          }).map((section) => (
             <Link key={section.href} href={section.href} className="group">
               <Card className="h-full transition-colors hover:bg-accent/50 cursor-pointer">
                 <CardHeader className="p-4">

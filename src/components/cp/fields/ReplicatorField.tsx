@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2, GripVertical, ChevronDown, ChevronRight } from 'lucide-react'
 import {
   DndContext,
@@ -50,6 +50,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
 import { FieldRenderer } from './FieldRenderer'
+import { hasPublicBlockRenderer } from '@/components/blocks'
 
 import type { FieldConfig, FieldDefinition } from '@/lib/blueprints/types'
 
@@ -95,26 +96,26 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
   const [expandedBlocks, setExpandedBlocks] = useState<Set<number>>(new Set())
   const [activeId, setActiveId] = useState<string | null>(null)
 
-  const rawBlocks: Block[] = Array.isArray(value) ? value : []
-  const configuredSets = (field.options?.sets as string[]) ?? []
+  const rawBlocks = useMemo<Block[]>(
+    () => (Array.isArray(value) ? value : []),
+    [value]
+  )
+  const configuredSets = useMemo(
+    () => (field.options?.sets as string[]) ?? [],
+    [field.options?.sets]
+  )
 
   // Ensure all blocks have stable IDs for dnd-kit
-  const blocksRef = useRef<Block[]>(rawBlocks)
   const blocks = useMemo(() => {
-    const withIds = ensureBlockIds(rawBlocks)
-    if (withIds !== rawBlocks) {
-      // Defer the onChange to avoid render-during-render
-      blocksRef.current = withIds
-    }
-    return withIds
+    return ensureBlockIds(rawBlocks)
   }, [rawBlocks])
 
   // Sync IDs back to parent if they were missing
   useEffect(() => {
-    if (blocksRef.current !== rawBlocks && blocksRef.current.length > 0) {
-      onChange(blocksRef.current)
+    if (blocks !== rawBlocks && blocks.length > 0) {
+      onChange(blocks)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [blocks, onChange, rawBlocks])
 
   const blockIds = useMemo(() => blocks.map((b) => b._id!), [blocks])
 
@@ -152,7 +153,7 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
         if (listRes.ok) {
           const listJson = await listRes.json()
           const blockFieldsets = (listJson.data ?? []).filter(
-            (f: { handle: string; is_block?: boolean }) => f.is_block && !loadedHandles.has(f.handle)
+            (f: { handle: string; is_block?: boolean }) => f.is_block && hasPublicBlockRenderer(f.handle) && !loadedHandles.has(f.handle)
           )
           for (const { handle } of blockFieldsets) {
             const res = await fetch(`/api/fieldsets/${handle}`)
@@ -174,7 +175,7 @@ export function ReplicatorField({ value, onChange, field, error }: FieldComponen
       }
     }
     loadFieldsets()
-  }, [configuredSets.join(',')])
+  }, [configuredSets])
 
   function addBlock(type: string) {
     const newBlock: Block = { _type: type, _id: generateBlockId() }
@@ -397,7 +398,7 @@ interface SortableBlockProps {
 function SortableBlock({
   block,
   index,
-  totalBlocks,
+  totalBlocks: _totalBlocks,
   isExpanded,
   fieldsets,
   onToggleExpanded,

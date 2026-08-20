@@ -18,6 +18,7 @@ function createMockFs(): FileSystemAdapter {
   return {
     readFile: vi.fn(),
     writeFile: vi.fn().mockResolvedValue(undefined),
+    writeBinaryFile: vi.fn().mockResolvedValue(undefined),
     deleteFile: vi.fn().mockResolvedValue(undefined),
     exists: vi.fn(),
     listFiles: vi.fn().mockResolvedValue([]),
@@ -95,6 +96,32 @@ describe('AtomicFileWriter', () => {
       // Should still return failure without throwing
       expect(result.success).toBe(false)
       expect(result.error?.message).toBe('rename failed')
+    })
+  })
+
+  describe('writeBinaryFileAtomic', () => {
+    it('writes binary content to a temporary path before atomically moving it', async () => {
+      const bytes = Buffer.from([0, 255, 10, 42])
+      const result = await writer.writeBinaryFileAtomic('/assets/logo.bin', bytes)
+
+      expect(result.success).toBe(true)
+      expect(mockFs.writeBinaryFile).toHaveBeenCalledTimes(1)
+      const [temporaryPath, written] = vi.mocked(mockFs.writeBinaryFile!).mock.calls[0]
+      expect(temporaryPath).toMatch(/^\/assets\/logo\.bin\.tmp\.[a-f0-9]{16}$/)
+      expect(written).toEqual(bytes)
+      expect(mockFs.moveFile).toHaveBeenCalledWith(temporaryPath, '/assets/logo.bin')
+    })
+
+    it('reports unsupported binary writes without touching target', async () => {
+      const unsupported = createMockFs()
+      delete unsupported.writeBinaryFile
+
+      const result = await new AtomicFileWriter(unsupported)
+        .writeBinaryFileAtomic('/assets/logo.bin', Buffer.from([1]))
+
+      expect(result.success).toBe(false)
+      expect(result.error?.message).toBe('Binary writes are not supported by this file system adapter')
+      expect(unsupported.moveFile).not.toHaveBeenCalled()
     })
   })
 

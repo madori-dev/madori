@@ -2,28 +2,42 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { ComposedAuthService } from '@/lib/auth/composer'
 import { NotFoundError, ConflictError } from '@/lib/errors'
 import { verifyPassword } from '@/lib/auth/password'
+import { assertSafeUserId } from '@/lib/auth/providers/yaml'
 
 /**
  * Basic email format validation.
  * Checks for non-empty local part, @ symbol, and non-empty domain with a dot.
  */
 export function isValidEmail(email: string): boolean {
-  if (typeof email !== 'string') return false
-  // Must have exactly one @, non-empty local part, and domain with at least one dot
-  const atIndex = email.indexOf('@')
-  if (atIndex < 1) return false // no @ or empty local part
-  const domain = email.slice(atIndex + 1)
-  if (!domain || !domain.includes('.')) return false
-  // Domain parts must be non-empty
-  const domainParts = domain.split('.')
-  if (domainParts.some((p) => p.length === 0)) return false
-  return true
+  return typeof email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }
+
+export function isValidUserId(id: unknown): id is string {
+  try {
+    assertSafeUserId(id as string)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+function isValidRoleHandle(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-z0-9][a-z0-9-]*$/.test(value)
+}
+
+export type RoleExists = (handle: string) => Promise<boolean>
 
 /**
  * User handlers that operate via ComposedAuthService for all user CRUD.
  */
-export function createUserHandlers(authService: ComposedAuthService) {
+export function createUserHandlers(
+  authService: ComposedAuthService,
+  roleExists: RoleExists = async () => false
+) {
   async function handleListUsers(): Promise<NextResponse> {
     const users = await authService.listUsers()
     // Strip password hashes from response
@@ -58,12 +72,44 @@ export function createUserHandlers(authService: ComposedAuthService) {
   }
 
   async function handleCreateUser(request: NextRequest): Promise<NextResponse> {
-    const body = await request.json()
+    const rawBody: unknown = await request.json()
+    if (!rawBody || Array.isArray(rawBody) || typeof rawBody !== 'object') {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'User payload must be an object' } },
+        { status: 422 }
+      )
+    }
+    const body = rawBody as Record<string, unknown>
     const { id, email, name, password, roles } = body
 
-    if (!id || !email || !name || !password) {
+    if (!isNonEmptyString(id) || !isNonEmptyString(email) || !isNonEmptyString(name) || !isNonEmptyString(password)) {
       return NextResponse.json(
         { error: { code: 'VALIDATION_ERROR', message: 'id, email, name, and password are required' } },
+        { status: 422 }
+      )
+    }
+    if (!isValidUserId(id)) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'Invalid user id' } },
+        { status: 422 }
+      )
+    }
+    if (!isValidEmail(email)) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'Invalid email address' } },
+        { status: 422 }
+      )
+    }
+    if (roles !== undefined && (!Array.isArray(roles) || roles.some((role) => !isValidRoleHandle(role)))) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'roles must be an array of role handles' } },
+        { status: 422 }
+      )
+    }
+    const requestedRoles = roles ?? []
+    if (new Set(requestedRoles).size !== requestedRoles.length || !(await Promise.all(requestedRoles.map(roleExists))).every(Boolean)) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'roles must contain existing, unique role handles' } },
         { status: 422 }
       )
     }
@@ -74,7 +120,7 @@ export function createUserHandlers(authService: ComposedAuthService) {
         email,
         name,
         password,
-        roles: roles ?? [],
+        roles: requestedRoles,
       })
       const { passwordHash: _ph, ...safeUser } = user as unknown as Record<string, unknown>
       return NextResponse.json({ data: safeUser }, { status: 201 })
@@ -93,6 +139,9 @@ export function createUserHandlers(authService: ComposedAuthService) {
     request: NextRequest,
     userId: string
   ): Promise<NextResponse> {
+    if (!isValidUserId(userId)) {
+      return NextResponse.json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid user id' } }, { status: 422 })
+    }
     const body = await request.json()
     const { email, name, password, roles, theme } = body
 
@@ -121,10 +170,60 @@ export function createUserHandlers(authService: ComposedAuthService) {
     }
   }
 
+  async function handleUpdateOwnUser(
+    request: NextRequest,
+    userId: string
+  ): Promise<NextResponse> {
+    if (!isValidUserId(userId)) {
+      return NextResponse.json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid user id' } }, { status: 422 })
+    }
+    const body = await request.json()
+    const { email, name, theme } = body
+    const allowedFields = ['email', 'name', 'theme']
+
+    if (Object.keys(body).some((key) => !allowedFields.includes(key))) {
+      return NextResponse.json(
+        { error: { code: 'AUTHORIZATION_ERROR', message: 'Users may only update their own profile details' } },
+        { status: 403 }
+      )
+    }
+
+    if (email !== undefined && !isValidEmail(email)) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'Invalid email address' } },
+        { status: 422 }
+      )
+    }
+
+    if (theme !== undefined && theme !== 'light' && theme !== 'dark') {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'Theme must be light or dark' } },
+        { status: 422 }
+      )
+    }
+
+    try {
+      const user = await authService.updateUser(userId, { email, name, theme })
+      const { passwordHash: _ph, ...safeUser } = user as unknown as Record<string, unknown>
+      return NextResponse.json({ data: safeUser })
+    } catch (error) {
+      if (error instanceof NotFoundError) {
+        return NextResponse.json(
+          { error: { code: 'NOT_FOUND', message: error.message } },
+          { status: 404 }
+        )
+      }
+      throw error
+    }
+  }
+
   async function handleDeleteUser(
     _request: NextRequest,
     userId: string
   ): Promise<NextResponse> {
+    if (!isValidUserId(userId)) {
+      return NextResponse.json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid user id' } }, { status: 422 })
+    }
     try {
       await authService.deleteUser(userId)
       return NextResponse.json({ success: true })
@@ -143,6 +242,9 @@ export function createUserHandlers(authService: ComposedAuthService) {
     request: NextRequest,
     userId: string
   ): Promise<NextResponse> {
+    if (!isValidUserId(userId)) {
+      return NextResponse.json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid user id' } }, { status: 422 })
+    }
     const body = await request.json()
     const { currentPassword, newPassword } = body
 
@@ -185,6 +287,7 @@ export function createUserHandlers(authService: ComposedAuthService) {
     handleGetUser,
     handleCreateUser,
     handleUpdateUser,
+    handleUpdateOwnUser,
     handleDeleteUser,
     handleChangePassword,
   }

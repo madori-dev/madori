@@ -1,0 +1,13 @@
+{
+  "schema": "madori.seo.storage.v1",
+  "version": 1,
+  "gitVersioned": {
+    "site": { "path": "resources/seo/sites/en.yaml", "value": { "version": 1, "enabled": true, "titleSuffix": "Madori", "description": "Site default", "social": { "enabled": true, "image": "assets::defaults/social.jpg" } } },
+    "collection": { "path": "resources/seo/sections/collection/journal.yaml", "value": { "version": 1, "enabled": true, "titleTemplate": "{title} | Journal", "jsonLd": { "enabled": true, "type": "Article" } } },
+    "taxonomy": { "path": "resources/seo/sections/taxonomy/topics.yaml", "value": { "version": 1, "enabled": true, "titleTemplate": "{title} articles" } },
+    "entry": { "path": "content/collections/journal/launch.md", "field": "seo", "value": { "title": "Launch notes", "description": null, "social": { "image": "assets::journal/launch.jpg" } } },
+    "term": { "path": "content/taxonomies/topics/design.yaml", "field": "seo", "value": { "description": "Design notes and guides" } },
+    "redirect": { "path": "content/seo/redirects/redirect-1.yaml", "value": { "version": 1, "id": "redirect-1", "site": "en", "source": "/old-page", "destination": "/new-page", "status": 301, "enabled": true } }
+  },
+  "operational": ["storage/seo/cache", "storage/seo/observations", "storage/seo/metrics", "storage/seo/reports"]
+}

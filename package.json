@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest --run",
+    "e2e": "playwright test",
+    "e2e:prepare": "tsx tests/e2e/setup.ts",
     "madori": "tsx packages/madori-cli/src/index.ts",
     "cache:clear": "tsx src/lib/static-cache/cli/clear.ts",
     "cache:warm": "tsx src/lib/static-cache/cli/warm.ts"
@@ -55,6 +57,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20.19.41",
     "@types/react": "^19",

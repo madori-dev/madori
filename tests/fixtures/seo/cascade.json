@@ -1,0 +1,36 @@
+{
+  "schema": "madori.seo.cascade.v1",
+  "precedence": ["system", "site", "scope", "record"],
+  "semantics": { "omitted": "inherit", "null": "inherit", "emptyString": "unset", "disabledScopeOrRecord": "exclude-subject", "disabledChannel": "suppress-channel" },
+  "cases": [
+    {
+      "id": "entry-full-cascade",
+      "subject": { "type": "entry", "id": "entry-1", "title": "Welcome", "url": "/welcome" },
+      "layers": {
+        "system": { "title": "Welcome" },
+        "site": { "titleSuffix": "Madori", "description": "Site description", "robots": ["index", "follow"] },
+        "scope": { "titleTemplate": "{title} | Journal", "description": "Collection description" },
+        "record": { "title": "A better welcome", "description": null }
+      },
+      "expected": { "title": "A better welcome | Journal", "description": "Collection description", "robots": ["index", "follow"], "sources": { "title": "record", "titleTemplate": "scope", "description": "scope", "robots": "site" } }
+    },
+    {
+      "id": "disabled-scope-excludes-subject",
+      "subject": { "type": "entry", "id": "entry-2", "title": "About", "url": "/about" },
+      "layers": { "system": { "title": "About" }, "site": { "description": "Site description" }, "scope": { "enabled": false, "description": "Ignored" }, "record": {} },
+      "expected": { "excluded": true, "metadata": null, "report": false, "sitemap": false, "sources": { "exclusion": "scope" } }
+    },
+    {
+      "id": "term-overrides-taxonomy",
+      "subject": { "type": "term", "id": "term-design", "title": "Design", "url": "/topics/design" },
+      "layers": { "system": { "title": "Design" }, "site": { "titleSuffix": "Madori" }, "scope": { "titleTemplate": "{title} articles", "description": "Topic archive" }, "record": { "description": "Design notes and guides" } },
+      "expected": { "title": "Design articles", "description": "Design notes and guides", "sources": { "title": "system", "titleTemplate": "scope", "description": "record" } }
+    },
+    {
+      "id": "record-disables-social-channel",
+      "subject": { "type": "entry", "id": "entry-private", "title": "Private", "url": "/private" },
+      "layers": { "system": { "title": "Private" }, "site": { "social": { "enabled": true, "image": "assets::defaults/social.jpg" } }, "scope": {}, "record": { "social": { "enabled": false } } },
+      "expected": { "title": "Private", "social": null, "sources": { "title": "system", "social": "record:suppressed" } }
+    }
+  ]
+}

@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/cp/EmptyState'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { DeleteDialog } from '@/components/cp/DeleteDialog'
+import { useCapabilities } from '@/components/cp/use-capabilities'
 
 interface Global {
   handle: string
@@ -18,6 +19,7 @@ interface Global {
 }
 
 export default function GlobalsListPage() {
+  const capabilities = useCapabilities()
   const [globals, setGlobals] = useState<Global[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -37,7 +39,7 @@ export default function GlobalsListPage() {
   }
 
   useEffect(() => {
-    fetchGlobals()
+    queueMicrotask(() => { void fetchGlobals() })
   }, [])
 
   async function handleDelete(handle: string) {
@@ -54,8 +56,8 @@ export default function GlobalsListPage() {
       <PageHeader
         title="Globals"
         description="Manage site-wide content and settings."
-        createHref="/cp/globals/create"
-        blueprintsHref="/cp/blueprints?type=globals"
+        createHref={capabilities?.['globals:create'] ? '/cp/globals/create' : undefined}
+        blueprintsHref={capabilities?.['blueprints:view'] ? '/cp/blueprints?type=globals' : undefined}
       />
 
       {globals.length === 0 ? (

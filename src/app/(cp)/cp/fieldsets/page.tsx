@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/cp/EmptyState'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { DeleteDialog } from '@/components/cp/DeleteDialog'
+import { useCapabilities } from '@/components/cp/use-capabilities'
 
 interface Fieldset {
   handle: string
@@ -17,6 +18,7 @@ interface Fieldset {
 }
 
 export default function FieldsetsListPage() {
+  const capabilities = useCapabilities()
   const [fieldsets, setFieldsets] = useState<Fieldset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -36,7 +38,7 @@ export default function FieldsetsListPage() {
   }
 
   useEffect(() => {
-    fetchFieldsets()
+    queueMicrotask(() => { void fetchFieldsets() })
   }, [])
 
   async function handleDelete(handle: string) {
@@ -56,7 +58,7 @@ export default function FieldsetsListPage() {
       <PageHeader
         title="Fieldsets"
         description="Reusable field groups for blueprints and replicators."
-        createHref="/cp/fieldsets/create"
+        createHref={capabilities?.['collections:create'] ? '/cp/fieldsets/create' : undefined}
         createLabel="New Fieldset"
       />
 

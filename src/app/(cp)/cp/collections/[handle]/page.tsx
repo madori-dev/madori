@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { MoreVertical, Settings, FileText, Trash2, FolderOpen } from 'lucide-react'
 import { toast } from 'sonner'
@@ -37,6 +37,8 @@ import { EmptyState } from '@/components/cp/EmptyState'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { DeleteDialog } from '@/components/cp/DeleteDialog'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
+import { useCapability } from '@/components/cp/use-capabilities'
 
 interface Entry {
   title: string
@@ -51,6 +53,8 @@ export default function EntriesListPage() {
   const params = useParams()
   const router = useRouter()
   const handle = params.handle as string
+  const canEditCollection = useCapability('collections', 'edit')
+  const canDeleteCollection = useCapability('collections', 'delete')
 
   const [entries, setEntries] = useState<Entry[]>([])
   const [loading, setLoading] = useState(true)
@@ -58,11 +62,7 @@ export default function EntriesListPage() {
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
 
-  useEffect(() => {
-    fetchEntries()
-  }, [handle])
-
-  async function fetchEntries() {
+  const fetchEntries = useCallback(async () => {
     try {
       setLoading(true)
       const res = await fetch(`/api/entries/${handle}`)
@@ -76,7 +76,11 @@ export default function EntriesListPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [handle])
+
+  useEffect(() => {
+    queueMicrotask(() => { void fetchEntries() })
+  }, [fetchEntries])
 
   async function handleDelete(slug: string) {
     const res = await fetch(`/api/entries/${handle}/${slug}`, {
@@ -95,7 +99,7 @@ export default function EntriesListPage() {
     if (!res.ok) {
       throw new Error(`Failed to delete collection: ${res.status}`)
     }
-    toast.success('Collection deleted')
+    toast.success('Collection removed. Existing entries and blueprint were retained.')
     router.push('/cp/collections')
   }
 
@@ -112,41 +116,41 @@ export default function EntriesListPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button nativeButton={false} render={<Link href={`/cp/collections/${handle}/create`} />}>
+          <CapabilityGate resource="entries" action="create" scope={handle}><Button nativeButton={false} render={<Link href={`/cp/collections/${handle}/create`} />}>
             Create Entry
-          </Button>
-          <DropdownMenu>
+          </Button></CapabilityGate>
+          {(canEditCollection || canDeleteCollection) && <DropdownMenu>
             <DropdownMenuTrigger
               render={<Button variant="outline" size="icon" />}
             >
               <MoreVertical className="size-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem
+              <CapabilityGate resource="collections" action="edit"><DropdownMenuItem
                 className="cursor-pointer"
                 onClick={() => router.push(`/cp/collections/${handle}/configure`)}
               >
                 <Settings className="size-4" />
                 Configure Collection
-              </DropdownMenuItem>
-              <DropdownMenuItem
+              </DropdownMenuItem></CapabilityGate>
+              <CapabilityGate resource="collections" action="edit"><DropdownMenuItem
                 className="cursor-pointer"
                 onClick={() => router.push(`/cp/blueprints/collections/${handle}`)}
               >
                 <FileText className="size-4" />
                 Edit Blueprint
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
+              </DropdownMenuItem></CapabilityGate>
+              {canEditCollection && canDeleteCollection && <DropdownMenuSeparator />}
+              <CapabilityGate resource="collections" action="delete"><DropdownMenuItem
                 variant="destructive"
                 className="cursor-pointer"
                 onClick={() => setDeleteDialogOpen(true)}
               >
                 <Trash2 className="size-4" />
                 Delete Collection
-              </DropdownMenuItem>
+              </DropdownMenuItem></CapabilityGate>
             </DropdownMenuContent>
-          </DropdownMenu>
+          </DropdownMenu>}
 
           <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
             <AlertDialogContent>
@@ -172,12 +176,12 @@ export default function EntriesListPage() {
           icon={FolderOpen}
           title="No entries yet."
         >
-          <Link
+          <CapabilityGate resource="entries" action="create" scope={handle}><Link
             href={`/cp/collections/${handle}/create`}
             className="mt-2 text-sm font-medium text-foreground underline hover:no-underline"
           >
             Create your first entry
-          </Link>
+          </Link></CapabilityGate>
         </EmptyState>
       ) : (
         <div className="rounded-lg border">
@@ -217,19 +221,19 @@ export default function EntriesListPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Button
+                      <CapabilityGate resource="entries" action="edit" scope={handle}><Button
                         variant="ghost"
                         size="sm"
                         nativeButton={false}
                         render={<Link href={`/cp/collections/${handle}/${entry.slug}`} />}
                       >
                         Edit
-                      </Button>
-                      <DeleteDialog
+                      </Button></CapabilityGate>
+                      <CapabilityGate resource="entries" action="delete" scope={handle}><DeleteDialog
                         title="Delete entry"
                         description={`Are you sure you want to delete "${entry.title}"? This cannot be undone.`}
                         onConfirm={() => handleDelete(entry.slug)}
-                      />
+                      /></CapabilityGate>
                     </div>
                   </TableCell>
                 </TableRow>

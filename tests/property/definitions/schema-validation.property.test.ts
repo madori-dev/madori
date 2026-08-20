@@ -7,7 +7,6 @@ import {
   GlobalDefinitionSchema,
   NavigationDefinitionSchema,
   FormDefinitionSchema,
-  DefinitionSchemas,
 } from '@/lib/definitions/schemas'
 
 /**

@@ -19,6 +19,7 @@ import {
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { NavigationTreeEditor } from '@/components/cp/NavigationTreeEditor'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 
 import type { NavigationItem } from '@/lib/types'
 import type { Blueprint } from '@/lib/blueprints/types'
@@ -153,9 +154,9 @@ export default function EditNavigationPage() {
               Edit Blueprint
             </Button>
           )}
-          <Button onClick={handleSave} disabled={saving}>
+          <CapabilityGate resource="navigation" action="edit"><Button onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
-          </Button>
+          </Button></CapabilityGate>
         </div>
       </div>
 
@@ -166,6 +167,7 @@ export default function EditNavigationPage() {
         onChange={setItems}
         maxDepth={definition?.max_depth}
         blueprint={blueprint}
+        allowedCollections={definition?.collections}
       />
     </div>
   )

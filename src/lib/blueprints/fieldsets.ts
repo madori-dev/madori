@@ -2,6 +2,7 @@ import * as path from 'path'
 import type { FileSystemAdapter } from '@/lib/fs/adapter'
 import type { ContentParser } from '@/lib/fs/parser'
 import type { Blueprint, BlueprintTab, FieldDefinition } from './types'
+import { assertContentIdentifier } from '@/lib/content/identifiers'
 
 /**
  * Raw YAML structure for a fieldset file.
@@ -63,6 +64,9 @@ export class FieldsetResolver {
     handle: string,
     stack: string[]
   ): Promise<FieldDefinition[]> {
+    // Import values are used in a filename. Validate before both cycle tracking
+    // and path construction so malformed YAML cannot escape resources/fieldsets.
+    assertContentIdentifier(handle, 'fieldset handle')
     if (stack.includes(handle)) {
       const cycle = [...stack, handle].join(' -> ')
       throw new Error(`Circular fieldset reference detected: ${cycle}`)
@@ -154,6 +158,7 @@ export class FieldsetResolver {
           field: {
             type: entry.field.type as FieldDefinition['field']['type'],
             display: entry.field.display as string | undefined,
+            instructions: entry.field.instructions as string | undefined,
             required: entry.field.required as boolean | undefined,
             default: entry.field.default,
             validate: entry.field.validate as string[] | undefined,

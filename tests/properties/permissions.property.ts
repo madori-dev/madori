@@ -88,6 +88,11 @@ const RESOURCE_TYPES: ResourceType[] = [
   'navigation',
   'users',
   'settings',
+  'git',
+  'seo',
+  'seo-reports',
+  'seo-redirects',
+  'seo-errors',
 ]
 
 const ACTIONS: Action[] = ['view', 'create', 'edit', 'delete', 'publish']

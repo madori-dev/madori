@@ -44,6 +44,9 @@ interface AssetToolbarProps {
   onCreateDirectory: (name: string) => void
   onSelectAll: () => void
   onClearSelection: () => void
+  canCreate: boolean
+  canEdit: boolean
+  canDelete: boolean
 }
 
 export function AssetToolbar({
@@ -58,6 +61,9 @@ export function AssetToolbar({
   onCreateDirectory,
   onSelectAll,
   onClearSelection,
+  canCreate,
+  canEdit,
+  canDelete,
 }: AssetToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [newFolderName, setNewFolderName] = useState('')
@@ -79,14 +85,14 @@ export function AssetToolbar({
   return (
     <div className="flex items-center gap-2 border-b border-border px-4 py-2">
       {/* Upload */}
-      <input
+      {canCreate && <input
         ref={fileInputRef}
         type="file"
         multiple
         onChange={handleFileChange}
         className="hidden"
-      />
-      <Button
+      />}
+      {canCreate && <Button
         variant="outline"
         size="sm"
         onClick={() => fileInputRef.current?.click()}
@@ -94,10 +100,10 @@ export function AssetToolbar({
       >
         <Upload className="mr-1.5 h-4 w-4" />
         {uploading ? 'Uploading…' : 'Upload'}
-      </Button>
+      </Button>}
 
       {/* New Folder */}
-      <Dialog>
+      {canCreate && <Dialog>
         <DialogTrigger render={<Button variant="outline" size="sm" />}>
           <FolderPlus className="mr-1.5 h-4 w-4" />
           New Folder
@@ -123,7 +129,7 @@ export function AssetToolbar({
             </DialogClose>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
+      </Dialog>}
 
       <div className="flex-1" />
 
@@ -135,7 +141,7 @@ export function AssetToolbar({
           </span>
 
           {/* Move selected */}
-          <Dialog>
+          {canEdit && <Dialog>
             <DialogTrigger render={<Button variant="outline" size="sm" />}>
               <FolderInput className="mr-1.5 h-4 w-4" />
               Move
@@ -188,10 +194,10 @@ export function AssetToolbar({
                 </DialogClose>
               </DialogFooter>
             </DialogContent>
-          </Dialog>
+          </Dialog>}
 
           {/* Delete selected */}
-          <AlertDialog>
+          {canDelete && <AlertDialog>
             <AlertDialogTrigger render={<Button variant="destructive" size="sm" />}>
               <Trash2 className="mr-1.5 h-4 w-4" />
               Delete
@@ -213,7 +219,7 @@ export function AssetToolbar({
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
-          </AlertDialog>
+          </AlertDialog>}
 
           <Button variant="ghost" size="sm" onClick={onClearSelection}>
             <XSquare className="mr-1.5 h-4 w-4" />

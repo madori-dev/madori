@@ -1,0 +1,17 @@
+fields:
+  - handle: meta_title
+    field:
+      type: text
+      display: Meta Title
+      validate:
+        - max:60
+  - handle: meta_description
+    field:
+      type: text
+      display: Meta Description
+      validate:
+        - max:160
+  - handle: og_image
+    field:
+      type: asset
+      display: OG Image

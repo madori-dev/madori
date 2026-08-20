@@ -19,6 +19,7 @@ import {
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { DeleteDialog } from '@/components/cp/DeleteDialog'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 
 interface FormSubmission {
   id: string
@@ -127,11 +128,11 @@ export default function SubmissionDetailPage() {
             {formatTimestamp(submission.submittedAt)}
           </p>
         </div>
-        <DeleteDialog
+        <CapabilityGate resource="forms" action="delete"><DeleteDialog
           title="Delete submission"
           description="Are you sure you want to delete this submission? This action cannot be undone."
           onConfirm={handleDelete}
-        />
+        /></CapabilityGate>
       </div>
 
       <Card>

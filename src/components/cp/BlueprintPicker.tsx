@@ -64,7 +64,7 @@ export function BlueprintPicker({
       }
     }
     fetchBlueprints()
-  }, [type])
+  }, [type, value, onCreateNew])
 
   function handleSelect(handle: string) {
     setCreateNew(false)

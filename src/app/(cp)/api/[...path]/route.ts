@@ -11,6 +11,7 @@ import { PasswordAuthDriverFactory } from '@/lib/auth/drivers/password'
 import { compose } from '@/lib/auth/composer'
 import type { ComposedAuthService, AuthConfig } from '@/lib/auth/composer'
 import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
+import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
 import { MarkdownYamlParser } from '@/lib/fs/parser'
 import { InMemoryContentCache } from '@/lib/cache/store'
 import { BlueprintLoader } from '@/lib/blueprints/loader'
@@ -23,25 +24,34 @@ import { NavigationOperations } from '@/lib/content/navigation'
 import { TaxonomyOperations } from '@/lib/content/taxonomies'
 import { FormOperations } from '@/lib/content/forms'
 import { createAssetHandlers } from '../handlers/assets'
-import { createUserHandlers } from '../handlers/users'
+import { createUserHandlers, isValidUserId } from '../handlers/users'
 import { createGlobalHandlers } from '../handlers/globals'
 import { createTaxonomyHandlers } from '../handlers/taxonomies'
 import { createNavigationHandlers } from '../handlers/navigation'
+import { requiredUnsupportedPublicFormFields } from '@/lib/forms/public-fields'
 import { createFormHandlers } from '../handlers/forms'
 import { createEntryHandlers } from '../handlers/entries'
 import { createCollectionHandlers } from '../handlers/collections'
 import { createDefinitionHandlers } from '../handlers/definitions'
 import { createContentHandlers } from '../handlers/content'
 import { createDashboardHandlers } from '../handlers/dashboard'
+import { createSeoHandlers, type SeoCapability } from '../handlers/seo'
 import { DefinitionLoader } from '@/lib/definitions/loader'
 import { ContentStore } from '@/lib/content/store'
-import { FileConfigWriter } from '@/lib/config/writer'
 import { initInvalidationEngine } from '@/lib/static-cache/instance'
 import { RuntimeSettingsService } from '@/lib/settings/runtime'
 import { MadoriConfigService } from '@/lib/settings/config'
 import type { User, CreateUserInput, UpdateUserInput } from '@/lib/auth/types'
 import type { ResourceType, Action } from '@/lib/auth/permissions'
 import { AuthenticationError, AuthorizationError as AuthorizationErr } from '@/lib/errors'
+import { getMadori } from '@/lib/madori'
+import { GitError } from '@/lib/git'
+import { createContentEngineSeoPort, promoteNotFoundObservation, SEO_REDIRECT_VERSION, SeoAuditRunner } from '@/lib/seo'
+import { randomUUID } from 'node:crypto'
+import { z } from 'zod'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 /**
  * Internal AuthService interface — adapts ComposedAuthService to a shape
@@ -55,6 +65,7 @@ interface AuthService {
   createUser(input: CreateUserInput): Promise<User>
   updateUser(id: string, input: UpdateUserInput): Promise<User>
   deleteUser(id: string): Promise<void>
+  listUsers(): Promise<User[]>
   hasPermission(user: User, resource: ResourceType, action: Action, scope?: string): Promise<boolean>
 }
 
@@ -77,6 +88,17 @@ type UnauthenticatedRouteHandler = (
   pathSegments: string[]
 ) => Promise<NextResponse>
 
+const rolePermissionSchema = z.object({
+  resource: z.enum(['collections', 'entries', 'taxonomies', 'assets', 'globals', 'forms', 'navigation', 'users', 'settings', 'git', 'seo', 'seo-reports', 'seo-redirects', 'seo-errors']),
+  actions: z.array(z.enum(['view', 'create', 'edit', 'delete', 'publish'])).min(1).transform(actions => [...new Set(actions)]),
+  scope: z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/).optional(),
+}).strict()
+const rolePayloadSchema = z.object({
+  handle: z.string().trim().regex(/^[a-z0-9][a-z0-9-]*$/),
+  display: z.string().trim().min(1).max(120),
+  permissions: z.array(rolePermissionSchema).max(200),
+}).strict()
+
 // --- Singleton service initialization ---
 
 let authServiceInstance: AuthService | null = null
@@ -93,10 +115,10 @@ let entryHandlers: ReturnType<typeof createEntryHandlers>
 let collectionHandlers: ReturnType<typeof createCollectionHandlers>
 let definitionHandlers: ReturnType<typeof createDefinitionHandlers>
 let contentHandlers: ReturnType<typeof createContentHandlers>
-let dashboardHandlers: ReturnType<typeof createDashboardHandlers>
 let runtimeSettingsService: RuntimeSettingsService
 let madoriConfigService: MadoriConfigService
 let contentEngineInstance: MadoriContentEngine
+let resolvedResourcesPath: string
 let blueprintRegistryInstance: BlueprintRegistry
 
 /** @internal Exposed for testing — allows injecting a mock AuthService */
@@ -118,7 +140,6 @@ export function _setEntryHandlersForTesting(handlers: ReturnType<typeof createEn
 }
 
 /** @internal Stub for testing — content engine injection will be implemented with entry routes */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function _setContentEngineForTesting(_engine: unknown): void {
   // No-op: entry routes are not yet implemented in this handler
 }
@@ -134,16 +155,18 @@ async function initializeServices(): Promise<AuthService> {
 
   const config = await loadConfig()
   const resolvedConfig = resolveConfigPaths(config, process.cwd())
+  resolvedResourcesPath = resolvedConfig.resourcesPath
 
   const fs = new NodeFileSystemAdapter()
   const parser = new MarkdownYamlParser()
   const cache = new InMemoryContentCache()
+  const { mutationBus } = await getMadori()
 
   // --- Auth Adapter System: compose auth service from config ---
 
   // 1. Create registry and register default adapters
   const registry = new PluginRegistry()
-  registry.registerProvider('yaml', new YamlUserProviderFactory(fs, parser))
+  registry.registerProvider('yaml', new YamlUserProviderFactory(fs, parser, mutationBus))
   registry.registerStore('file', new FileSessionStoreFactory(fs))
 
   // PasswordAuthDriver needs a UserProvider — resolve and instantiate it first
@@ -206,50 +229,58 @@ async function initializeServices(): Promise<AuthService> {
     async deleteUser(id) {
       return composedAuth.deleteUser(id)
     },
+    async listUsers() {
+      return composedAuth.listUsers() as Promise<User[]>
+    },
     async hasPermission(user: User, resource: ResourceType, action: Action, scope?: string) {
       return permissionChecker.hasPermission(user.roles, resource, action, scope)
     },
   }
 
   // --- Initialize content operation handlers ---
-  const assetOps = new AssetOperations(resolvedConfig.assetsPath, fs)
-  const globalOps = new GlobalOperations(fs, parser, cache, resolvedConfig.contentPath)
-  const navigationOps = new NavigationOperations(fs, parser, cache, resolvedConfig.contentPath)
+  const assetOps = new AssetOperations(resolvedConfig.assetsPath, fs, mutationBus)
+  const globalOps = new GlobalOperations(fs, parser, cache, resolvedConfig.contentPath, mutationBus)
+  const navigationOps = new NavigationOperations(fs, parser, cache, resolvedConfig.contentPath, mutationBus)
   const taxonomyOps = new TaxonomyOperations(config, fs, parser, cache)
-  const formOps = new FormOperations(fs, parser, cache, resolvedConfig.contentPath, resolvedConfig.resourcesPath)
+  const formOps = new FormOperations(fs, parser, cache, resolvedConfig.contentPath, resolvedConfig.resourcesPath, mutationBus)
 
   // Initialize ContentEngine for entry operations
-  const blueprintLoader = new BlueprintLoader(fs, parser, resolvedConfig.resourcesPath)
+  const blueprintLoader = new BlueprintLoader(fs, parser, resolvedConfig.resourcesPath, mutationBus)
   blueprintRegistryInstance = new BlueprintRegistry(blueprintLoader)
-  contentEngineInstance = new MadoriContentEngine(resolvedConfig, fs, parser, cache, blueprintRegistryInstance)
+  contentEngineInstance = new MadoriContentEngine(resolvedConfig, fs, parser, cache, blueprintRegistryInstance, mutationBus)
 
   assetHandlers = createAssetHandlers(assetOps)
   entryHandlers = createEntryHandlers(contentEngineInstance)
-  const configWriter = new FileConfigWriter(path.join(process.cwd(), 'madori.config.ts'))
-  userHandlers = createUserHandlers(composedAuth)
+  userHandlers = createUserHandlers(
+    composedAuth,
+    async (role) => (await permissionChecker.loadRole(role)) !== null
+  )
   globalHandlers = createGlobalHandlers(globalOps)
   taxonomyHandlers = createTaxonomyHandlers(taxonomyOps)
 
   // Initialize flat-file definition and content handlers
-  const definitionLoader = new DefinitionLoader(resolvedConfig.resourcesPath)
-  const flatContentStore = new ContentStore(resolvedConfig.contentPath)
+  const definitionLoader = new DefinitionLoader(resolvedConfig.resourcesPath, mutationBus)
+  const flatContentStore = new ContentStore(resolvedConfig.contentPath, fs, mutationBus)
 
-  navigationHandlers = createNavigationHandlers(navigationOps, definitionLoader)
-  formHandlers = createFormHandlers(formOps, blueprintRegistryInstance)
+  navigationHandlers = createNavigationHandlers(navigationOps, definitionLoader, contentEngineInstance)
+  formHandlers = createFormHandlers(formOps, blueprintRegistryInstance, {}, definitionLoader)
 
   definitionHandlers = createDefinitionHandlers(definitionLoader)
   contentHandlers = createContentHandlers(flatContentStore)
 
-  // Collection handlers need definitionLoader for delete
-  collectionHandlers = createCollectionHandlers(contentEngineInstance, configWriter, blueprintRegistryInstance, definitionLoader)
+  collectionHandlers = createCollectionHandlers(contentEngineInstance, definitionLoader)
 
   // Dashboard handler for recent activity
-  dashboardHandlers = createDashboardHandlers(contentEngineInstance)
 
   // Settings services
   const settingsPath = path.join(resolvedConfig.contentPath, 'settings.yaml')
-  runtimeSettingsService = new RuntimeSettingsService(fs, parser, settingsPath)
-  madoriConfigService = new MadoriConfigService(path.join(process.cwd(), 'madori.config.ts'))
+  runtimeSettingsService = new RuntimeSettingsService(fs, parser, settingsPath, mutationBus)
+  // Keep each path segment statically visible to Next's output tracer. A
+  // dynamically assembled relative path causes Turbopack/NFT to trace cwd.
+  const configFile = process.env.MADORI_E2E === '1'
+    ? path.join(process.cwd(), 'tests', 'e2e', '.madori', 'madori.config.ts')
+    : path.join(process.cwd(), 'madori.config.ts')
+  madoriConfigService = new MadoriConfigService(configFile)
 
   // Initialize static cache invalidation engine
   initInvalidationEngine({
@@ -289,6 +320,48 @@ function methodNotAllowedError(): NextResponse {
   return jsonError('METHOD_NOT_ALLOWED', 'Method not allowed', 405)
 }
 
+const entityResources: Record<string, ResourceType> = {
+  collections: 'collections',
+  taxonomies: 'taxonomies',
+  globals: 'globals',
+  forms: 'forms',
+  navigations: 'navigation',
+}
+
+function resourceForEntityType(type: string): ResourceType | null {
+  return entityResources[type] ?? null
+}
+
+function isSafeHandle(handle: string): boolean {
+  return /^[a-z0-9][a-z0-9-]*$/.test(handle)
+}
+
+function invalidHandleError(): NextResponse {
+  return jsonError('BAD_REQUEST', 'Handle must use lowercase letters, numbers, and hyphens', 400)
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+async function findReferences(pattern: RegExp, directories: string[]): Promise<string[]> {
+  const fs = new NodeFileSystemAdapter()
+  const references: string[] = []
+
+  for (const directory of directories) {
+    if (!await fs.exists(directory)) continue
+    const files = await fs.listFiles(directory, '**/*.yaml')
+    for (const file of files) {
+      const filePath = path.join(directory, file)
+      if (pattern.test(await fs.readFile(filePath))) {
+        references.push(filePath)
+      }
+    }
+  }
+
+  return references
+}
+
 // --- Auth middleware helpers ---
 
 /**
@@ -326,7 +399,11 @@ function withAuth(handler: RouteHandler): UnauthenticatedRouteHandler {
       return authenticationError()
     }
 
-    return handler(request, { user, authService }, pathSegments)
+    const madori = await getMadori()
+    return madori.mutationBus.withContext({
+      actor: { id: user.id, name: user.name, email: user.email },
+      source: 'control-panel',
+    }, () => handler(request, { user, authService }, pathSegments))
   }
 }
 
@@ -436,6 +513,197 @@ const handleLogout: RouteHandler = async (request, context) => {
   return response
 }
 
+function gitErrorResponse(error: unknown): NextResponse {
+  if (error instanceof GitError) {
+    const status = error.code === 'DISABLED' ? 409 : error.code === 'UNKNOWN_REPOSITORY' ? 404 : 422
+    return jsonError(error.code, error.message, status)
+  }
+  return jsonError('GIT_SYNC_FAILED', 'Git synchronization failed', 500)
+}
+
+async function gitRepositoryId(request: NextRequest): Promise<string | undefined> {
+  try {
+    const body = await request.json() as { repository?: unknown }
+    if (body.repository === undefined) return undefined
+    if (typeof body.repository !== 'string' || !/^[a-f0-9]{64}$/.test(body.repository)) throw new Error('invalid')
+    return body.repository
+  } catch {
+    throw new GitError('Repository identifier is invalid', 'INVALID_INPUT')
+  }
+}
+
+async function createRequestSeoHandlers(context: AuthenticatedContext, pathSegments: string[]) {
+  const madori = await getMadori()
+  const permissionFor = (capability: SeoCapability): { resource: ResourceType; action: Action } => {
+    if (capability.startsWith('settings:') || capability === 'preview:read') {
+      return { resource: 'seo', action: capability === 'settings:read' || capability === 'preview:read' ? 'view' : 'edit' }
+    }
+    if (capability === 'report:read') return { resource: 'seo-reports', action: 'view' }
+    if (capability === 'report:run') return { resource: 'seo-reports', action: 'edit' }
+    if (capability.startsWith('redirect:')) {
+      return { resource: 'seo-redirects', action: capability === 'redirect:read' ? 'view' : capability === 'redirect:delete' ? 'delete' : 'edit' }
+    }
+    if (capability === 'not-found:promote') return { resource: 'seo-redirects', action: 'create' }
+    return { resource: 'seo-errors', action: capability === 'not-found:read' ? 'view' : 'delete' }
+  }
+
+  return createSeoHandlers({
+    repository: madori.seoRepository,
+    redirects: madori.seoRedirects,
+    redirectPolicy: { allowedExternalOrigins: madori.config.seo.allowedRedirectOrigins },
+    notFound: madori.seoNotFound,
+    preview: {
+      async resolve(input) {
+        const authenticated = { isAuthenticated: () => true }
+        if ('type' in input) {
+          return input.type === 'entry'
+            ? madori.seoRuntime.previewEntry({ site: input.site, collection: input.collection, slug: input.slug }, authenticated)
+            : madori.seoRuntime.previewTerm({ site: input.site, taxonomy: input.taxonomy, slug: input.slug }, authenticated)
+        }
+        const site = 'site' in input ? input.site : madori.sites.find(candidate => candidate.isDefault)?.handle ?? madori.sites[0].handle
+        if (!site) throw new Error('No SEO site is configured')
+        return madori.seoRuntime.previewDefaults({
+          site,
+          ...('section' in input ? { section: input.section, handle: input.handle } : {}),
+        }, authenticated)
+      },
+    },
+    reports: {
+      async report({ site, page, perPage }) {
+        const latest = (await madori.seoAuditSnapshots.list())[0]
+        if (!latest) return { report: null, issues: [], page, perPage, total: 0 }
+        const issues = latest.report.issues.filter(issue => !site || issue.subject.site === site)
+        const filtered = summarizeSeoIssues(issues)
+        const visible = issues.slice((page - 1) * perPage, page * perPage).map(issue => ({
+          id: `${issue.subject.id}:${issue.ruleId}`,
+          severity: issue.severity === 'info' ? 'notice' : issue.severity,
+          title: issue.message,
+          description: issue.recommendation,
+          type: issue.ruleId,
+        }))
+        return { report: { ...latest.report, ...filtered, issues: undefined }, issues: visible, page, perPage, total: issues.length }
+      },
+      async status({ site }) {
+        const latest = (await madori.seoAuditSnapshots.list())[0]
+        if (!latest) return { available: false, site: site ?? null }
+        const issues = latest.report.issues.filter(issue => !site || issue.subject.site === site)
+        return { available: true, id: latest.id, createdAt: latest.createdAt, ...summarizeSeoIssues(issues), issueCount: issues.length }
+      },
+      async run({ site }) {
+        if (madori.config.seo.reports === false) throw new Error('SEO reports are disabled')
+        const result = await new SeoAuditRunner({
+          content: createContentEngineSeoPort(madori.contentEngine),
+          runtime: madori.seoRuntime,
+          redirects: madori.seoRedirects,
+          engine: madori.seoAudit,
+          snapshots: madori.seoAuditSnapshots,
+          sites: madori.sites,
+        }).run({ site })
+        return { id: result.report.id, createdAt: result.report.createdAt, score: result.report.score, summary: result.report.summary, pages: result.pages, redirects: result.redirects }
+      },
+    },
+    async promoteNotFound(input) {
+      const suggestion = promoteNotFoundObservation(input.site, input.source, input.destination)
+      const observation = input.opaqueId
+        ? (await madori.seoNotFound.list()).observations.find(item => item.opaqueId === input.opaqueId)
+        : undefined
+      const cleanupId = _matchingNotFoundObservationForTesting(observation, input.site, suggestion.source)
+      const saved = await madori.seoRedirects.save({
+        version: SEO_REDIRECT_VERSION,
+        id: `redirect_${randomUUID().replaceAll('-', '')}`,
+        ...suggestion,
+        status: input.status ?? suggestion.status,
+      })
+      let observationDeleted = false
+      if (cleanupId) {
+        try { observationDeleted = await madori.seoNotFound.delete(cleanupId) } catch { /* Redirect remains valid if operational cleanup fails. */ }
+      }
+      return { ...saved.redirect, revision: saved.revision, observationDeleted }
+    },
+  }, {
+    authorize: async (request, capability) => {
+      const permission = permissionFor(capability)
+      const scope = await seoAuthorizationScope(request, capability, pathSegments, madori)
+      return context.authService.hasPermission(context.user, permission.resource, permission.action, scope)
+    },
+  })
+}
+
+export function _summarizeSeoIssuesForTesting(issues: readonly { severity: 'info' | 'warning' | 'error' | 'critical' }[]) {
+  const summary = { total: issues.length, info: 0, warning: 0, error: 0, critical: 0 }
+  const penalties = { info: 1, warning: 4, error: 10, critical: 20 }
+  let penalty = 0
+  for (const issue of issues) {
+    summary[issue.severity]++
+    penalty += penalties[issue.severity]
+  }
+  return { score: Math.max(0, 100 - penalty), summary }
+}
+
+const summarizeSeoIssues = _summarizeSeoIssuesForTesting
+
+export function _matchingNotFoundObservationForTesting(
+  observation: { opaqueId: string; site: string; path: string } | undefined,
+  site: string,
+  source: string,
+): string | undefined {
+  return observation?.site === site && observation.path === source ? observation.opaqueId : undefined
+}
+
+async function seoAuthorizationScope(
+  request: Request,
+  capability: SeoCapability,
+  pathSegments: string[],
+  madori: Awaited<ReturnType<typeof getMadori>>,
+): Promise<string | undefined> {
+  const querySite = new URL(request.url).searchParams.get('site') ?? undefined
+  if (pathSegments[1] === 'sites' && pathSegments[2]) return pathSegments[2]
+
+  if (pathSegments[1] === 'redirects' && pathSegments[2]) {
+    return (await madori.seoRedirects.get(pathSegments[2]))?.redirect.site
+  }
+  if (pathSegments[1] === 'not-found' && pathSegments[2] && pathSegments[2] !== 'promote') {
+    return (await madori.seoNotFound.list()).observations.find(item => item.opaqueId === pathSegments[2])?.site
+  }
+
+  if (request.method !== 'GET' && (
+    capability === 'preview:read'
+    || capability === 'report:run'
+    || capability.startsWith('redirect:')
+    || capability === 'not-found:promote'
+  )) {
+    try {
+      const input = await request.clone().json() as { site?: unknown; redirect?: { site?: unknown } }
+      const site = input.redirect?.site ?? input.site
+      return typeof site === 'string' ? site : undefined
+    } catch {
+      return undefined
+    }
+  }
+  return request.method === 'GET' ? querySite : undefined
+}
+
+/** @internal Authorization regression seam; production callers use withSeoRequest. */
+export const _seoAuthorizationScopeForTesting = seoAuthorizationScope
+
+async function withSeoRequest(
+  request: NextRequest,
+  authService: AuthService,
+  pathSegments: string[],
+  call: (handlers: Awaited<ReturnType<typeof createRequestSeoHandlers>>, request: NextRequest) => Promise<NextResponse>,
+): Promise<NextResponse> {
+  return withAuth(async (authenticatedRequest, context) => {
+    const seo = (await getMadori()).config.seo
+    const area = pathSegments[1]
+    const available = seo.enabled
+      && (area !== 'report' && area !== 'reports' && area !== 'status' || seo.reports)
+      && (area !== 'redirects' || seo.redirects)
+      && (area !== 'not-found' || seo.errorTracking)
+    if (!available) return jsonError('SEO_FEATURE_DISABLED', 'SEO feature is disabled', 404)
+    return call(await createRequestSeoHandlers(context, pathSegments), authenticatedRequest)
+  })(request, authService, pathSegments)
+}
+
 // --- Route dispatching ---
 
 /**
@@ -469,6 +737,89 @@ async function dispatch(
   if (routePath === 'auth/logout' && method === 'POST') {
     const handler = withAuth(handleLogout)
     return handler(request, authService, pathSegments)
+  }
+
+  // --- Git ---
+  if (routePath === 'git/status' && method === 'GET') {
+    const handler = withAuth(withPermission('git', 'view')(
+      async () => NextResponse.json({ data: { repositories: await (await getMadori()).gitRuntime.status() } })
+    ))
+    return handler(request, authService, pathSegments)
+  }
+  if (routePath === 'git/sync' && method === 'POST') {
+    const handler = withAuth(withPermission('git', 'edit')(
+      async (req) => {
+        try {
+          const repository = await gitRepositoryId(req)
+          return NextResponse.json({ data: { results: await (await getMadori()).gitRuntime.sync(repository) } })
+        } catch (error) { return gitErrorResponse(error) }
+      }
+    ))
+    return handler(request, authService, pathSegments)
+  }
+  if (routePath === 'git/retry' && method === 'POST') {
+    const handler = withAuth(withPermission('git', 'edit')(
+      async (req) => {
+        try {
+          const repository = await gitRepositoryId(req)
+          if (!repository) throw new GitError('Repository identifier is required', 'INVALID_INPUT')
+          return NextResponse.json({ data: { result: await (await getMadori()).gitRuntime.retry(repository) } })
+        } catch (error) { return gitErrorResponse(error) }
+      }
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
+  // --- SEO ---
+  if (routePath === 'seo/sites' && method === 'GET') {
+    return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleListSites(req))
+  }
+  if (pathSegments[0] === 'seo' && pathSegments[1] === 'sites' && pathSegments.length === 3) {
+    const site = pathSegments[2]
+    if (method === 'GET') return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleGetSite(req, site))
+    if (method === 'PUT' || method === 'POST') return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleSaveSite(req, site))
+    if (method === 'DELETE') return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleDeleteSite(req, site))
+  }
+  if (pathSegments[0] === 'seo' && pathSegments[1] === 'sections' && pathSegments.length === 3 && method === 'GET') {
+    return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleListSections(req, pathSegments[2]))
+  }
+  if (pathSegments[0] === 'seo' && pathSegments[1] === 'sections' && pathSegments.length === 4) {
+    const [, , section, handle] = pathSegments
+    if (method === 'GET') return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleGetSection(req, section, handle))
+    if (method === 'PUT' || method === 'POST') return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleSaveSection(req, section, handle))
+    if (method === 'DELETE') return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleDeleteSection(req, section, handle))
+  }
+  if (routePath === 'seo/preview' && method === 'POST') {
+    return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleResolvedPreview(req))
+  }
+  if ((routePath === 'seo/report' || routePath === 'seo/reports') && method === 'GET') {
+    return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleGetReport(req))
+  }
+  if ((routePath === 'seo/report/run' || routePath === 'seo/reports/run') && method === 'POST') {
+    return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleRunReport(req))
+  }
+  if (routePath === 'seo/status' && method === 'GET') {
+    return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleGetStatus(req))
+  }
+  if (routePath === 'seo/redirects' && method === 'GET') {
+    return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleListRedirects(req))
+  }
+  if (routePath === 'seo/redirects' && (method === 'POST' || method === 'PUT')) {
+    return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleSaveRedirect(req))
+  }
+  if (pathSegments[0] === 'seo' && pathSegments[1] === 'redirects' && pathSegments.length === 3) {
+    const id = pathSegments[2]
+    if (method === 'GET') return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleGetRedirect(req, id))
+    if (method === 'DELETE') return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleDeleteRedirect(req, id))
+  }
+  if (routePath === 'seo/not-found' && method === 'GET') {
+    return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleListNotFound(req))
+  }
+  if (routePath === 'seo/not-found/promote' && method === 'POST') {
+    return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handlePromoteNotFound(req))
+  }
+  if (pathSegments[0] === 'seo' && pathSegments[1] === 'not-found' && pathSegments.length === 3 && method === 'DELETE') {
+    return withSeoRequest(request, authService, pathSegments, (handlers, req) => handlers.handleDeleteNotFound(req, pathSegments[2]))
   }
 
   // --- Assets ---
@@ -553,6 +904,80 @@ async function dispatch(
 
   // --- Users ---
 
+  if (routePath === 'users/capabilities' && method === 'GET') {
+    const handler = withAuth(async (_req, context) => {
+      const resources: ResourceType[] = ['collections', 'entries', 'taxonomies', 'assets', 'globals', 'forms', 'navigation', 'users', 'settings', 'git', 'seo', 'seo-reports', 'seo-redirects', 'seo-errors']
+      const actions: Action[] = ['view', 'create', 'edit', 'delete', 'publish']
+      const checks: Array<[ResourceType, Action]> = resources.flatMap(resource => actions.map(action => [resource, action] as [ResourceType, Action]))
+      const values = await Promise.all(checks.map(async ([resource, action]) => [`${resource}:${action}`, await context.authService.hasPermission(context.user, resource, action)] as const))
+      const scopedEntries = await contentEngineInstance.listCollections().then(async collections => Object.fromEntries(await Promise.all(collections.map(async collection => [collection.handle, Object.fromEntries(await Promise.all(actions.map(async action => [action, await context.authService.hasPermission(context.user, 'entries', action, collection.handle)] as const)))])))).catch(() => ({}))
+      return NextResponse.json({ data: { capabilities: Object.fromEntries(values), scopes: { entries: scopedEntries } } })
+    })
+    return handler(request, authService, pathSegments)
+  }
+
+  // File-defined roles are intentionally read through this narrow contract so
+  // user editors never need hard-coded role names.
+  if (routePath === 'roles' && method === 'GET') {
+    const handler = withAuth(withPermission('users', 'view')(
+      async () => {
+        const roleDirectory = path.join(resolvedResourcesPath, 'roles')
+        const roleFs = new NodeFileSystemAdapter()
+        const roleParser = new MarkdownYamlParser()
+        const files = await roleFs.listFiles(roleDirectory, '*.yaml').catch(() => [] as string[])
+        const roles = await Promise.all(files.map(async (file) => {
+          const value = roleParser.parseYaml<{ handle?: string; display?: string; permissions?: unknown[] }>(await roleFs.readFile(path.join(roleDirectory, file)))
+          return value.handle && /^[a-z0-9][a-z0-9-]*$/.test(value.handle)
+            ? { handle: value.handle, display: value.display ?? value.handle, permissions: value.permissions ?? [] }
+            : null
+        }))
+        return NextResponse.json({ data: roles.filter((role): role is NonNullable<typeof role> => role !== null) })
+      }
+    ))
+    return handler(request, authService, pathSegments)
+  }
+
+  if (routePath === 'roles' && method === 'POST') {
+    const handler = withAuth(withPermission('users', 'edit')(async (req) => {
+      const parsed = rolePayloadSchema.safeParse(await req.json())
+      if (!parsed.success) return jsonError('VALIDATION_ERROR', 'Role payload is invalid', 422)
+      const role = parsed.data
+      const file = path.join(resolvedResourcesPath, 'roles', `${role.handle}.yaml`)
+      const roleFs = new NodeFileSystemAdapter()
+      if (await roleFs.exists(file)) return jsonError('CONFLICT', 'Role already exists', 409)
+      const writer = new AtomicFileWriter(roleFs)
+      const result = await writer.writeFileAtomic(file, new MarkdownYamlParser().serializeYaml(role))
+      if (!result.success) throw result.error
+      ;(await getMadori()).mutationBus.report({ action: 'create', paths: [file], resource: { type: 'role', id: role.handle }, message: `Created role ${role.handle}`, source: 'system', timestamp: Date.now() })
+      return NextResponse.json({ data: { handle: role.handle, display: role.display, permissions: role.permissions } }, { status: 201 })
+    }))
+    return handler(request, authService, pathSegments)
+  }
+
+  if (pathSegments[0] === 'roles' && pathSegments.length === 2 && (method === 'PUT' || method === 'DELETE')) {
+    const handle = pathSegments[1]
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(handle)) return jsonError('VALIDATION_ERROR', 'Invalid role handle', 422)
+    const handler = withAuth(withPermission('users', method === 'DELETE' ? 'delete' : 'edit')(async (req, context) => {
+      const file = path.join(resolvedResourcesPath, 'roles', `${handle}.yaml`)
+      const roleFs = new NodeFileSystemAdapter()
+      if (!await roleFs.exists(file)) return jsonError('NOT_FOUND', 'Role not found', 404)
+      if (handle === 'admin') return jsonError('ROLE_PROTECTED', 'Built-in admin role cannot be changed or deleted', 403)
+      if (method === 'DELETE') {
+        const assigned = (await context.authService.listUsers()).some(user => user.roles.includes(handle))
+        if (assigned) return jsonError('ROLE_ASSIGNED', 'Reassign users before deleting this role', 409)
+        await roleFs.deleteFile(file); ;(await getMadori()).mutationBus.report({ action: 'delete', paths: [file], resource: { type: 'role', id: handle }, message: `Deleted role ${handle}`, source: 'system', timestamp: Date.now() }); return NextResponse.json({ success: true })
+      }
+      const parsed = rolePayloadSchema.omit({ handle: true }).safeParse(await req.json())
+      if (!parsed.success) return jsonError('VALIDATION_ERROR', 'Role payload is invalid', 422)
+      const role = parsed.data
+      const result = await new AtomicFileWriter(roleFs).writeFileAtomic(file, new MarkdownYamlParser().serializeYaml({ handle, ...role }))
+      if (!result.success) throw result.error
+      ;(await getMadori()).mutationBus.report({ action: 'update', paths: [file], resource: { type: 'role', id: handle }, message: `Updated role ${handle}`, source: 'system', timestamp: Date.now() })
+      return NextResponse.json({ data: { handle, display: role.display, permissions: role.permissions } })
+    }))
+    return handler(request, authService, pathSegments)
+  }
+
   // GET /api/users/me — return current authenticated user profile
   if (routePath === 'users/me' && method === 'GET') {
     const handler = withAuth(
@@ -582,6 +1007,7 @@ async function dispatch(
 
   if (pathSegments[0] === 'users' && pathSegments.length === 2 && method === 'GET') {
     const userId = pathSegments[1]
+    if (!isValidUserId(userId)) return jsonError('BAD_REQUEST', 'Invalid user id', 400)
     const handler = withAuth(withPermission('users', 'view')(
       async (req) => userHandlers.handleGetUser(req, userId)
     ))
@@ -590,14 +1016,22 @@ async function dispatch(
 
   if (pathSegments[0] === 'users' && pathSegments.length === 2 && method === 'PUT') {
     const userId = pathSegments[1]
-    const handler = withAuth(withPermission('users', 'edit')(
-      async (req) => userHandlers.handleUpdateUser(req, userId)
-    ))
+    if (!isValidUserId(userId)) return jsonError('BAD_REQUEST', 'Invalid user id', 400)
+    const handler = withAuth(async (req, context) => {
+      if (context.user.id === userId) {
+        return userHandlers.handleUpdateOwnUser(req, userId)
+      }
+
+      return withPermission('users', 'edit')(
+        async (request) => userHandlers.handleUpdateUser(request, userId)
+      )(req, context, pathSegments)
+    })
     return handler(request, authService, pathSegments)
   }
 
   if (pathSegments[0] === 'users' && pathSegments.length === 2 && method === 'DELETE') {
     const userId = pathSegments[1]
+    if (!isValidUserId(userId)) return jsonError('BAD_REQUEST', 'Invalid user id', 400)
     const handler = withAuth(withPermission('users', 'delete')(
       async (req) => userHandlers.handleDeleteUser(req, userId)
     ))
@@ -612,9 +1046,16 @@ async function dispatch(
     method === 'POST'
   ) {
     const userId = pathSegments[1]
-    const handler = withAuth(withPermission('users', 'edit')(
-      async (req) => userHandlers.handleChangePassword(req, userId)
-    ))
+    if (!isValidUserId(userId)) return jsonError('BAD_REQUEST', 'Invalid user id', 400)
+    const handler = withAuth(async (req, context) => {
+      if (context.user.id === userId) {
+        return userHandlers.handleChangePassword(req, userId)
+      }
+
+      return withPermission('users', 'edit')(
+        async (request) => userHandlers.handleChangePassword(request, userId)
+      )(req, context, pathSegments)
+    })
     return handler(request, authService, pathSegments)
   }
 
@@ -710,10 +1151,7 @@ async function dispatch(
     method === 'POST'
   ) {
     const handle = pathSegments[1]
-    const handler = withAuth(withPermission('forms', 'view')(
-      async (req) => formHandlers.handleSubmitForm(req, handle)
-    ))
-    return handler(request, authService, pathSegments)
+    return formHandlers.handleSubmitForm(request, handle)
   }
 
   // GET /api/forms/{handle}/submissions — paginated list
@@ -793,7 +1231,7 @@ async function dispatch(
   // --- Settings ---
   // GET /api/settings/runtime — read runtime settings
   if (routePath === 'settings/runtime' && method === 'GET') {
-    const handler = withAuth(withPermission('globals', 'view')(
+    const handler = withAuth(withPermission('settings', 'view')(
       async () => {
         const settings = await runtimeSettingsService.read()
         return NextResponse.json({ data: settings })
@@ -804,7 +1242,7 @@ async function dispatch(
 
   // PUT /api/settings/runtime — write runtime settings
   if (routePath === 'settings/runtime' && method === 'PUT') {
-    const handler = withAuth(withPermission('globals', 'edit')(
+    const handler = withAuth(withPermission('settings', 'edit')(
       async (req) => {
         const body = await req.json()
         await runtimeSettingsService.write(body)
@@ -816,9 +1254,9 @@ async function dispatch(
 
   // GET /api/settings/config — read madori config values
   if (routePath === 'settings/config' && method === 'GET') {
-    const handler = withAuth(withPermission('globals', 'view')(
+    const handler = withAuth(withPermission('settings', 'view')(
       async () => {
-        const config = await madoriConfigService.read()
+        const config = await madoriConfigService.readPublic()
         return NextResponse.json({ data: config })
       }
     ))
@@ -827,10 +1265,10 @@ async function dispatch(
 
   // PUT /api/settings/config — write madori config values (restart required)
   if (routePath === 'settings/config' && method === 'PUT') {
-    const handler = withAuth(withPermission('globals', 'edit')(
+    const handler = withAuth(withPermission('settings', 'edit')(
       async (req) => {
         const body = await req.json()
-        const validation = await madoriConfigService.validate(body)
+        const validation = await madoriConfigService.validateForWrite(body)
         if (!validation.valid) {
           return jsonError('VALIDATION_ERROR', 'Config validation failed', 422, validation.errors)
         }
@@ -844,7 +1282,7 @@ async function dispatch(
   // --- Dashboard ---
   if (routePath === 'dashboard/recent' && method === 'GET') {
     const handler = withAuth(
-      async () => dashboardHandlers.handleRecentActivity()
+      async (_req, context) => createDashboardHandlers(contentEngineInstance, async (handle) => context.authService.hasPermission(context.user, 'entries', 'view', handle) || context.authService.hasPermission(context.user, 'collections', 'view', handle)).handleRecentActivity()
     )
     return handler(request, authService, pathSegments)
   }
@@ -893,7 +1331,7 @@ async function dispatch(
       async () => {
         const fs = new NodeFileSystemAdapter()
         const parser = new MarkdownYamlParser()
-        const fieldsetsDir = path.join(process.cwd(), 'resources', 'fieldsets')
+        const fieldsetsDir = path.join(resolvedResourcesPath, 'fieldsets')
         const exists = await fs.exists(fieldsetsDir)
         if (!exists) {
           return NextResponse.json({ data: [] })
@@ -921,11 +1359,12 @@ async function dispatch(
   // GET /api/fieldsets/{handle}
   if (pathSegments[0] === 'fieldsets' && pathSegments.length === 2 && method === 'GET') {
     const handle = pathSegments[1]
+    if (!isSafeHandle(handle)) return invalidHandleError()
     const handler = withAuth(withPermission('collections', 'view')(
       async () => {
         const fs = new NodeFileSystemAdapter()
         const parser = new MarkdownYamlParser()
-        const filePath = path.join(process.cwd(), 'resources', 'fieldsets', `${handle}.yaml`)
+        const filePath = path.join(resolvedResourcesPath, 'fieldsets', `${handle}.yaml`)
         const exists = await fs.exists(filePath)
         if (!exists) {
           return jsonError('NOT_FOUND', `Fieldset "${handle}" not found`, 404)
@@ -948,6 +1387,7 @@ async function dispatch(
   // PUT /api/fieldsets/{handle}
   if (pathSegments[0] === 'fieldsets' && pathSegments.length === 2 && method === 'PUT') {
     const handle = pathSegments[1]
+    if (!isSafeHandle(handle)) return invalidHandleError()
     const handler = withAuth(withPermission('collections', 'edit')(
       async (req) => {
         const fs = new NodeFileSystemAdapter()
@@ -956,7 +1396,7 @@ async function dispatch(
         if (!body.fields || !Array.isArray(body.fields)) {
           return jsonError('BAD_REQUEST', 'Fieldset must include a "fields" array', 400)
         }
-        const dir = path.join(process.cwd(), 'resources', 'fieldsets')
+        const dir = path.join(resolvedResourcesPath, 'fieldsets')
         await fs.mkdir(dir)
         const filePath = path.join(dir, `${handle}.yaml`)
         const yamlData: Record<string, unknown> = { fields: body.fields }
@@ -967,7 +1407,11 @@ async function dispatch(
           yamlData.display = body.display
         }
         const content = parser.serializeYaml(yamlData)
-        await fs.writeFile(filePath, content)
+        const result = await new AtomicFileWriter(fs).writeFileAtomic(filePath, content)
+        if (!result.success) {
+          throw result.error ?? new Error(`Failed to save fieldset "${handle}"`)
+        }
+        ;(await getMadori()).mutationBus.report({ action: 'update', paths: [filePath], resource: { type: 'fieldset', id: handle }, message: `Updated fieldset ${handle}`, source: 'system', timestamp: Date.now() })
         return NextResponse.json({
           data: { handle, fields: body.fields, is_block: body.is_block ?? false, display: body.display ?? undefined },
         })
@@ -979,15 +1423,30 @@ async function dispatch(
   // DELETE /api/fieldsets/{handle}
   if (pathSegments[0] === 'fieldsets' && pathSegments.length === 2 && method === 'DELETE') {
     const handle = pathSegments[1]
+    if (!isSafeHandle(handle)) return invalidHandleError()
     const handler = withAuth(withPermission('collections', 'delete')(
       async () => {
         const fs = new NodeFileSystemAdapter()
-        const filePath = path.join(process.cwd(), 'resources', 'fieldsets', `${handle}.yaml`)
+        const filePath = path.join(resolvedResourcesPath, 'fieldsets', `${handle}.yaml`)
         const exists = await fs.exists(filePath)
         if (!exists) {
           return jsonError('NOT_FOUND', `Fieldset "${handle}" not found`, 404)
         }
+        const references = await findReferences(
+          new RegExp(`\\bimport\\s*:\\s*['\"]?${escapeRegExp(handle)}(?:['\"]|\\s|$)`),
+          [path.join(resolvedResourcesPath, 'blueprints'), path.join(resolvedResourcesPath, 'fieldsets')]
+        )
+        const externalReferences = references.filter((reference) => reference !== filePath)
+        if (externalReferences.length > 0) {
+          return jsonError(
+            'CONFLICT',
+            `Fieldset "${handle}" is used by ${externalReferences.length} file(s)`,
+            409,
+            { references: externalReferences }
+          )
+        }
         await fs.deleteFile(filePath)
+        ;(await getMadori()).mutationBus.report({ action: 'delete', paths: [filePath], resource: { type: 'fieldset', id: handle }, message: `Deleted fieldset ${handle}`, source: 'system', timestamp: Date.now() })
         return NextResponse.json({ data: { deleted: true } })
       }
     ))
@@ -998,11 +1457,11 @@ async function dispatch(
   // blueprints/{type} (GET = list all of type)
   if (pathSegments[0] === 'blueprints' && pathSegments.length === 2 && method === 'GET') {
     const type = pathSegments[1]
-    const validTypes = ['collections', 'taxonomies', 'globals', 'forms', 'navigations']
-    if (!validTypes.includes(type)) {
+    const resource = resourceForEntityType(type)
+    if (!resource) {
       return jsonError('BAD_REQUEST', `Invalid blueprint type: ${type}`, 400)
     }
-    const handler = withAuth(withPermission('collections', 'view')(
+    const handler = withAuth(withPermission(resource, 'view')(
       async () => {
         const blueprints = await blueprintRegistryInstance.listBlueprints(type as BlueprintType)
         return NextResponse.json({ data: blueprints })
@@ -1015,13 +1474,14 @@ async function dispatch(
   if (pathSegments[0] === 'blueprints' && pathSegments.length === 3) {
     const type = pathSegments[1]
     const handle = pathSegments[2]
-    const validTypes = ['collections', 'taxonomies', 'globals', 'forms', 'navigations']
-    if (!validTypes.includes(type)) {
+    if (!isSafeHandle(handle)) return invalidHandleError()
+    const resource = resourceForEntityType(type)
+    if (!resource) {
       return jsonError('BAD_REQUEST', `Invalid blueprint type: ${type}`, 400)
     }
 
     if (method === 'GET') {
-      const handler = withAuth(withPermission('collections', 'view')(
+      const handler = withAuth(withPermission(resource, 'view')(
         async () => {
           const blueprint = await blueprintRegistryInstance.getBlueprint(type as BlueprintType, handle)
           if (!blueprint) {
@@ -1037,24 +1497,45 @@ async function dispatch(
     }
 
     if (method === 'PUT') {
-      const handler = withAuth(withPermission('collections', 'edit')(
-        async (req) => {
-          const body = await req.json()
+      const handler = withAuth(async (req, context) => {
+        const existing = await blueprintRegistryInstance.getBlueprint(type as BlueprintType, handle)
+        const action: Action = existing ? 'edit' : 'create'
+        return withPermission(resource, action)(
+          async (authorisedRequest) => {
+          const body = await authorisedRequest.json()
           const blueprint = body as Blueprint
-          if (!blueprint.tabs || typeof blueprint.tabs !== 'object') {
-            return jsonError('BAD_REQUEST', 'Blueprint must include a "tabs" object', 400)
+          const validation = blueprintRegistryInstance.validateBlueprint(blueprint)
+          if (!validation.success) {
+            return jsonError('VALIDATION_ERROR', 'Invalid blueprint', 422, { errors: validation.errors })
+          }
+          if (type === 'forms') {
+            const unsupported = requiredUnsupportedPublicFormFields(blueprint)
+            if (unsupported.length) return jsonError('UNSUPPORTED_PUBLIC_FORM_FIELDS', 'Form blueprints cannot require field types without a public renderer.', 422, { fields: unsupported })
           }
           blueprint.handle = handle
           await blueprintRegistryInstance.saveBlueprint(type as BlueprintType, handle, blueprint)
           return NextResponse.json({ data: blueprint })
-        }
-      ))
+          }
+        )(req, context, pathSegments)
+      })
       return handler(request, authService, pathSegments)
     }
 
     if (method === 'DELETE') {
-      const handler = withAuth(withPermission('collections', 'delete')(
+      const handler = withAuth(withPermission(resource, 'delete')(
         async () => {
+          const references = await findReferences(
+            new RegExp(`\\bblueprint\\s*:\\s*['\"]?${escapeRegExp(handle)}(?:['\"]|\\s|$)`),
+            [path.join(process.cwd(), 'resources', type)]
+          )
+          if (references.length > 0) {
+            return jsonError(
+              'CONFLICT',
+              `Blueprint "${type}/${handle}" is used by ${references.length} definition(s)`,
+              409,
+              { references }
+            )
+          }
           const deleted = await blueprintRegistryInstance.deleteBlueprint(type as BlueprintType, handle)
           if (!deleted) {
             return NextResponse.json(
@@ -1076,13 +1557,13 @@ async function dispatch(
   if (pathSegments[0] === 'entries' && pathSegments.length === 2) {
     const collection = pathSegments[1]
     if (method === 'GET') {
-      const handler = withAuth(withPermission('entries', 'view')(
+      const handler = withAuth(withPermission('entries', 'view', collection)(
         async (req) => entryHandlers.handleListEntries(req, collection)
       ))
       return handler(request, authService, pathSegments)
     }
     if (method === 'POST') {
-      const handler = withAuth(withPermission('entries', 'create')(
+      const handler = withAuth(withPermission('entries', 'create', collection)(
         async (req) => entryHandlers.handleCreateEntry(req, collection)
       ))
       return handler(request, authService, pathSegments)
@@ -1095,19 +1576,19 @@ async function dispatch(
     const collection = pathSegments[1]
     const slug = pathSegments[2]
     if (method === 'GET') {
-      const handler = withAuth(withPermission('entries', 'view')(
+      const handler = withAuth(withPermission('entries', 'view', collection)(
         async (req) => entryHandlers.handleGetEntry(req, collection, slug)
       ))
       return handler(request, authService, pathSegments)
     }
     if (method === 'PUT') {
-      const handler = withAuth(withPermission('entries', 'edit')(
+      const handler = withAuth(withPermission('entries', 'edit', collection)(
         async (req) => entryHandlers.handleUpdateEntry(req, collection, slug)
       ))
       return handler(request, authService, pathSegments)
     }
     if (method === 'DELETE') {
-      const handler = withAuth(withPermission('entries', 'delete')(
+      const handler = withAuth(withPermission('entries', 'delete', collection)(
         async (req) => entryHandlers.handleDeleteEntry(req, collection, slug)
       ))
       return handler(request, authService, pathSegments)
@@ -1119,14 +1600,16 @@ async function dispatch(
   // definitions/{type} (GET = list, POST = create)
   if (pathSegments[0] === 'definitions' && pathSegments.length === 2) {
     const entityType = pathSegments[1]
+    const resource = resourceForEntityType(entityType)
+    if (!resource) return jsonError('BAD_REQUEST', `Invalid definition type: ${entityType}`, 400)
     if (method === 'GET') {
-      const handler = withAuth(withPermission('collections', 'view')(
+      const handler = withAuth(withPermission(resource, 'view')(
         async (req) => definitionHandlers.handleListDefinitions(req, entityType)
       ))
       return handler(request, authService, pathSegments)
     }
     if (method === 'POST') {
-      const handler = withAuth(withPermission('collections', 'create')(
+      const handler = withAuth(withPermission(resource, 'create')(
         async (req) => definitionHandlers.handleCreateDefinition(req, entityType)
       ))
       return handler(request, authService, pathSegments)
@@ -1138,20 +1621,22 @@ async function dispatch(
   if (pathSegments[0] === 'definitions' && pathSegments.length === 3) {
     const entityType = pathSegments[1]
     const handle = pathSegments[2]
+    const resource = resourceForEntityType(entityType)
+    if (!resource) return jsonError('BAD_REQUEST', `Invalid definition type: ${entityType}`, 400)
     if (method === 'GET') {
-      const handler = withAuth(withPermission('collections', 'view')(
+      const handler = withAuth(withPermission(resource, 'view')(
         async (req) => definitionHandlers.handleGetDefinition(req, entityType, handle)
       ))
       return handler(request, authService, pathSegments)
     }
     if (method === 'PUT') {
-      const handler = withAuth(withPermission('collections', 'edit')(
+      const handler = withAuth(withPermission(resource, 'edit')(
         async (req) => definitionHandlers.handleUpdateDefinition(req, entityType, handle)
       ))
       return handler(request, authService, pathSegments)
     }
     if (method === 'DELETE') {
-      const handler = withAuth(withPermission('collections', 'delete')(
+      const handler = withAuth(withPermission(resource, 'delete')(
         async (req) => definitionHandlers.handleDeleteDefinition(req, entityType, handle)
       ))
       return handler(request, authService, pathSegments)
@@ -1164,14 +1649,16 @@ async function dispatch(
   if (pathSegments[0] === 'content' && pathSegments.length === 3) {
     const entityType = pathSegments[1]
     const handle = pathSegments[2]
+    const resource = resourceForEntityType(entityType)
+    if (!resource) return jsonError('BAD_REQUEST', `Invalid content type: ${entityType}`, 400)
     if (method === 'GET') {
-      const handler = withAuth(withPermission('collections', 'view')(
+      const handler = withAuth(withPermission(resource, 'view')(
         async (req) => contentHandlers.handleListContent(req, entityType, handle)
       ))
       return handler(request, authService, pathSegments)
     }
     if (method === 'POST') {
-      const handler = withAuth(withPermission('collections', 'create')(
+      const handler = withAuth(withPermission(resource, 'create')(
         async (req) => contentHandlers.handleCreateContent(req, entityType, handle)
       ))
       return handler(request, authService, pathSegments)
@@ -1184,20 +1671,22 @@ async function dispatch(
     const entityType = pathSegments[1]
     const handle = pathSegments[2]
     const entryId = pathSegments[3]
+    const resource = resourceForEntityType(entityType)
+    if (!resource) return jsonError('BAD_REQUEST', `Invalid content type: ${entityType}`, 400)
     if (method === 'GET') {
-      const handler = withAuth(withPermission('collections', 'view')(
+      const handler = withAuth(withPermission(resource, 'view')(
         async (req) => contentHandlers.handleGetContent(req, entityType, handle, entryId)
       ))
       return handler(request, authService, pathSegments)
     }
     if (method === 'PUT') {
-      const handler = withAuth(withPermission('collections', 'edit')(
+      const handler = withAuth(withPermission(resource, 'edit')(
         async (req) => contentHandlers.handleUpdateContent(req, entityType, handle, entryId)
       ))
       return handler(request, authService, pathSegments)
     }
     if (method === 'DELETE') {
-      const handler = withAuth(withPermission('collections', 'delete')(
+      const handler = withAuth(withPermission(resource, 'delete')(
         async (req) => contentHandlers.handleDeleteContent(req, entityType, handle, entryId)
       ))
       return handler(request, authService, pathSegments)

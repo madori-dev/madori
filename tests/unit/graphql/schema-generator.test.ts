@@ -8,13 +8,13 @@ import {
   GraphQLFloat,
   GraphQLInt,
   GraphQLList,
-  GraphQLNonNull,
   GraphQLUnionType,
-  printSchema,
+  graphql,
 } from 'graphql'
 import { SchemaGeneratorImpl } from '@/lib/graphql/schema-generator'
 import type { FieldsetProvider } from '@/lib/graphql/schema-generator'
-import type { Blueprint, FieldDefinition } from '@/lib/blueprints/types'
+import type { Blueprint, FieldDefinition, FieldType } from '@/lib/blueprints/types'
+import type { GraphQLOutputType } from 'graphql'
 import type { CollectionConfig } from '@/lib/config/schema'
 
 function makeBlueprint(handle: string, fields: Array<{ handle: string; type: string; options?: Record<string, unknown> }>): Blueprint {
@@ -25,7 +25,7 @@ function makeBlueprint(handle: string, fields: Array<{ handle: string; type: str
         display: 'Main',
         fields: fields.map((f) => ({
           handle: f.handle,
-          field: { type: f.type as any, options: f.options },
+          field: { type: f.type as FieldType, options: f.options },
         })),
       },
     },
@@ -122,6 +122,42 @@ describe('SchemaGeneratorImpl', () => {
       const fields = schema.getQueryType()!.getFields()
 
       expect(fields.categories).toBeDefined()
+    })
+
+    it('executes taxonomy queries against structured taxonomy and term types', async () => {
+      const schema = generator.generateSchema([], [], {
+        taxonomies: () => [{ handle: 'tags', title: 'Tags', blueprint: 'tag' }],
+        taxonomy: () => ({ handle: 'tags', title: 'Tags', blueprint: 'tag' }),
+        terms: () => [{
+          title: 'TypeScript',
+          slug: 'typescript',
+          taxonomy: 'tags',
+          description: 'Typed JavaScript',
+          data: { colour: 'blue' },
+        }],
+      })
+
+      const result = await graphql({
+        schema,
+        source: `{
+          taxonomies { handle title blueprint }
+          taxonomy(handle: "tags") { handle title blueprint }
+          terms(taxonomy: "tags") { title slug taxonomy description data }
+        }`,
+      })
+
+      expect(result.errors).toBeUndefined()
+      expect(result.data).toEqual({
+        taxonomies: [{ handle: 'tags', title: 'Tags', blueprint: 'tag' }],
+        taxonomy: { handle: 'tags', title: 'Tags', blueprint: 'tag' },
+        terms: [{
+          title: 'TypeScript',
+          slug: 'typescript',
+          taxonomy: 'tags',
+          description: 'Typed JavaScript',
+          data: { colour: 'blue' },
+        }],
+      })
     })
   })
 
@@ -285,7 +321,7 @@ describe('SchemaGeneratorImpl', () => {
       const blueprint = makeBlueprint('post', [{ handle: 'tags', type: 'multiselect' }])
       const collection = makeCollection('blog', 'post')
       const type = generator.generateCollectionType(collection, blueprint)
-      const fieldType = type.getFields().tags.type as GraphQLList<any>
+      const fieldType = type.getFields().tags.type as GraphQLList<GraphQLOutputType>
       expect(fieldType).toBeInstanceOf(GraphQLList)
       expect(fieldType.ofType).toBe(GraphQLString)
     })
@@ -308,7 +344,7 @@ describe('SchemaGeneratorImpl', () => {
       const blueprint = makeBlueprint('post', [{ handle: 'related', type: 'entries' }])
       const collection = makeCollection('blog', 'post')
       const type = generator.generateCollectionType(collection, blueprint)
-      const fieldType = type.getFields().related.type as GraphQLList<any>
+      const fieldType = type.getFields().related.type as GraphQLList<GraphQLOutputType>
       expect(fieldType).toBeInstanceOf(GraphQLList)
       expect(fieldType.ofType).toBe(GraphQLString)
     })
@@ -317,7 +353,7 @@ describe('SchemaGeneratorImpl', () => {
       const blueprint = makeBlueprint('post', [{ handle: 'categories', type: 'taxonomy' }])
       const collection = makeCollection('blog', 'post')
       const type = generator.generateCollectionType(collection, blueprint)
-      const fieldType = type.getFields().categories.type as GraphQLList<any>
+      const fieldType = type.getFields().categories.type as GraphQLList<GraphQLOutputType>
       expect(fieldType).toBeInstanceOf(GraphQLList)
       expect(fieldType.ofType).toBe(GraphQLString)
     })
@@ -541,8 +577,8 @@ describe('SchemaGeneratorImpl', () => {
       const collection = makeCollection('page', 'page')
 
       const type = generatorWithProvider.generateCollectionType(collection, blueprint)
-      const blocksField = type.getFields().blocks as any
-      const unionType = (blocksField.type as GraphQLList<any>).ofType as GraphQLUnionType
+      const blocksField = type.getFields().blocks
+      const unionType = (blocksField.type as GraphQLList<GraphQLUnionType>).ofType
       const members = unionType.getTypes()
 
       for (const member of members) {

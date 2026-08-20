@@ -26,6 +26,7 @@ As an editor, you don't need to configure files — but here's what you'll encou
 | Forms | Sidebar → Forms | View submissions and export data |
 | Globals | Sidebar → Globals | Edit site-wide settings |
 | Taxonomies | Sidebar → Taxonomies | Manage tags and categories |
+| SEO | Sidebar → SEO | Manage site/section defaults, redirects, 404 observations, and audit reports |
 | Users | Sidebar → Users | Manage user accounts (admin only) |
 
 ### Field Types You'll Encounter
@@ -71,6 +72,12 @@ Content in MADORI lives in **collections**. A collection is a group of similar i
 4. Click **Save** when you're done
 
 Your new entry is live immediately.
+
+### SEO workspace
+
+Editors with SEO permissions can open **SEO** in the sidebar. **Defaults** controls site and collection/taxonomy inheritance; record-level SEO values stay with the entry or term under its `seo` section. **Redirects** manages validated, site-scoped redirects. **404s** shows normalized missing paths only when error tracking is enabled. **Reports** runs and reviews published-content audits when reports are enabled.
+
+SEO preview is permission-guarded and may show draft values; public pages never expose preview provenance. Save conflicts indicate another editor changed the same SEO document—reload, review the current revision, and retry.
 
 ### Editing an existing entry
 

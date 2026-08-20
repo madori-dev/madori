@@ -24,9 +24,6 @@ const safeStringArb = fc
   .stringMatching(/^[a-zA-Z][a-zA-Z0-9 _-]{0,30}$/)
   .filter((s) => s.trim().length > 0)
 
-/** Arbitrary handle (valid JS identifier) */
-const handleArb = fc.stringMatching(/^[a-z][a-z0-9_]{1,15}$/)
-
 /** Arbitrary optional safe string field */
 const optionalStringArb = fc.option(safeStringArb, { nil: undefined })
 
@@ -65,6 +62,7 @@ const optionalRedirectsArb = fc.option(
   }),
   { nil: undefined },
 )
+const optionalRouteArb = fc.option(fc.constantFrom('/{slug}', '/blog/{slug}', '/{collection}/{slug}', '/{parent_uri}/{slug}'), { nil: undefined })
 
 /** Generator for valid CollectionConfig objects with a fixed handle */
 function validCollectionConfigArb(handle: string): fc.Arbitrary<CollectionConfig> {
@@ -72,7 +70,7 @@ function validCollectionConfigArb(handle: string): fc.Arbitrary<CollectionConfig
     title: safeStringArb,
     handle: fc.constant(handle),
     blueprint: safeStringArb,
-    route: optionalStringArb,
+    route: optionalRouteArb,
     sortable: optionalBooleanArb,
     dated: optionalBooleanArb,
     defaultStatus: optionalDefaultStatusArb,

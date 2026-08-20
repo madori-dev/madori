@@ -7,9 +7,11 @@ import { toast } from 'sonner'
 import { FieldRenderer } from '@/components/cp/fields/FieldRenderer'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { getDefaultsFromBlueprint, getAllFields } from '@/lib/blueprints/defaults'
+import { filterPayloadByVisibility } from '@/lib/blueprints/visibility'
 import { useFieldValidation } from '@/hooks/use-field-validation'
 import { useUnsavedChanges } from '@/hooks/use-unsaved-changes'
 import type { Blueprint, FieldDefinition } from '@/lib/blueprints/types'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 
 export default function CreateEntryPage() {
   const params = useParams()
@@ -33,7 +35,10 @@ export default function CreateEntryPage() {
   useEffect(() => {
     async function loadBlueprint() {
       try {
-        const res = await fetch(`/api/blueprints/collections/${handle}`)
+        const collectionRes = await fetch(`/api/collections/${handle}`)
+        if (!collectionRes.ok) throw new Error(`Failed to load collection: ${collectionRes.status}`)
+        const collection = await collectionRes.json()
+        const res = await fetch(`/api/blueprints/collections/${collection.data.blueprint}`)
         if (res.ok) {
           const json = await res.json()
           const bp = json.data as Blueprint | undefined
@@ -47,7 +52,7 @@ export default function CreateEntryPage() {
           setFormData({
             title: '',
             slug: '',
-            status: 'draft',
+            status: collection.data.defaultStatus ?? 'draft',
             content: '',
             ...blueprintDefaults,
           })
@@ -99,14 +104,15 @@ export default function CreateEntryPage() {
 
     try {
       const { title, slug, status, content, ...data } = formData
-
       // If content is a tiptap JSON object, store JSON in data and serialize markdown for content
       let contentStr = content as string
-      if (typeof content === 'object' && content !== null) {
-        data.content_json = content
+      const structuredContent = typeof content === 'object' && content !== null ? content : undefined
+      if (structuredContent) {
         const { serializeTipTapToMarkdown } = await import('@/lib/editor/serializer')
         contentStr = serializeTipTapToMarkdown(content as import('@/lib/editor/types').TipTapDocument)
       }
+      const visibleData = filterPayloadByVisibility(allFields.map((field) => ({ handle: field.handle, visibility: field.field.visibility })), data)
+      if (structuredContent) visibleData.content_json = structuredContent
 
       const res = await fetch(`/api/entries/${handle}`, {
         method: 'POST',
@@ -116,7 +122,7 @@ export default function CreateEntryPage() {
           slug,
           status,
           content: contentStr,
-          data,
+          data: visibleData,
         }),
       })
 
@@ -227,6 +233,7 @@ export default function CreateEntryPage() {
               value={formData[fieldDef.handle]}
               onChange={(value) => handleFieldChange(fieldDef.handle, value)}
               error={fieldErrors[fieldDef.handle]}
+              values={formData}
             />
           ))}
 
@@ -247,13 +254,13 @@ export default function CreateEntryPage() {
         )}
 
         <div className="flex items-center gap-3 border-t border-border pt-5">
-          <button
+          <CapabilityGate resource="entries" action="create" scope={handle}><button
             type="submit"
             disabled={saving}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 cursor-pointer"
           >
             {saving ? 'Creating…' : 'Create Entry'}
-          </button>
+          </button></CapabilityGate>
           <Link
             href={`/cp/collections/${handle}`}
             className="rounded-md px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"

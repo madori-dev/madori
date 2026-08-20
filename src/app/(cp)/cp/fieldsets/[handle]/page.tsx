@@ -40,6 +40,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
+import { FieldConfigSheet } from '@/components/cp/FieldConfigSheet'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 
 import type { FieldConfig, FieldDefinition, FieldType } from '@/lib/blueprints/types'
 
@@ -75,6 +77,7 @@ export default function FieldsetEditorPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set())
+  const [configuredFieldIndex, setConfiguredFieldIndex] = useState<number | null>(null)
 
   useEffect(() => {
     async function load() {
@@ -175,10 +178,10 @@ export default function FieldsetEditorPage() {
 
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight">{handle}</h1>
-        <Button onClick={saveFieldset} disabled={saving}>
+        <CapabilityGate resource="collections" action="edit"><Button onClick={saveFieldset} disabled={saving}>
           <Save className="size-4" />
           {saving ? 'Saving…' : 'Save'}
-        </Button>
+        </Button></CapabilityGate>
       </div>
 
       {error && <ErrorAlert message={error} />}
@@ -213,7 +216,7 @@ export default function FieldsetEditorPage() {
             </Label>
           </div>
           <p className="text-xs text-muted-foreground -mt-2 ml-6">
-            When enabled, this fieldset appears in the block picker for Replicator fields configured to use blocks.
+            Marks this fieldset for block use. It appears in a public block picker only when a matching public block renderer is registered.
           </p>
         </div>
       </Card>
@@ -249,6 +252,7 @@ export default function FieldsetEditorPage() {
                   isExpanded={isExpanded}
                   onToggle={() => toggleExpanded(fieldId)}
                   onUpdate={(f) => updateField(index, f)}
+                  onConfigure={() => setConfiguredFieldIndex(index)}
                   onRemove={() => removeField(index)}
                   onMoveUp={index > 0 ? () => moveField(index, index - 1) : undefined}
                   onMoveDown={index < fields.length - 1 ? () => moveField(index, index + 1) : undefined}
@@ -258,17 +262,28 @@ export default function FieldsetEditorPage() {
           )}
         </div>
       </Card>
+
+      <FieldConfigSheet
+        open={configuredFieldIndex !== null}
+        onOpenChange={(open) => { if (!open) setConfiguredFieldIndex(null) }}
+        field={configuredFieldIndex === null ? null : fields[configuredFieldIndex]}
+        onSave={(field) => {
+          if (configuredFieldIndex !== null) updateField(configuredFieldIndex, field)
+          setConfiguredFieldIndex(null)
+        }}
+      />
     </div>
   )
 }
 
 function FieldRow({
   field,
-  index,
-  totalFields,
+  index: _index,
+  totalFields: _totalFields,
   isExpanded,
   onToggle,
   onUpdate,
+  onConfigure,
   onRemove,
   onMoveUp,
   onMoveDown,
@@ -279,6 +294,7 @@ function FieldRow({
   isExpanded: boolean
   onToggle: () => void
   onUpdate: (f: FieldDefinition) => void
+  onConfigure: () => void
   onRemove: () => void
   onMoveUp?: () => void
   onMoveDown?: () => void
@@ -320,6 +336,9 @@ function FieldRow({
             required
           </Badge>
         )}
+        <Button variant="ghost" size="xs" onClick={(event) => { event.stopPropagation(); onConfigure() }}>
+          Configure
+        </Button>
         <AlertDialog>
           <AlertDialogTrigger
             render={
@@ -422,28 +441,33 @@ function FieldRow({
             </div>
           )}
 
-          {/* Asset max_files */}
+          {/* Asset cardinality: omitted max_files remains a single legacy asset. */}
           {field.field.type === 'asset' && (
             <div className="mt-4 space-y-1.5">
               <Label className="text-xs">Max Files</Label>
               <Input
                 type="number"
                 min={0}
-                value={(field.field.options?.max_files as number) ?? 0}
+                value={(field.field.options?.max_files as number) ?? 1}
                 onChange={(e) => {
-                  const max_files = parseInt(e.target.value, 10) || 0
+                  const max_files = e.target.value === '' ? undefined : parseInt(e.target.value, 10)
                   updateFieldConfig({ options: { ...field.field.options, max_files } })
                 }}
-                placeholder="0 = unlimited"
+                placeholder="1"
                 className="text-sm"
               />
               <p className="text-xs text-muted-foreground">
-                1 = single file, &gt;1 = multi (up to limit), 0 = unlimited
+                Omitted or 1 = single file; 2+ = multi (up to limit); 0 = unlimited.
               </p>
             </div>
           )}
 
           {/* Validation rules */}
+          <div className="mt-4 space-y-1.5">
+            <Label className="text-xs">Instructions</Label>
+            <textarea value={field.field.instructions ?? ''} onChange={(e) => updateFieldConfig({ instructions: e.target.value || undefined })} placeholder="Help text for editors" rows={2} className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" />
+          </div>
+
           <div className="mt-4 space-y-1.5">
             <Label className="text-xs">Validation Rules (one per line)</Label>
             <textarea

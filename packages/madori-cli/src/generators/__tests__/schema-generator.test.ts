@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { beforeEach, describe, it, expect } from 'vitest'
 import { SchemaGenerator } from '../schema-generator.js'
 import type { Blueprint, FieldConfig } from '@madori/lib/blueprints/types.js'
 
@@ -96,7 +96,7 @@ describe('SchemaGenerator', () => {
     })
 
     it('maps unknown field type to z.unknown()', () => {
-      expect(generator.mapFieldToZod({ type: 'nonexistent' as any })).toBe('z.unknown()')
+      expect(generator.mapFieldToZod({ type: 'nonexistent' as unknown as FieldConfig['type'] })).toBe('z.unknown()')
     })
 
     it('maps replicator with sets to z.discriminatedUnion', () => {

@@ -121,9 +121,11 @@ function DocsMobileNavItem({
     )
   }
 
+  if (!url) return <span className="flex rounded-md px-3 py-1.5 text-sm text-muted-foreground" role="note" aria-label={`${label ?? 'Navigation item'} is unavailable`}>{label}</span>
+
   return (
     <Link
-      href={url ?? '#'}
+      href={url}
       onClick={onClose}
       className={cn(
         'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors cursor-pointer',

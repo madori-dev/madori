@@ -21,6 +21,8 @@ import {
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { FieldRenderer } from '@/components/cp/fields/FieldRenderer'
+import { SeoRecordEditor } from '@/components/cp/seo/seo-record-editor'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 import { getAllFields } from '@/lib/blueprints/defaults'
 import type { Blueprint, FieldDefinition } from '@/lib/blueprints/types'
 
@@ -40,9 +42,9 @@ export default function EditTermPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [termRes, blueprintRes] = await Promise.all([
+        const [termRes, definitionRes] = await Promise.all([
           fetch(`/api/content/taxonomies/${handle}/${termSlug}`),
-          fetch(`/api/blueprints/taxonomies/${handle}`),
+          fetch(`/api/definitions/taxonomies/${handle}`),
         ])
 
         if (!termRes.ok) throw new Error(`Failed to fetch term: ${termRes.status}`)
@@ -51,15 +53,19 @@ export default function EditTermPage() {
 
         // Parse blueprint if available
         let bpFields: FieldDefinition[] = []
-        if (blueprintRes.ok) {
+        if (definitionRes.ok) {
+          const definition = await definitionRes.json()
+          const blueprintRes = await fetch(`/api/blueprints/taxonomies/${definition.data?.blueprint}`)
+          if (blueprintRes.ok) {
           const bpJson = await blueprintRes.json()
           const bp = bpJson.data as Blueprint | undefined
           if (bp) {
             const allFields = getAllFields(bp)
             bpFields = allFields.filter(
-              (f) => !['slug', 'title'].includes(f.handle)
+              (f) => !['slug', 'title', 'seo'].includes(f.handle)
             )
             setBlueprintFields(bpFields)
+          }
           }
         }
 
@@ -70,6 +76,10 @@ export default function EditTermPage() {
 
         for (const [key, val] of Object.entries(termData)) {
           if (key === 'id' || key === 'slug' || key === 'title') continue
+          if (key === 'seo') {
+            bpData.seo = val
+            continue
+          }
           if (bpHandles.has(key)) {
             bpData[key] = val
           } else {
@@ -199,10 +209,16 @@ export default function EditTermPage() {
                     fieldDefinition={fieldDef}
                     value={blueprintFormData[fieldDef.handle]}
                     onChange={(value) => handleBlueprintFieldChange(fieldDef.handle, value)}
+                    values={blueprintFormData}
                   />
                 ))}
               </div>
             )}
+
+            <SeoRecordEditor
+              value={blueprintFormData.seo}
+              onChange={(value) => handleBlueprintFieldChange('seo', value)}
+            />
 
             {/* Manual additional fields (extra data not in blueprint) */}
             <div className="space-y-3">
@@ -270,9 +286,9 @@ export default function EditTermPage() {
             </div>
 
             <div className="flex items-center gap-3 pt-2">
-              <Button type="submit" disabled={saving}>
+              <CapabilityGate resource="taxonomies" action="edit"><Button type="submit" disabled={saving}>
                 {saving ? 'Saving…' : 'Save Changes'}
-              </Button>
+              </Button></CapabilityGate>
               <Button variant="outline" nativeButton={false} render={<Link href={`/cp/taxonomies/${handle}`} />}>
                 Cancel
               </Button>

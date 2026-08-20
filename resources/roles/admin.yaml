@@ -19,3 +19,13 @@ permissions:
     actions: [view, create, edit, delete]
   - resource: settings
     actions: [view, edit]
+  - resource: git
+    actions: [view, edit]
+  - resource: seo
+    actions: [view, edit]
+  - resource: seo-reports
+    actions: [view, edit]
+  - resource: seo-redirects
+    actions: [view, create, edit, delete]
+  - resource: seo-errors
+    actions: [view, edit, delete]

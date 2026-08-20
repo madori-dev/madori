@@ -7,6 +7,7 @@ import {
   DefinitionValidationError,
   DefinitionParseError,
 } from '@/lib/definitions/errors'
+import { ConflictError } from '@/lib/errors'
 
 const VALID_ENTITY_TYPES: EntityType[] = ['collections', 'taxonomies', 'globals', 'navigations', 'forms']
 
@@ -161,6 +162,12 @@ export function createDefinitionHandlers(loader: DefinitionLoader) {
       await loader.create(entityType, handle, data)
       return NextResponse.json({ data: { handle, ...data } }, { status: 201 })
     } catch (error) {
+      if (error instanceof ConflictError) {
+        return NextResponse.json(
+          { error: error.message, details: { handle: ['A definition with this handle already exists'] } },
+          { status: 409 }
+        )
+      }
       if (error instanceof DefinitionValidationError) {
         return NextResponse.json(
           { error: error.message, details: {} },

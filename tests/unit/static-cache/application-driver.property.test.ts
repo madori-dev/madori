@@ -1,6 +1,6 @@
 // Property 2: Application driver cache round-trip
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 import { ApplicationCacheDriver } from '@/lib/static-cache/drivers/application'
 
@@ -32,12 +32,6 @@ const htmlStringArb = fc
 // --- Property Tests ---
 
 describe('Property 2: Application driver cache round-trip', () => {
-  let driver: ApplicationCacheDriver
-
-  beforeEach(() => {
-    driver = new ApplicationCacheDriver()
-  })
-
   it('set then get returns the identical HTML string for any valid URL path and HTML', async () => {
     await fc.assert(
       fc.asyncProperty(urlPathArb, htmlStringArb, async (key, html) => {

@@ -28,6 +28,8 @@ export interface MadoriFormProps {
   className?: string
   /** Content to display on successful submission (replaces the form) */
   successMessage?: ReactNode
+  /** Field types used to coerce browser form strings to CP schema values. */
+  fieldTypes?: Record<string, 'number' | 'toggle' | 'multiselect'>
 }
 
 /**
@@ -111,6 +113,7 @@ export function MadoriForm({
   children,
   className,
   successMessage,
+  fieldTypes = {},
 }: MadoriFormProps) {
   const [errors, setErrors] = useState<FormFieldErrors>({})
   const [submitting, setSubmitting] = useState(false)
@@ -125,7 +128,23 @@ export function MadoriForm({
       setSubmitting(true)
 
       const formData = new FormData(event.currentTarget)
-      const data = Object.fromEntries(formData.entries())
+      const data: Record<string, unknown> = {}
+      // FormData has repeated names for <select multiple>; preserve them.
+      for (const [name, value] of formData.entries()) {
+        const prior = data[name]
+        data[name] = prior === undefined ? value : Array.isArray(prior) ? [...prior, value] : [prior as FormDataEntryValue, value]
+      }
+      for (const [name, type] of Object.entries(fieldTypes)) {
+        const value = data[name]
+        if (type === 'toggle') {
+          const values = Array.isArray(value) ? value : value === undefined ? [] : [value]
+          data[name] = values.at(-1) === 'true'
+        } else if (type === 'number' && typeof value === 'string' && value !== '') {
+          data[name] = Number(value)
+        } else if (type === 'multiselect') {
+          data[name] = value === undefined ? [] : Array.isArray(value) ? value : [value]
+        }
+      }
 
       try {
         const response = await fetch(endpoint, {
@@ -154,7 +173,7 @@ export function MadoriForm({
         setSubmitting(false)
       }
     },
-    [endpoint, onSuccess, onError]
+    [endpoint, onSuccess, onError, fieldTypes]
   )
 
   if (submitted && successMessage) {

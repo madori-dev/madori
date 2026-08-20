@@ -61,6 +61,35 @@ describe('Navigation API Handlers', () => {
   })
 
   describe('PUT /api/navigation/{handle}', () => {
+    it('rejects entry references outside allowed collections or missing entries', async () => {
+      await fs.writeFile(path.join(tmpDir, 'resources', 'navigations', 'main.yaml'), 'title: Main\ncollections: [docs]\n')
+      const content = {
+        getCollection: async (handle: string) => handle === 'docs' ? { handle, title: 'Docs', blueprint: 'docs', route: '/docs/{slug}' } : null,
+        getEntry: async (_collection: string, slug: string) => slug === 'exists' ? { slug } : null,
+      }
+      const handlers = createNavigationHandlers(navigationOps, definitionLoader, content as Parameters<typeof createNavigationHandlers>[2])
+      const request = new NextRequest('http://localhost/api/navigation/main', { method: 'PUT', body: JSON.stringify({ items: [{ label: 'Wrong', entry: 'blog/exists' }, { label: 'Missing', entry: 'docs/missing' }] }), headers: { 'Content-Type': 'application/json' } })
+
+      const response = await handlers.handleSaveNavigation(request, 'main')
+      const json = await response.json()
+
+      expect(response.status).toBe(422)
+      expect(json.error).toMatchObject({ code: 'INVALID_ENTRY_REFERENCE' })
+      expect(json.error.fields).toHaveLength(2)
+    })
+
+    it('accepts an allowed collection without an explicit route', async () => {
+      await fs.writeFile(path.join(tmpDir, 'resources', 'navigations', 'main.yaml'), 'title: Main\ncollections: [docs]\n')
+      const content = {
+        getCollection: async (handle: string) => handle === 'docs' ? { handle, title: 'Docs', blueprint: 'docs' } : null,
+        getEntry: async () => ({ slug: 'exists' }),
+      }
+      const handlers = createNavigationHandlers(navigationOps, definitionLoader, content as Parameters<typeof createNavigationHandlers>[2])
+      const request = new NextRequest('http://localhost/api/navigation/main', { method: 'PUT', body: JSON.stringify({ items: [{ label: 'Docs', entry: 'docs/exists' }] }), headers: { 'Content-Type': 'application/json' } })
+
+      expect((await handlers.handleSaveNavigation(request, 'main')).status).toBe(200)
+    })
+
     it('saves a navigation tree and returns it', async () => {
       const handlers = createNavigationHandlers(navigationOps, definitionLoader)
       const body = {

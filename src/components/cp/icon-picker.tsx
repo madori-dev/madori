@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useCallback, useMemo } from 'react'
+import { createElement, useState, useRef, useCallback, useMemo } from 'react'
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover'
 import { icons, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -194,7 +194,7 @@ export function IconPicker({ value, onChange, label }: IconPickerProps) {
         >
           {SelectedIcon ? (
             <>
-              <SelectedIcon className="size-4 shrink-0" />
+              {createElement(SelectedIcon, { className: 'size-4 shrink-0' })}
               <span className="text-foreground">{value}</span>
             </>
           ) : (
@@ -233,7 +233,7 @@ export function IconPicker({ value, onChange, label }: IconPickerProps) {
                     'h-8 w-full rounded-md border border-input bg-transparent px-2.5 py-1 text-sm outline-none',
                     'placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50'
                   )}
-                  // eslint-disable-next-line jsx-a11y/no-autofocus
+
                   autoFocus
                 />
               </div>

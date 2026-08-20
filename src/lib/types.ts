@@ -32,6 +32,7 @@ export interface Taxonomy {
   handle: string
   title: string
   blueprint?: string
+  route?: string
 }
 
 export interface Term {

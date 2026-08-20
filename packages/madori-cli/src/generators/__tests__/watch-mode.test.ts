@@ -4,9 +4,9 @@ import type { GenerationPipeline, GenerationResult } from '../generation-pipelin
 
 // Mock chokidar
 vi.mock('chokidar', () => {
-  const listeners: Record<string, Function[]> = {}
+  const listeners: Record<string, Array<(...args: unknown[]) => void>> = {}
   const mockWatcher = {
-    on(event: string, cb: Function) {
+    on(event: string, cb: (...args: unknown[]) => void) {
       if (!listeners[event]) listeners[event] = []
       listeners[event].push(cb)
       return mockWatcher

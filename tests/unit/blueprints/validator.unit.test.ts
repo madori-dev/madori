@@ -29,6 +29,19 @@ describe('BlueprintValidator — edge cases', () => {
     })
   })
 
+  describe('asset cardinality', () => {
+    it('rejects impossible asset min/max values but accepts legacy scalar omission', () => {
+      const valid = validator.validate({ tabs: { main: { fields: [{ handle: 'image', field: { type: 'asset' } }] } } })
+      expect(valid.success).toBe(true)
+
+      const invalid = validator.validate({
+        tabs: { main: { fields: [{ handle: 'gallery', field: { type: 'asset', options: { min_files: 3, max_files: 2 } } }] } },
+      })
+      expect(invalid.success).toBe(false)
+      expect(invalid.errors).toContainEqual(expect.objectContaining({ code: 'INVALID_OPTION' }))
+    })
+  })
+
   describe('deeply nested sections', () => {
     it('passes validation for sections containing fields', () => {
       const result = validator.validate({
@@ -323,7 +336,7 @@ describe('BlueprintValidator — edge cases', () => {
         listFiles: async () => [],
         writeFile: async () => {},
         deleteFile: async () => {},
-      } as any
+      } as unknown as import('@/lib/fs/adapter').FileSystemAdapter
 
       const loader = new BlueprintLoader(mockFs, parser, '/fake/path')
       const result = await loader.loadBlueprint('collections', 'broken')
@@ -338,7 +351,7 @@ describe('BlueprintValidator — edge cases', () => {
         listFiles: async () => [],
         writeFile: async () => {},
         deleteFile: async () => {},
-      } as any
+      } as unknown as import('@/lib/fs/adapter').FileSystemAdapter
 
       const loader = new BlueprintLoader(mockFs, parser, '/fake/path')
       const result = await loader.loadBlueprint('collections', 'no-tabs')

@@ -94,13 +94,6 @@ export function MultiSelect({
     }
   }
 
-  // Reset focused index when popover opens
-  React.useEffect(() => {
-    if (open) {
-      setFocusedIndex(-1)
-    }
-  }, [open])
-
   return (
     <div className="flex flex-col gap-1.5">
       {label && (
@@ -109,7 +102,13 @@ export function MultiSelect({
         </label>
       )}
 
-      <Popover.Root open={open} onOpenChange={setOpen}>
+      <Popover.Root
+        open={open}
+        onOpenChange={(nextOpen) => {
+          setOpen(nextOpen)
+          if (nextOpen) setFocusedIndex(-1)
+        }}
+      >
         <Popover.Trigger
           disabled={disabled}
           aria-expanded={open}

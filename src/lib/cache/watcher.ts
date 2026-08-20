@@ -1,7 +1,7 @@
 /**
  * File Watcher
  *
- * Watches content/, resources/, and users/ directories for changes
+ * Watches configured content roots for changes
  * and triggers cache invalidation based on file path patterns.
  */
 
@@ -11,19 +11,65 @@ import type { ContentCache } from './store'
 
 export interface FileChangeEvent {
   type: 'add' | 'change' | 'unlink'
+  /** Stable root-relative path, e.g. `content/collections/blog/post.md`. */
   path: string
+  /** Absolute path reported by chokidar. */
+  absolutePath: string
+  /** Configured root containing this change. */
+  root: FileWatcherRootName
   timestamp: number
 }
 
+export type FileWatcherRootName = 'content' | 'resources' | 'users' | 'assets' | `git-${number}`
+
+export interface FileWatcherRoot {
+  name: FileWatcherRootName
+  /** Resolved absolute directory path. */
+  path: string
+}
+
 export interface FileWatcher {
-  start(): void
-  stop(): void
+  start(): Promise<void>
+  stop(): Promise<void>
   onFileChange(callback: (event: FileChangeEvent) => void): void
 }
 
 export interface FileWatcherOptions {
   cache: ContentCache
+  /** @deprecated Prefer `roots` so external configured paths are watched. */
   basePath: string
+  /** Resolved configured roots. Defaults to conventional paths under basePath. */
+  roots?: readonly FileWatcherRoot[]
+}
+
+const TEMPORARY_FILE_SEGMENT = /(^|\/)\.[^/]+$|\.tmp\.[^/]+$|~$/
+
+/** Atomic-write temp files must not invalidate cache or trigger external sync. */
+export function isTemporaryFilePath(filePath: string): boolean {
+  return TEMPORARY_FILE_SEGMENT.test(filePath.replace(/\\/g, '/'))
+}
+
+/**
+ * Maps an absolute file path to stable cache namespace without assuming roots
+ * live beneath application directory. Returns nothing for untracked paths.
+ */
+export function getWatchedFilePath(
+  filePath: string,
+  roots: readonly FileWatcherRoot[]
+): Pick<FileChangeEvent, 'absolutePath' | 'path' | 'root'> | undefined {
+  const absolutePath = path.resolve(filePath)
+  const root = roots
+    .map((candidate) => ({ ...candidate, path: path.resolve(candidate.path) }))
+    .filter((candidate) => absolutePath === candidate.path || absolutePath.startsWith(`${candidate.path}${path.sep}`))
+    .sort((left, right) => right.path.length - left.path.length)[0]
+
+  if (!root) return undefined
+
+  return {
+    absolutePath,
+    root: root.name,
+    path: path.join(root.name, path.relative(root.path, absolutePath)).replace(/\\/g, '/'),
+  }
 }
 
 /**
@@ -77,18 +123,20 @@ export class ChokidarFileWatcher implements FileWatcher {
   private callbacks: Array<(event: FileChangeEvent) => void> = []
   private cache: ContentCache
   private basePath: string
+  private roots: FileWatcherRoot[]
 
   constructor(options: FileWatcherOptions) {
     this.cache = options.cache
-    this.basePath = options.basePath
+    this.basePath = path.resolve(options.basePath)
+    this.roots = (options.roots ?? [
+      { name: 'content', path: path.join(this.basePath, 'content') },
+      { name: 'resources', path: path.join(this.basePath, 'resources') },
+      { name: 'users', path: path.join(this.basePath, 'users') },
+    ]).map((root) => ({ ...root, path: path.resolve(root.path) }))
   }
 
-  start(): void {
-    const watchPaths = [
-      path.join(this.basePath, 'content'),
-      path.join(this.basePath, 'resources'),
-      path.join(this.basePath, 'users'),
-    ]
+  async start(): Promise<void> {
+    const watchPaths = this.roots.map((root) => root.path)
 
     try {
       this.watcher = watch(watchPaths, {
@@ -103,19 +151,27 @@ export class ChokidarFileWatcher implements FileWatcher {
       this.watcher.on('error', (error: unknown) => {
         console.error('[madori:watcher] Error:', error instanceof Error ? error.message : error)
       })
+
+      // Chokidar can classify files created before its initial scan completes
+      // as initial entries. Waiting for `ready` closes that startup race.
+      await new Promise<void>((resolve) => {
+        this.watcher?.once('ready', resolve)
+        this.watcher?.once('error', () => resolve())
+      })
     } catch (error) {
       console.error('[madori:watcher] Failed to start watcher:', error)
     }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     if (this.watcher) {
+      const watcher = this.watcher
+      this.watcher = null
       try {
-        this.watcher.close()
+        await watcher.close()
       } catch (error) {
         console.error('[madori:watcher] Error stopping watcher:', error)
       }
-      this.watcher = null
     }
   }
 
@@ -125,19 +181,22 @@ export class ChokidarFileWatcher implements FileWatcher {
 
   private handleEvent(type: FileChangeEvent['type'], filePath: string): void {
     try {
-      const relativePath = path.relative(this.basePath, filePath)
+      if (isTemporaryFilePath(filePath)) return
+      const watchedPath = getWatchedFilePath(filePath, this.roots)
+      if (!watchedPath) return
 
       const event: FileChangeEvent = {
         type,
-        path: relativePath,
+        ...watchedPath,
         timestamp: Date.now(),
       }
 
-      // Invalidate cache by file path
-      this.cache.invalidateByFilePath(relativePath)
+      // Cache entries may use either semantic root-relative or resolved paths.
+      this.cache.invalidateByFilePath(event.path)
+      this.cache.invalidateByFilePath(event.absolutePath)
 
       // Invalidate pattern-based cache keys
-      const patterns = getInvalidationPatterns(relativePath)
+      const patterns = getInvalidationPatterns(event.path)
       for (const pattern of patterns) {
         this.cache.invalidatePattern(pattern)
       }
@@ -154,4 +213,5 @@ export class ChokidarFileWatcher implements FileWatcher {
       console.error('[madori:watcher] Error handling file event:', error)
     }
   }
+
 }

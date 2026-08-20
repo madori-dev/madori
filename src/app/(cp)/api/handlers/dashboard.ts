@@ -11,7 +11,7 @@ export interface RecentEntry {
   updatedAt: string
 }
 
-export function createDashboardHandlers(contentEngine: ContentEngine) {
+export function createDashboardHandlers(contentEngine: ContentEngine, canViewCollection: (handle: string) => Promise<boolean> = async () => true) {
   /**
    * GET /api/dashboard/recent — returns the most recently modified entries
    * across all collections, sorted by updatedAt descending.
@@ -22,6 +22,7 @@ export function createDashboardHandlers(contentEngine: ContentEngine) {
       const allEntries: (Entry & { collectionTitle: string })[] = []
 
       for (const collection of collections) {
+        if (!await canViewCollection(collection.handle)) continue
         try {
           const entries = await contentEngine.listEntries(collection.handle)
           for (const entry of entries) {

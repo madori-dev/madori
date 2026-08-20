@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
-import { GraphQLObjectType, GraphQLList, GraphQLUnionType } from 'graphql'
+import { graphql, GraphQLObjectType, GraphQLList, GraphQLUnionType } from 'graphql'
 import { SchemaGeneratorImpl, FieldsetProvider } from '../schema-generator'
 import { sanitiseFieldHandle } from '../sanitise-field-handle'
 import type { Blueprint, FieldDefinition, FieldType } from '../../blueprints/types'
@@ -198,6 +198,30 @@ const arbitraryFieldHandleArb = fc.oneof(
 // --- Property Tests ---
 
 describe('GraphQL Schema Generator Property Tests', () => {
+  it('exposes globals, navigation, and assets as queryable structured types', async () => {
+    const generator = new SchemaGeneratorImpl()
+    const schema = generator.generateSchema([], [], {
+      globals: async () => [{ handle: 'site', title: 'Site', data: { name: 'Madori' } }],
+      global: async () => ({ handle: 'site', title: 'Site', data: { name: 'Madori' } }),
+      navigations: async () => [{ handle: 'main', items: [{ title: 'Home', url: '/' }] }],
+      navigation: async () => ({ handle: 'main', items: [{ title: 'Home', url: '/' }] }),
+      assets: async () => [{ path: 'logo.svg', filename: 'logo.svg', extension: 'svg', size: 12, mimeType: 'image/svg+xml', modifiedAt: '2026-01-01T00:00:00.000Z' }],
+      asset: async () => ({ path: 'logo.svg', filename: 'logo.svg', extension: 'svg', size: 12, mimeType: 'image/svg+xml', modifiedAt: '2026-01-01T00:00:00.000Z' }),
+    })
+
+    const result = await graphql({
+      schema,
+      source: '{ globals { handle title data } navigations { handle items } assets { path filename extension size mimeType modifiedAt } }',
+    })
+
+    expect(result.errors).toBeUndefined()
+    expect(result.data).toEqual({
+      globals: [{ handle: 'site', title: 'Site', data: { name: 'Madori' } }],
+      navigations: [{ handle: 'main', items: [{ title: 'Home', url: '/' }] }],
+      assets: [{ path: 'logo.svg', filename: 'logo.svg', extension: 'svg', size: 12, mimeType: 'image/svg+xml', modifiedAt: '2026-01-01T00:00:00.000Z' }],
+    })
+  })
+
   /**
    * **Validates: Requirements 2.1**
    *
@@ -292,7 +316,7 @@ describe('GraphQL Schema Generator Property Tests', () => {
 
             // Verify offset constraint
             const afterSort = (() => {
-              let sorted = [...entries]
+              const sorted = [...entries]
               if (options.sort) {
                 const { field, direction } = options.sort
                 sorted.sort((a, b) => {

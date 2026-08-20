@@ -40,7 +40,12 @@ function createMockFs(): FileSystemAdapter {
     listDirectories: vi.fn(async () => []),
     mkdir: vi.fn(async () => {}),
     copyFile: vi.fn(async () => {}),
-    moveFile: vi.fn(async () => {}),
+    moveFile: vi.fn(async (source: string, destination: string) => {
+      const content = store.get(source)
+      if (content === undefined) throw new Error(`File not found: ${source}`)
+      store.set(destination, content)
+      store.delete(source)
+    }),
   }
 }
 
@@ -102,10 +107,7 @@ describe('FileSessionStore', () => {
       const hash = createHash('sha256').update(session.token).digest('hex')
       const expectedPath = `/tmp/sessions/${hash}.json`
 
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
-        expectedPath,
-        expect.any(String)
-      )
+      expect(mockFs.moveFile).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`^${expectedPath.replace('.', '\\.')}\\.tmp\\.`)), expectedPath)
 
       const writtenContent = (mockFs.writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1]
       const parsed = JSON.parse(writtenContent)
@@ -221,10 +223,8 @@ describe('FileSessionStore', () => {
       const session = await created.createSession('user-1')
 
       const hash = createHash('sha256').update(session.token).digest('hex')
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
-        `/custom/path/${hash}.json`,
-        expect.any(String)
-      )
+      const targetPath = `/custom/path/${hash}.json`
+      expect(mockFs.moveFile).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`^${targetPath.replace('.', '\\.')}\\.tmp\\.`)), targetPath)
     })
 
     it('passes sessionDurationMs from config', async () => {

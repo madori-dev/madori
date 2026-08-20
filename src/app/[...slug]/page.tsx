@@ -1,42 +1,24 @@
 import { notFound } from 'next/navigation'
 import type { Metadata } from 'next'
 import { marked } from 'marked'
-import { loadConfig, resolveConfigPaths } from '@/lib/config/loader'
-import { BlueprintRegistry } from '@/lib/blueprints/registry'
-import { BlueprintLoader } from '@/lib/blueprints/loader'
-import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
-import { MarkdownYamlParser } from '@/lib/fs/parser'
-import { InMemoryContentCache } from '@/lib/cache/store'
-import { MadoriContentEngine } from '@/lib/content/engine'
 import { renderTipTapToHtml } from '@/lib/editor/renderer'
 import { BlockRenderer } from '@/components/blocks'
 import { SiteLayout } from '@/components/site/SiteLayout'
 import { DocsLayout } from '@/components/site/DocsLayout'
 import { DownloadMarkdown } from '@/components/site/DownloadMarkdown'
 import type { TipTapDocument } from '@/lib/editor/types'
+import { serializeJsonLd } from '@/lib/seo/outputs'
+import {
+  getRequestSite,
+  recordPublicNotFound,
+  resolvePublishedContentRoute,
+  resolvePublishedEntrySeo,
+  resolvePublishedTermSeo,
+} from '@/lib/seo/next'
 
 interface Block {
   _type: string
   [key: string]: unknown
-}
-
-async function getContentEngine() {
-  const config = await loadConfig()
-  const resolvedConfig = resolveConfigPaths(config, process.cwd())
-
-  const fs = new NodeFileSystemAdapter()
-  const parser = new MarkdownYamlParser()
-  const cache = new InMemoryContentCache()
-  const blueprintLoader = new BlueprintLoader(fs, parser, resolvedConfig.resourcesPath)
-  const blueprintRegistry = new BlueprintRegistry(blueprintLoader)
-
-  return new MadoriContentEngine(
-    resolvedConfig,
-    fs,
-    parser,
-    cache,
-    blueprintRegistry
-  )
 }
 
 interface PageProps {
@@ -45,47 +27,42 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params
-  const engine = await getContentEngine()
-
-  const isDocsPage = slug[0] === 'docs'
-  const collection = isDocsPage ? 'docs' : 'pages'
-  const entrySlug = isDocsPage ? slug.slice(1).join('/') : slug.join('/')
-
-  const entry = await engine.getEntry(collection, entrySlug)
-
-  if (!entry) return {}
-
-  return {
-    title: (entry.data?.meta_title as string) || `${entry.title} — MADORI`,
-    description: (entry.data?.meta_description as string) || undefined,
-    openGraph: entry.data?.og_image
-      ? { images: [{ url: entry.data.og_image as string }] }
-      : undefined,
-  }
+  const publicPath = `/${slug.join('/')}`
+  const route = await resolvePublishedContentRoute(publicPath)
+  if (!route) return {}
+  const site = await getRequestSite()
+  const seo = route.kind === 'collection'
+    ? await resolvePublishedEntrySeo(site.handle, route.collection, route.slug, publicPath)
+    : await resolvePublishedTermSeo(site.handle, route.taxonomy, route.slug)
+  return seo?.metadata as Metadata ?? {}
 }
 
 export default async function DynamicPage({ params }: PageProps) {
   const { slug } = await params
+  const publicPath = `/${slug.join('/')}`
+  const [route, site] = await Promise.all([resolvePublishedContentRoute(publicPath), getRequestSite()])
 
-  const engine = await getContentEngine()
-
-  const isDocsPage = slug[0] === 'docs'
-  const collection = isDocsPage ? 'docs' : 'pages'
-  const entrySlug = isDocsPage ? slug.slice(1).join('/') : slug.join('/')
-
-  const entry = await engine.getEntry(collection, entrySlug)
-
-  if (!entry) {
+  if (!route) {
+    await recordPublicNotFound(site.handle, publicPath)
     notFound()
   }
 
-  const blocks = (entry.data?.blocks as Block[]) ?? []
+  const seo = route.kind === 'collection'
+    ? await resolvePublishedEntrySeo(site.handle, route.collection, route.slug, publicPath)
+    : await resolvePublishedTermSeo(site.handle, route.taxonomy, route.slug)
+  const record = route.kind === 'collection' ? route.entry : route.term
+  const isDocsPage = route.kind === 'collection' && route.collection === 'docs'
+  const blocks = (record.data?.blocks as Block[]) ?? []
 
   let html = ''
-  if (entry.data?.content_json) {
-    html = renderTipTapToHtml(entry.data.content_json as TipTapDocument)
-  } else if (entry.content) {
-    html = await marked.parse(entry.content)
+  if (record.data?.content_json) {
+    html = renderTipTapToHtml(record.data.content_json as TipTapDocument)
+  } else if (route.kind === 'collection' && route.entry.content) {
+    html = await marked.parse(route.entry.content)
+  } else if (route.kind === 'taxonomy' && typeof route.term.data.content === 'string') {
+    html = await marked.parse(route.term.data.content)
+  } else if (route.kind === 'taxonomy' && route.term.description) {
+    html = await marked.parse(route.term.description)
   }
 
   const content = (
@@ -99,6 +76,7 @@ export default async function DynamicPage({ params }: PageProps) {
               <DownloadMarkdown />
             </div>
           )}
+          {route.kind === 'taxonomy' && <h1 className="mb-8 text-4xl font-bold">{route.term.title}</h1>}
           <div
             className="prose dark:prose-invert max-w-none"
             dangerouslySetInnerHTML={{ __html: html }}
@@ -111,6 +89,12 @@ export default async function DynamicPage({ params }: PageProps) {
   return (
     <SiteLayout>
       <main className="min-h-svh">
+        {seo?.jsonLd && (
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: serializeJsonLd(seo.jsonLd) }}
+          />
+        )}
         {isDocsPage ? (
           <DocsLayout>{content}</DocsLayout>
         ) : (

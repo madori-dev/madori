@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 
 interface UserData {
   id: string
@@ -47,7 +48,11 @@ export default function EditUserPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setAvailableRoles(['admin', 'editor'])
+    void fetch('/api/roles').then(async (response) => {
+      if (!response.ok) throw new Error('Unable to load roles')
+      const payload = await response.json() as { data?: Array<{ handle: string }> }
+      setAvailableRoles((payload.data ?? []).map(role => role.handle))
+    }).catch(() => setError('Unable to load available roles'))
   }, [])
 
   useEffect(() => {
@@ -213,9 +218,9 @@ export default function EditUserPage() {
             )}
 
             <div className="flex items-center gap-3 pt-2">
-              <Button type="submit" disabled={saving}>
+              <CapabilityGate resource="users" action="edit"><Button type="submit" disabled={saving}>
                 {saving ? 'Saving…' : 'Save Changes'}
-              </Button>
+              </Button></CapabilityGate>
               <Button variant="ghost" nativeButton={false} render={<Link href="/cp/users" />}>
                 Cancel
               </Button>

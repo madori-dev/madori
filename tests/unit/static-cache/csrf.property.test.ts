@@ -25,13 +25,6 @@ describe('Property 7: CSRF token replacement round-trip', () => {
     .stringMatching(/^[a-zA-Z0-9<>\/\s="'\-_.,:;!?()]{0,50}$/)
     .filter((s) => !s.includes(CSRF_PLACEHOLDER))
 
-  // Build an HTML string with a token embedded at multiple positions
-  const htmlWithToken = (token: string) =>
-    fc
-      .array(htmlFragment, { minLength: 2, maxLength: 6 })
-      .filter((fragments) => fragments.every((f) => !f.includes(token)))
-      .map((fragments) => fragments.join(token))
-
   /**
    * **Validates: Requirements 8.1, 8.3**
    *
@@ -109,6 +102,9 @@ describe('Property 7: CSRF token replacement round-trip', () => {
           fc.pre(fragments.every((f) => !f.includes(freshToken)))
           fc.pre(originalToken !== freshToken)
           fc.pre(!freshToken.includes(originalToken))
+
+          const expected = fragments.join(freshToken)
+          fc.pre(!expected.includes(originalToken))
 
           const html = fragments.join(originalToken)
           const cached = injectCsrfPlaceholder(html, originalToken)

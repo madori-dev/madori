@@ -5,7 +5,7 @@ import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
 import { MarkdownYamlParser } from '@/lib/fs/parser'
 import { InMemoryContentCache } from '@/lib/cache/store'
 import { FormOperations, isHoneypotFilled } from '@/lib/content/forms'
-import { NotFoundError } from '@/lib/errors'
+import { NotFoundError, ValidationError } from '@/lib/errors'
 
 describe('FormOperations', () => {
   let forms: FormOperations
@@ -32,6 +32,10 @@ describe('FormOperations', () => {
   })
 
   describe('getForm', () => {
+    it('rejects traversal handles before accessing filesystem', async () => {
+      await expect(forms.getForm('../users')).rejects.toThrow(ValidationError)
+    })
+
     it('returns null for non-existent form', async () => {
       const result = await forms.getForm('nonexistent')
       expect(result).toBeNull()
@@ -66,6 +70,27 @@ fields:
       const result = await forms.getForm('simple')
       expect(result!.handle).toBe('simple')
       expect(result!.display).toBe('simple')
+    })
+
+    it('uses form definition blueprint and flattens CP tabs and sections', async () => {
+      await fs.mkdir(path.join(resourcesDir, 'forms'), { recursive: true })
+      await fs.writeFile(path.join(resourcesDir, 'forms', 'contact.yaml'), 'title: Contact us\nblueprint: contact-fields\n')
+      await fs.writeFile(path.join(resourcesDir, 'blueprints', 'forms', 'contact-fields.yaml'), `tabs:
+  main:
+    fields:
+      - handle: name
+        field: { type: text }
+    sections:
+      details:
+        fields:
+          - handle: message
+            field: { type: markdown }
+`)
+
+      const result = await forms.getForm('contact')
+
+      expect(result).toMatchObject({ handle: 'contact', display: 'Contact us' })
+      expect((result!.fields as Array<{ handle: string }>).map((field) => field.handle)).toEqual(['name', 'message'])
     })
 
     it('returns cached result on second call', async () => {
@@ -239,6 +264,16 @@ fields:
       expect(result!.id).toBe(submission!.id)
       expect(result!.data).toEqual({ name: 'Jane', email: 'jane@example.com' })
     })
+
+    it('requires exact submission IDs rather than substring matches', async () => {
+      const blueprintYaml = `handle: contact\ndisplay: Contact Form\nfields: []\n`
+      await fs.writeFile(path.join(resourcesDir, 'blueprints', 'forms', 'contact.yaml'), blueprintYaml)
+
+      const submission = await forms.submitForm('contact', { name: 'Jane' })
+      const result = await forms.getSubmission('contact', submission!.id.slice(0, 8))
+
+      expect(result).toBeNull()
+    })
   })
 
   describe('deleteSubmission', () => {
@@ -283,6 +318,25 @@ fields:
 
       // Should have header + 2 data rows
       expect(lines).toHaveLength(3)
+    })
+
+    it('neutralises spreadsheet formulas, including values with leading whitespace', async () => {
+      const blueprintYaml = `handle: contact\ndisplay: Contact Form\nfields: []\n`
+      await fs.writeFile(path.join(resourcesDir, 'blueprints', 'forms', 'contact.yaml'), blueprintYaml)
+      await forms.submitForm('contact', {
+        equals: '=HYPERLINK("https://attacker.invalid")',
+        plus: '+1+1',
+        minus: '-1+1',
+        at: '@SUM(A1)',
+        whitespace: '  =1+1',
+      })
+
+      const csv = await forms.exportCsv('contact')
+      expect(csv).toContain("'=HYPERLINK")
+      expect(csv).toContain("'+1+1")
+      expect(csv).toContain("'-1+1")
+      expect(csv).toContain("'@SUM(A1)")
+      expect(csv).toContain("'  =1+1")
     })
   })
 

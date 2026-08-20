@@ -1,0 +1,13 @@
+{
+  "schema": "madori.seo.operations.v1",
+  "redirects": [
+    { "id": "redirect-1", "source": "/old-page", "destination": "/new-page", "status": 301, "site": "en", "enabled": true, "expected": "accepted" },
+    { "id": "redirect-2", "source": "/campaign", "destination": "https://partner.example/landing", "status": 302, "site": "en", "enabled": true, "expected": "accepted" },
+    { "id": "redirect-loop", "source": "/a", "destination": "/a", "status": 301, "site": "en", "enabled": true, "expected": "rejected:self-loop" },
+    { "id": "redirect-chain", "source": "/legacy", "destination": "/old-page", "status": 301, "site": "en", "enabled": true, "expected": "rejected:chain" }
+  ],
+  "notFoundObservations": [
+    { "opaqueId": "nf_01J5N9", "site": "en", "path": "/missing", "query": null, "firstSeen": "2026-08-18T10:00:00Z", "lastSeen": "2026-08-19T10:00:00Z", "hits": 4, "referrerOrigin": "https://search.example", "storage": "operational" },
+    { "opaqueId": "nf_01J5NA", "site": "fr", "path": "/fr/absent", "query": "redacted", "firstSeen": "2026-08-19T11:00:00Z", "lastSeen": "2026-08-19T11:00:00Z", "hits": 1, "referrerOrigin": null, "storage": "operational" }
+  ]
+}

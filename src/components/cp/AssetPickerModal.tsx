@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Image from 'next/image'
 import {
   Archive,
   Check,
@@ -73,14 +74,14 @@ export function AssetPickerModal({ open, onClose, onSelect }: AssetPickerModalPr
 
   useEffect(() => {
     if (open) {
-      fetchAssets()
-      setSearchQuery('')
-      setSelectedAssetPath(null)
-      // Store the element that had focus before the modal opened
-      previousFocusRef.current = document.activeElement as HTMLElement
-      // Focus the close button when modal opens
-      requestAnimationFrame(() => {
-        closeButtonRef.current?.focus()
+      queueMicrotask(() => {
+        void fetchAssets()
+        setSearchQuery('')
+        setSelectedAssetPath(null)
+        previousFocusRef.current = document.activeElement as HTMLElement
+        requestAnimationFrame(() => {
+          closeButtonRef.current?.focus()
+        })
       })
     } else {
       // Restore focus when modal closes
@@ -341,9 +342,12 @@ export function AssetPickerModal({ open, onClose, onSelect }: AssetPickerModalPr
                         )}
 
                         {isImage ? (
-                          <img
+                          <Image
                             src={`/assets/${asset.path}`}
                             alt={asset.alt || asset.filename}
+                            fill
+                            unoptimized
+                            sizes="(max-width: 768px) 50vw, 25vw"
                             className="h-full w-full object-cover"
                           />
                         ) : (

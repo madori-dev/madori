@@ -48,7 +48,7 @@ Scaffold a complete MADORI project:
 pnpm dlx create-madori-app@latest my-site
 ```
 
-You can optionally choose a starter template during scaffolding. Available starters: `marketing`, `blog`, `documentation`, `saas`, `agency`. These provide pre-configured collections, blueprints, and navigation for common project types.
+Choose whether to include boilerplate site content during scaffolding. Starter-template packages are not currently distributed.
 
 This creates a `my-site` directory with all CMS files, blueprints, and configuration ready to go.
 
@@ -175,13 +175,7 @@ Use Replicator fields with [Fieldsets](/docs/fieldsets) to let editors compose f
 
 ### Generate a typed SDK
 
-Run the code generator to get full TypeScript types and a typed client from your blueprints:
-
-```bash
-pnpm madori generate
-```
-
-This creates typed interfaces, Zod schemas, and a GraphQL SDK at `.madori/generated/`. See the [CLI](/docs/cli) reference for details.
+Generated projects do not bundle a CLI. Manage content with control panel, or run CLI tooling from Madori source checkout.
 
 ---
 
@@ -191,6 +185,7 @@ This creates typed interfaces, Zod schemas, and a GraphQL SDK at `.madori/genera
 - [Collections](/docs/collections) — routes, sorting, filtering, and multiple blueprints
 - [Field Types](/docs/field-types) — all 18 field types with configuration options
 - [GraphQL](/docs/graphql) — auto-generated schema, queries, and client library usage
+- [SEO Architecture](/docs/seo-architecture) — multi-site metadata, redirects, reports, and storage boundaries
 - [CLI](/docs/cli) — scaffolding, migrations, code generation, and portability commands
 - [Assets](/docs/assets) — uploading, organising, and selecting media files
 - [Navigation](/docs/navigation) — managing site navigation structures

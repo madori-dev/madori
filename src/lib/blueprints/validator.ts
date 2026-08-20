@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { getAssetCardinality } from './asset-cardinality'
 
 // --- Result interfaces ---
 
@@ -11,7 +12,7 @@ export interface BlueprintValidationResult {
 export interface BlueprintValidationError {
   path: string
   message: string
-  code: 'INVALID_TYPE' | 'UNKNOWN_RULE' | 'MISSING_PROPERTY' | 'DUPLICATE_HANDLE'
+  code: 'INVALID_TYPE' | 'UNKNOWN_RULE' | 'MISSING_PROPERTY' | 'DUPLICATE_HANDLE' | 'INVALID_OPTION'
 }
 
 export interface BlueprintValidationWarning {
@@ -124,10 +125,16 @@ export class BlueprintValidator {
     // Check for unknown validation rule names
     for (const [tabKey, tab] of Object.entries(data.tabs)) {
       this.checkFieldRules(tab.fields, `tabs.${tabKey}.fields`, errors)
+      this.checkAssetCardinality(tab.fields, `tabs.${tabKey}.fields`, errors)
 
       if (tab.sections) {
         for (const [secKey, section] of Object.entries(tab.sections)) {
           this.checkFieldRules(
+            section.fields,
+            `tabs.${tabKey}.sections.${secKey}.fields`,
+            errors
+          )
+          this.checkAssetCardinality(
             section.fields,
             `tabs.${tabKey}.sections.${secKey}.fields`,
             errors
@@ -307,6 +314,25 @@ export class BlueprintValidator {
             code: 'UNKNOWN_RULE',
           })
         }
+      }
+    }
+  }
+
+  /** Reject impossible asset cardinality before a blueprint can be persisted. */
+  private checkAssetCardinality(
+    fields: Array<{ handle: string; field: { type: string; options?: Record<string, unknown> } }>,
+    basePath: string,
+    errors: BlueprintValidationError[]
+  ): void {
+    for (let i = 0; i < fields.length; i++) {
+      const fieldDef = fields[i]
+      if (fieldDef.field.type !== 'asset') continue
+      if (!getAssetCardinality(fieldDef.field.options).valid) {
+        errors.push({
+          path: `${basePath}[${i}].field.options`,
+          message: 'Asset min_files and max_files must be non-negative integers; min_files cannot exceed max_files or 1 for a single asset.',
+          code: 'INVALID_OPTION',
+        })
       }
     }
   }

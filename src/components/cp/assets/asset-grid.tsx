@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useRef, useState } from 'react'
 import { Folder, FileText, Trash2, FolderInput, Pencil, Upload } from 'lucide-react'
 import type { Asset } from '@/lib/types'
@@ -52,7 +53,10 @@ interface AssetGridProps {
   onDeleteDirectory: (name: string) => void
   onRenameDirectory: (oldName: string, newName: string) => void
   onMoveAsset: (from: string, to: string) => void
+  onUpdateMetadata: (path: string, update: Pick<Asset, 'alt' | 'filename'>) => Promise<Asset | null>
   onUpload?: (files: File[]) => void
+  canEdit: boolean
+  canDelete: boolean
 }
 
 export function AssetGrid({
@@ -67,7 +71,10 @@ export function AssetGrid({
   onDeleteDirectory,
   onRenameDirectory,
   onMoveAsset,
+  onUpdateMetadata,
   onUpload,
+  canEdit,
+  canDelete,
 }: AssetGridProps) {
   const [renamingDir, setRenamingDir] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -75,6 +82,15 @@ export function AssetGrid({
   const [deleteConfirmDir, setDeleteConfirmDir] = useState<string | null>(null)
   const [draggedAsset, setDraggedAsset] = useState<string | null>(null)
   const [dragOverDir, setDragOverDir] = useState<string | null>(null)
+  const [editingAsset, setEditingAsset] = useState<Asset | null>(null)
+  const [assetFilename, setAssetFilename] = useState('')
+  const [assetAlt, setAssetAlt] = useState('')
+
+  function openMetadata(asset: Asset) {
+    setEditingAsset(asset)
+    setAssetFilename(asset.filename)
+    setAssetAlt(asset.alt ?? '')
+  }
 
   function handleStartRename(dir: string) {
     setRenamingDir(dir)
@@ -202,9 +218,9 @@ export function AssetGrid({
                     onNavigateToDirectory(target)
                   }
                 }}
-                onDragOver={(e) => handleDragOver(e, dir)}
+                onDragOver={canEdit ? (e) => handleDragOver(e, dir) : undefined}
                 onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, dir)}
+                onDrop={canEdit ? (e) => handleDrop(e, dir) : undefined}
               >
                 <Folder className="h-10 w-10 text-blue-500" />
                 {renamingDir === dir ? (
@@ -234,18 +250,18 @@ export function AssetGrid({
                 <Folder className="mr-2 h-4 w-4" />
                 Open
               </ContextMenuItem>
-              <ContextMenuItem onClick={() => handleStartRename(dir)}>
+              {canEdit && <ContextMenuItem onClick={() => handleStartRename(dir)}>
                 <Pencil className="mr-2 h-4 w-4" />
                 Rename
-              </ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuItem
+              </ContextMenuItem>}
+              {canDelete && <ContextMenuSeparator />}
+              {canDelete && <ContextMenuItem
                 className="text-destructive"
                 onClick={() => setDeleteConfirmDir(dir)}
               >
                 <Trash2 className="mr-2 h-4 w-4" />
                 Delete
-              </ContextMenuItem>
+              </ContextMenuItem>}
             </ContextMenuContent>
           </ContextMenu>
         ))}
@@ -278,9 +294,9 @@ export function AssetGrid({
                       onToggleSelection(asset.path)
                     }
                   }}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, asset.path)}
-                  onDragEnd={() => setDraggedAsset(null)}
+                  draggable={canEdit}
+                  onDragStart={canEdit ? (e) => handleDragStart(e, asset.path) : undefined}
+                  onDragEnd={canEdit ? () => setDraggedAsset(null) : undefined}
                 >
                   {/* Checkbox */}
                   <div className={cn(
@@ -297,11 +313,13 @@ export function AssetGrid({
                   {/* Thumbnail */}
                   {isImage ? (
                     <div className="flex h-16 w-full items-center justify-center overflow-hidden rounded">
-                      <img
+                      <Image
                         src={`/assets/${asset.path}`}
                         alt={asset.filename}
+                        width={64}
+                        height={64}
+                        unoptimized
                         className="h-full w-full object-contain"
-                        draggable={false}
                       />
                     </div>
                   ) : (
@@ -320,6 +338,10 @@ export function AssetGrid({
                 </div>
               </ContextMenuTrigger>
               <ContextMenuContent>
+                {canEdit && <ContextMenuItem onClick={() => openMetadata(asset)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit details
+                </ContextMenuItem>}
                 <ContextMenuItem
                   onClick={() => {
                     navigator.clipboard.writeText(`/assets/${asset.path}`)
@@ -327,7 +349,7 @@ export function AssetGrid({
                 >
                   Copy Path
                 </ContextMenuItem>
-                {directories.length > 0 && (
+                {canEdit && directories.length > 0 && (
                   <>
                     <ContextMenuSeparator />
                     {directories.map((dir) => (
@@ -347,14 +369,14 @@ export function AssetGrid({
                     ))}
                   </>
                 )}
-                <ContextMenuSeparator />
-                <ContextMenuItem
+                {canDelete && <ContextMenuSeparator />}
+                {canDelete && <ContextMenuItem
                   className="text-destructive"
                   onClick={() => setDeleteConfirmAsset(asset.path)}
                 >
                   <Trash2 className="mr-2 h-4 w-4" />
                   Delete
-                </ContextMenuItem>
+                </ContextMenuItem>}
               </ContextMenuContent>
             </ContextMenu>
           )
@@ -388,6 +410,28 @@ export function AssetGrid({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog open={!!editingAsset} onOpenChange={(open) => !open && setEditingAsset(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Edit asset details</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <label className="grid gap-1.5 text-sm font-medium">Filename
+              <Input value={assetFilename} onChange={(event) => setAssetFilename(event.target.value)} />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium">Alt text
+              <Input value={assetAlt} onChange={(event) => setAssetAlt(event.target.value)} placeholder="Describe this asset" />
+            </label>
+          </div>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" type="button">Cancel</Button>} />
+            <Button type="button" onClick={async () => {
+              if (!editingAsset) return
+              const updated = await onUpdateMetadata(editingAsset.path, { filename: assetFilename, alt: assetAlt })
+              if (updated) setEditingAsset(null)
+            }}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete directory confirmation */}
       <AlertDialog

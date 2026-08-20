@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { validateFields } from '@/lib/validation/rules'
-import type { FieldConfig, FieldDefinition } from '@/lib/blueprints/types'
+import type { FieldConfig } from '@/lib/blueprints/types'
 
 /**
  * Tests that validate the field-level validation error display contract:
@@ -10,6 +10,12 @@ import type { FieldConfig, FieldDefinition } from '@/lib/blueprints/types'
  */
 
 describe('Field-level validation error display', () => {
+  it('accepts structured TipTap JSON while requiring non-empty content', () => {
+    const fields: Record<string, FieldConfig> = { content: { type: 'tiptap', required: true } }
+    expect(validateFields(fields, { content: { type: 'doc', content: [{ type: 'paragraph' }] } }).valid).toBe(true)
+    expect(validateFields(fields, { content: '' }).errors.content).toContain('This field is required')
+  })
+
   describe('validateFields returns field-keyed errors', () => {
     it('returns errors keyed by the exact field handle', () => {
       const fields: Record<string, FieldConfig> = {

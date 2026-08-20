@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 import { PermissionGuard } from '@/lib/auth/guard'
 import type { AuthContext } from '@/lib/auth/guard'
-import type { PermissionChecker, ResourceType, Action, Permission, Role } from '@/lib/auth/permissions'
+import type { PermissionChecker, ResourceType, Action, Role } from '@/lib/auth/permissions'
 
 /**
  * Validates: Requirements 3.1, 3.2, 3.4, 3.5
@@ -20,6 +20,7 @@ import type { PermissionChecker, ResourceType, Action, Permission, Role } from '
 const ALL_RESOURCE_TYPES: ResourceType[] = [
   'collections', 'entries', 'taxonomies', 'assets',
   'globals', 'forms', 'navigation', 'users', 'settings',
+  'git', 'seo', 'seo-reports', 'seo-redirects', 'seo-errors',
 ]
 
 const ALL_ACTIONS: Action[] = ['view', 'create', 'edit', 'delete', 'publish']
@@ -31,7 +32,7 @@ const ALL_ACTIONS: Action[] = ['view', 'create', 'edit', 'delete', 'publish']
  * Implements the same logic as the real PermissionChecker.hasPermission():
  * - Iterates roles, then permissions within each role
  * - Matches resource and action
- * - If scope is requested: permission must be unscoped or match exactly
+ * - Scoped permissions match only their exact requested scope
  */
 class InMemoryPermissionChecker {
   constructor(private readonly roles: Map<string, Role>) {}
@@ -50,13 +51,7 @@ class InMemoryPermissionChecker {
         if (permission.resource !== resource) continue
         if (!permission.actions.includes(action)) continue
 
-        // Scope matching: if a scope is requested, the permission must either
-        // have no scope (grants all) or match the requested scope exactly.
-        if (scope !== undefined) {
-          if (permission.scope !== undefined && permission.scope !== scope) {
-            continue
-          }
-        }
+        if (permission.scope !== undefined && permission.scope !== scope) continue
         return true
       }
     }
@@ -137,11 +132,7 @@ function shouldGrant(
       if (permission.resource !== resource) continue
       if (!permission.actions.includes(action)) continue
 
-      if (scope !== undefined) {
-        if (permission.scope !== undefined && permission.scope !== scope) {
-          continue
-        }
-      }
+      if (permission.scope !== undefined && permission.scope !== scope) continue
       return true
     }
   }

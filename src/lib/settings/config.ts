@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { MadoriConfigSchema, type MadoriConfig, type MadoriConfigInput } from '@/lib/config/schema'
+import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
+import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
 
 export interface ValidationResult {
   valid: boolean
@@ -25,9 +27,18 @@ export class MadoriConfigService {
   async read(): Promise<MadoriConfig> {
     const absolutePath = path.resolve(this.configPath)
     const cacheBuster = `?t=${Date.now()}`
-    const module = await import(/* webpackIgnore: true */ `${absolutePath}${cacheBuster}`)
-    const rawConfig = module.default ?? module
+    const importedConfig = await import(/* webpackIgnore: true */ `${absolutePath}${cacheBuster}`)
+    const rawConfig = importedConfig.default ?? importedConfig
     return MadoriConfigSchema.parse(rawConfig)
+  }
+
+  /** Browser-safe view. Auth adapter options can contain credentials. */
+  async readPublic(): Promise<Omit<MadoriConfig, 'auth'> & { auth: Pick<MadoriConfig['auth'], 'driver' | 'store' | 'provider'> }> {
+    const config = await this.read()
+    return {
+      ...config,
+      auth: { driver: config.auth.driver, store: config.auth.store, provider: config.auth.provider },
+    }
   }
 
   /**
@@ -44,8 +55,9 @@ export class MadoriConfigService {
     const existing = await this.read()
     const merged = deepMerge(existing, config)
 
-    // Validate before writing
-    const validation = await this.validate(config)
+    // Validate merged configuration, not only submitted fields. This keeps
+    // partial writes from producing a config that cannot be loaded at runtime.
+    const validation = validateConfig(merged)
     if (!validation.valid) {
       throw new Error(
         `Config validation failed: ${validation.errors.map((e) => `${e.field}: ${e.message}`).join(', ')}`
@@ -54,7 +66,8 @@ export class MadoriConfigService {
 
     // Re-serialise the config preserving file structure
     const updated = rewriteConfigFile(content, merged as MadoriConfig)
-    await fs.writeFile(absolutePath, updated, 'utf-8')
+    const result = await new AtomicFileWriter(new NodeFileSystemAdapter()).writeFileAtomic(absolutePath, updated)
+    if (!result.success) throw result.error ?? new Error(`Could not write config: ${absolutePath}`)
   }
 
   /**
@@ -63,7 +76,6 @@ export class MadoriConfigService {
    */
   async validate(config: Partial<MadoriConfigInput>): Promise<ValidationResult> {
     const errors: { field: string; message: string }[] = []
-
     for (const field of PATH_FIELDS) {
       if (field in config) {
         const value = (config as Record<string, unknown>)[field]
@@ -72,12 +84,46 @@ export class MadoriConfigService {
         }
       }
     }
+    return { valid: errors.length === 0, errors }
+  }
 
-    return {
-      valid: errors.length === 0,
-      errors,
+  /** Validate update against complete config which will be persisted. */
+  async validateForWrite(config: Partial<MadoriConfigInput>): Promise<ValidationResult> {
+    return validateConfig(deepMerge(await this.read(), config))
+  }
+}
+
+function validateConfig(config: Record<string, unknown>): ValidationResult {
+  const errors: { field: string; message: string }[] = []
+
+  for (const field of PATH_FIELDS) {
+    if (field in config) {
+      const value = config[field]
+      if (typeof value === 'string' && value.trim() === '') {
+        errors.push({ field, message: 'Path value must not be empty or whitespace-only' })
+      }
     }
   }
+
+  // App Router route files are statically located. Accepting an arbitrary
+  // configured path here would persist a value that cannot receive requests.
+  const cp = config.cp
+  if (cp && typeof cp === 'object' && (cp as Record<string, unknown>).path !== '/cp') {
+    errors.push({ field: 'cp.path', message: 'Control Panel path is fixed at /cp in this build' })
+  }
+  const graphql = config.graphql
+  if (graphql && typeof graphql === 'object' && (graphql as Record<string, unknown>).path !== '/api/graphql') {
+    errors.push({ field: 'graphql.path', message: 'GraphQL path is fixed at /api/graphql in this build' })
+  }
+
+  const parsed = MadoriConfigSchema.safeParse(config)
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      errors.push({ field: issue.path.join('.') || 'config', message: issue.message })
+    }
+  }
+
+  return { valid: errors.length === 0, errors }
 }
 
 /**

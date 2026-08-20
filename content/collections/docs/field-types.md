@@ -462,7 +462,7 @@ A relationship field for referencing other collection entries by slug. Stores cr
 
 ### Configuration Options
 
-No type-specific options currently. A visual relationship picker is planned — the current implementation accepts comma-separated slugs.
+No type-specific options currently. Control panel loads entries from available collections into a searchable multi-select picker.
 
 ### Supported Validation
 
@@ -495,7 +495,7 @@ A field for assigning taxonomy terms to an entry. Connects entries to taxonomy t
 
 ### Configuration Options
 
-No type-specific options currently. A visual term picker is planned — the current implementation accepts comma-separated term slugs.
+Use `taxonomy` to restrict choices to one taxonomy and `max_items` to cap selections. Control panel loads available terms into a multi-select picker.
 
 ### Supported Validation
 

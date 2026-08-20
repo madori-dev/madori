@@ -5,6 +5,16 @@ import type { ContentParser } from '@/lib/fs/parser'
 import { NotFoundError, ConflictError } from '@/lib/errors'
 import { hashPassword } from '../password'
 import * as path from 'path'
+import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
+import type { ContentMutationReporter } from '@/lib/mutations'
+import { noOpContentMutationReporter } from '@/lib/mutations'
+
+/** User ids become filenames; keep them to one safe path component. */
+export function assertSafeUserId(id: string): void {
+  if (typeof id !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) {
+    throw new Error('User id must contain only letters, numbers, underscores, and hyphens')
+  }
+}
 
 /** YAML representation stored on disk (snake_case keys) */
 interface UserYaml {
@@ -19,6 +29,7 @@ interface UserYaml {
 }
 
 function userFromYaml(yaml: UserYaml): User {
+  assertSafeUserId(yaml.id)
   return {
     id: yaml.id,
     email: yaml.email,
@@ -50,13 +61,19 @@ function userToYaml(user: User): UserYaml {
 }
 
 export class YamlUserProvider implements UserProvider {
+  private readonly atomicWriter: AtomicFileWriter
+
   constructor(
     private readonly usersPath: string,
     private readonly fs: FileSystemAdapter,
-    private readonly parser: ContentParser
-  ) {}
+    private readonly parser: ContentParser,
+    private readonly mutations: ContentMutationReporter = noOpContentMutationReporter
+  ) {
+    this.atomicWriter = new AtomicFileWriter(fs)
+  }
 
   private userFilePath(id: string): string {
+    assertSafeUserId(id)
     return path.join(this.usersPath, `${id}.yaml`)
   }
 
@@ -91,6 +108,7 @@ export class YamlUserProvider implements UserProvider {
   }
 
   async create(input: CreateUserInput): Promise<User> {
+    assertSafeUserId(input.id)
     const filePath = this.userFilePath(input.id)
     const exists = await this.fs.exists(filePath)
     if (exists) {
@@ -109,11 +127,13 @@ export class YamlUserProvider implements UserProvider {
 
     const yaml = userToYaml(user)
     const content = this.parser.serializeYaml(yaml)
-    await this.fs.writeFile(filePath, content)
+    await this.writeUserAtomic(filePath, content)
+    this.report('create', filePath, input.id)
     return user
   }
 
   async update(id: string, input: UpdateUserInput): Promise<User> {
+    assertSafeUserId(id)
     const user = await this.getById(id)
 
     if (input.email !== undefined) user.email = input.email
@@ -127,28 +147,41 @@ export class YamlUserProvider implements UserProvider {
 
     const yaml = userToYaml(user)
     const content = this.parser.serializeYaml(yaml)
-    await this.fs.writeFile(this.userFilePath(id), content)
+    await this.writeUserAtomic(this.userFilePath(id), content)
+    this.report('update', this.userFilePath(id), id)
     return user
   }
 
   async delete(id: string): Promise<void> {
+    assertSafeUserId(id)
     const filePath = this.userFilePath(id)
     const exists = await this.fs.exists(filePath)
     if (!exists) {
       throw new NotFoundError('User', id)
     }
     await this.fs.deleteFile(filePath)
+    this.report('delete', filePath, id)
+  }
+
+  private async writeUserAtomic(filePath: string, content: string): Promise<void> {
+    const result = await this.atomicWriter.writeFileAtomic(filePath, content)
+    if (!result.success) throw result.error ?? new Error(`Could not write user: ${filePath}`)
+  }
+
+  private report(action: 'create' | 'update' | 'delete', filePath: string, id: string): void {
+    this.mutations.report({ action, paths: [path.resolve(filePath)], resource: { type: 'user', id }, message: `${action[0].toUpperCase()}${action.slice(1)}d user ${id}`, source: 'system', timestamp: Date.now() })
   }
 }
 
 export class YamlUserProviderFactory implements UserProviderFactory {
   constructor(
     private readonly fs: FileSystemAdapter,
-    private readonly parser: ContentParser
+    private readonly parser: ContentParser,
+    private readonly mutations: ContentMutationReporter = noOpContentMutationReporter
   ) {}
 
   create(config: Record<string, unknown>): YamlUserProvider {
     const usersPath = (config.usersPath as string) ?? './users'
-    return new YamlUserProvider(usersPath, this.fs, this.parser)
+    return new YamlUserProvider(usersPath, this.fs, this.parser, this.mutations)
   }
 }

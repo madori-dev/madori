@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import type { BlueprintLoader } from './loader'
 import type { Blueprint, BlueprintType, FieldDefinition, FieldConfig } from './types'
+import type { BlueprintValidationResult } from './validator'
+import { evaluateCondition } from './visibility'
 
 /**
  * Result of validating data against a blueprint schema.
@@ -38,6 +40,10 @@ export class BlueprintRegistry {
    */
   async saveBlueprint(type: BlueprintType, handle: string, blueprint: Blueprint): Promise<void> {
     return this.loader.saveBlueprint(type, handle, blueprint)
+  }
+
+  validateBlueprint(blueprint: unknown): BlueprintValidationResult {
+    return this.loader.validateBlueprint(blueprint)
   }
 
   /**
@@ -78,7 +84,15 @@ export class BlueprintRegistry {
    * Returns structured errors grouped by field handle.
    */
   validateData(blueprint: Blueprint, data: Record<string, unknown>): ValidationResult {
-    const schema = this.generateZodSchema(blueprint)
+    const shape: Record<string, z.ZodType> = {}
+    for (const tab of Object.values(blueprint.tabs)) {
+      for (const field of [...tab.fields, ...Object.values(tab.sections ?? {}).flatMap((section) => section.fields)]) {
+        if (!field.field.visibility || evaluateCondition(field.field.visibility, data)) {
+          shape[field.handle] = this.fieldToZod(field)
+        }
+      }
+    }
+    const schema = z.object(shape)
     const result = schema.safeParse(data)
 
     if (result.success) {
@@ -132,7 +146,8 @@ export class BlueprintRegistry {
         return z.string()
 
       case 'tiptap':
-        return z.string()
+        // Editor emits structured TipTap JSON; retain string support for legacy content.
+        return z.union([z.string(), z.record(z.string(), z.unknown())])
 
       case 'number':
         return z.number()

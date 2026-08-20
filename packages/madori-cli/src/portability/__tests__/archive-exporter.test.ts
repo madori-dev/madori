@@ -4,7 +4,6 @@ import * as path from 'path'
 import * as os from 'os'
 import { exportArchive } from '../archive-exporter.js'
 import type { ExportOptions } from '../archive-exporter.js'
-import { readManifest } from '../manifest.js'
 
 /**
  * These tests create a temporary project structure, override process.cwd()

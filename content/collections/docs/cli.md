@@ -8,7 +8,7 @@ updatedAt: 2026-06-07T09:00:00.000Z
 
 # CLI
 
-Madori includes command-line tools for scaffolding, content migration, code generation, and administration. The CLI handles everything from creating collections and blueprints to migrating WordPress content and generating typed SDKs.
+Madori source checkout includes command-line tools for scaffolding, content migration, code generation, and administration. Generated `create-madori-app` projects do not bundle this CLI; manage those projects through control panel instead.
 
 ---
 
@@ -16,7 +16,7 @@ Madori includes command-line tools for scaffolding, content migration, code gene
 
 ### Running CLI Commands
 
-The CLI is included in the `madori` package. Run commands with:
+From Madori source checkout, run commands with:
 
 ```bash
 pnpm madori <command>
@@ -37,12 +37,18 @@ pnpm madori <command>
 | `init:preset <preset-name>` | Initialise project with an opinionated preset structure |
 | `registry:pull <repository-url>` | Pull resources from a shared Git registry |
 | `registry:push <repository-url>` | Push local resources to a shared Git registry |
+| `git:status` | Show Git sync status for configured repositories |
+| `git:sync` | Commit and optionally push pending tracked changes |
+| `git:retry` | Retry pending Git pushes |
+| `seo:migrate` | Migrate legacy SEO frontmatter fields into nested `seo` values |
 | `generate` | Generate TypeScript types, schemas, and SDK from blueprints |
 | `check` | Validate project structure and configuration |
 
 ---
 
 ## Scaffolding Commands
+
+Git sync commands and setup are documented in [Git Content Sync](/docs/git-sync).
 
 ### make:blueprint
 
@@ -508,7 +514,28 @@ Add generation to your build pipeline to ensure types stay fresh:
 }
 ```
 
-### Migration Workflow
+### Legacy Definitions Migration
+
+### SEO Frontmatter Migration
+
+Move legacy `meta_title`, `meta_description`, and `og_image` fields into the versioned nested `seo` object. The command is idempotent, preserves unknown fields, writes per-file backups, and refuses rollback if a target changed after migration.
+
+```bash
+# Preview changes
+pnpm madori seo:migrate --root ./content --dry-run
+
+# Apply migration
+pnpm madori seo:migrate --root ./content
+```
+
+For a reversible apply, write a private rollback plan and keep it out of Git:
+
+```bash
+pnpm madori seo:migrate --root ./content --plan ./storage/seo-migration-plan.json
+pnpm madori seo:rollback --plan ./storage/seo-migration-plan.json
+```
+
+Review the JSON output and `rollbackPlan` before committing. Commit migrated content and SEO defaults through the repository that owns those paths; operational SEO state under `storage/seo` is not part of this migration and should remain outside content Git.
 
 When upgrading from an older Madori version that stored definitions inline:
 
@@ -518,4 +545,3 @@ When upgrading from an older Madori version that stored definitions inline:
 4. Commit the new files and updated config
 
 The migration is non-destructive — existing files are never overwritten.
-

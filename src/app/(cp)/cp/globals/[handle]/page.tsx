@@ -19,8 +19,11 @@ import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { FieldRenderer } from '@/components/cp/fields/FieldRenderer'
 import { useFieldValidation } from '@/hooks/use-field-validation'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 
-import type { FieldDefinition } from '@/lib/blueprints/types'
+import type { Blueprint, FieldDefinition } from '@/lib/blueprints/types'
+import { getAllFields } from '@/lib/blueprints/defaults'
 
 export default function EditGlobalPage() {
   const params = useParams()
@@ -32,6 +35,7 @@ export default function EditGlobalPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [blueprintHandle, setBlueprintHandle] = useState<string | null>(null)
+  const [blueprint, setBlueprint] = useState<Blueprint | null>(null)
 
   const { errors: fieldErrors, validate, setErrors: setFieldErrors, clearFieldError } = useFieldValidation(allFields)
 
@@ -49,17 +53,10 @@ export default function EditGlobalPage() {
             const bpRes = await fetch(`/api/blueprints/globals/${bpHandle}`)
             if (bpRes.ok) {
               const bpJson = await bpRes.json()
+              setBlueprint(bpJson.data as Blueprint)
 
               // Extract all fields for validation hook
-              const fields: FieldDefinition[] = []
-              if (bpJson.data?.tabs) {
-                for (const tab of Object.values(bpJson.data.tabs) as { fields: FieldDefinition[] }[]) {
-                  for (const field of tab.fields) {
-                    fields.push(field)
-                  }
-                }
-              }
-              setAllFields(fields)
+              setAllFields(getAllFields(bpJson.data as Blueprint))
             }
           }
         }
@@ -144,26 +141,24 @@ export default function EditGlobalPage() {
 
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold tracking-tight capitalize">{handle}</h1>
-        <Button onClick={() => handleSave()} disabled={saving}>
+        <CapabilityGate resource="globals" action="edit"><Button onClick={() => handleSave()} disabled={saving}>
           {saving ? 'Saving…' : 'Save'}
-        </Button>
+        </Button></CapabilityGate>
       </div>
 
       {error && <ErrorAlert message={error} />}
 
-      {allFields.length > 0 ? (
+      {blueprint && allFields.length > 0 ? (
         <Card>
           <CardContent>
             <form onSubmit={handleSave} className="space-y-5">
-              {allFields.map((fieldDef) => (
-                <FieldRenderer
-                  key={fieldDef.handle}
-                  fieldDefinition={fieldDef}
-                  value={formData[fieldDef.handle]}
-                  onChange={(value) => handleFieldChange(fieldDef.handle, value)}
-                  error={fieldErrors[fieldDef.handle]}
-                />
-              ))}
+              <Tabs defaultValue={Object.keys(blueprint.tabs)[0]}>
+                {Object.keys(blueprint.tabs).length > 1 && <TabsList variant="line" className="mb-5">{Object.entries(blueprint.tabs).map(([key, tab]) => <TabsTrigger key={key} value={key}>{tab.display ?? key}</TabsTrigger>)}</TabsList>}
+                {Object.entries(blueprint.tabs).map(([key, tab]) => <TabsContent key={key} value={key} className="space-y-5">
+                  {tab.fields.map((fieldDef) => <FieldRenderer key={fieldDef.handle} fieldDefinition={fieldDef} value={formData[fieldDef.handle]} onChange={(value) => handleFieldChange(fieldDef.handle, value)} values={formData} error={fieldErrors[fieldDef.handle]} />)}
+                  {Object.entries(tab.sections ?? {}).map(([sectionKey, section]) => <section key={sectionKey} className="space-y-5 rounded-lg border p-4"><h2 className="text-sm font-semibold">{section.display ?? sectionKey}</h2>{section.fields.map((fieldDef) => <FieldRenderer key={fieldDef.handle} fieldDefinition={fieldDef} value={formData[fieldDef.handle]} onChange={(value) => handleFieldChange(fieldDef.handle, value)} values={formData} error={fieldErrors[fieldDef.handle]} />)}</section>)}
+                </TabsContent>)}
+              </Tabs>
             </form>
           </CardContent>
         </Card>

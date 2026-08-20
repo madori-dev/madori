@@ -1,4 +1,4 @@
-export { BlockRenderer } from './BlockRenderer'
+export { BlockRenderer, hasPublicBlockRenderer, publicBlockTypes } from './BlockRenderer'
 export { HeroBlock } from './HeroBlock'
 export { BasicCtaBlock } from './BasicCtaBlock'
 export { FeaturesGridBlock } from './FeaturesGridBlock'

@@ -3,6 +3,11 @@ import { evaluateCondition, filterPayloadByVisibility } from '@/lib/blueprints/v
 import type { VisibilityCondition } from '@/lib/blueprints/types'
 
 describe('evaluateCondition', () => {
+  it('coerces authored toggle and number comparison strings to runtime values', () => {
+    expect(evaluateCondition({ field: 'enabled', operator: 'equals', value: 'true' }, { enabled: true })).toBe(true)
+    expect(evaluateCondition({ field: 'limit', operator: 'equals', value: '12' }, { limit: 12 })).toBe(true)
+    expect(evaluateCondition({ field: 'limit', operator: 'not_equals', value: '12' }, { limit: 12 })).toBe(false)
+  })
   describe('equals operator', () => {
     it('returns true when field value matches condition value', () => {
       const condition: VisibilityCondition = { field: 'status', operator: 'equals', value: 'active' }

@@ -39,13 +39,6 @@ const fieldDefinitionArb = (handle: string): fc.Arbitrary<FieldDefinition> =>
     }),
   })
 
-/** Generate an array of FieldDefinitions with unique handles */
-const uniqueFieldsArb = (minLength: number, maxLength: number): fc.Arbitrary<FieldDefinition[]> =>
-  fc.uniqueArray(fieldHandleArb, { minLength, maxLength })
-    .chain((handles) =>
-      fc.tuple(...handles.map((h) => fieldDefinitionArb(h)))
-    )
-
 /** Generate a BlueprintSection with unique fields */
 const sectionArb = (handles: string[]): fc.Arbitrary<BlueprintSection> =>
   fc.tuple(...handles.map((h) => fieldDefinitionArb(h))).map((fields) => ({

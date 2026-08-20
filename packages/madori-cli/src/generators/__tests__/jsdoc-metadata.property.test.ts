@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
 import { TypeGenerator } from '../type-generator.js'
-import type { Blueprint, FieldConfig, FieldDefinition } from '@madori/lib/blueprints/types.js'
+import type { Blueprint } from '@madori/lib/blueprints/types.js'
 
 /**
  * Property 8: JSDoc metadata preservation

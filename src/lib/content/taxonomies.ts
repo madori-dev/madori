@@ -5,6 +5,7 @@ import type { ContentCache } from '@/lib/cache/store'
 import type { MadoriConfig } from '@/lib/config/schema'
 import type { Taxonomy, Term } from '@/lib/types'
 import { NotFoundError } from '@/lib/errors'
+import { assertContentIdentifier } from './identifiers'
 
 /**
  * Taxonomy and Term operations for the Content Engine.
@@ -21,6 +22,7 @@ export class TaxonomyOperations {
   ) {}
 
   async getTaxonomy(handle: string): Promise<Taxonomy | null> {
+    assertContentIdentifier(handle, 'taxonomy handle')
     const cacheKey = `taxonomy:${handle}`
     const cached = this.cache.get<Taxonomy>(cacheKey)
     if (cached) return cached
@@ -37,6 +39,7 @@ export class TaxonomyOperations {
       handle,
       title: (data.title as string) ?? handle,
       blueprint: data.blueprint as string | undefined,
+      ...(typeof data.route === 'string' ? { route: data.route } : {}),
     }
 
     this.cache.set(cacheKey, taxonomy)
@@ -66,6 +69,8 @@ export class TaxonomyOperations {
   }
 
   async getTerm(taxonomy: string, slug: string): Promise<Term | null> {
+    assertContentIdentifier(taxonomy, 'taxonomy handle')
+    assertContentIdentifier(slug, 'term slug')
     const cacheKey = `term:${taxonomy}:${slug}`
     const cached = this.cache.get<Term>(cacheKey)
     if (cached) return cached
@@ -89,6 +94,7 @@ export class TaxonomyOperations {
   }
 
   async listTerms(taxonomy: string): Promise<Term[]> {
+    assertContentIdentifier(taxonomy, 'taxonomy handle')
     const cacheKey = `terms:${taxonomy}`
     const cached = this.cache.get<Term[]>(cacheKey)
     if (cached) return cached

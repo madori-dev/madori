@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/cp/EmptyState'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { DeleteDialog } from '@/components/cp/DeleteDialog'
+import { useCapabilities } from '@/components/cp/use-capabilities'
 
 interface NavigationItem {
   handle: string
@@ -19,6 +20,7 @@ interface NavigationItem {
 }
 
 export default function NavigationListPage() {
+  const capabilities = useCapabilities()
   const [navigations, setNavigations] = useState<NavigationItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -38,7 +40,7 @@ export default function NavigationListPage() {
   }
 
   useEffect(() => {
-    fetchNavigations()
+    queueMicrotask(() => { void fetchNavigations() })
   }, [])
 
   async function handleDelete(handle: string) {
@@ -55,8 +57,8 @@ export default function NavigationListPage() {
       <PageHeader
         title="Navigation"
         description="Manage your site navigation menus."
-        createHref="/cp/navigation/create"
-        blueprintsHref="/cp/blueprints?type=navigations"
+        createHref={capabilities?.['navigation:create'] ? '/cp/navigation/create' : undefined}
+        blueprintsHref={capabilities?.['blueprints:view'] ? '/cp/blueprints?type=navigations' : undefined}
       />
 
       {navigations.length === 0 ? (

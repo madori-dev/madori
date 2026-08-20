@@ -1,10 +1,20 @@
 import { z } from 'zod'
 import type { EntityType } from './errors'
 
+function routeTemplate(allowed: readonly string[]) { return z.string().startsWith('/', 'Route must start with "/"').refine(
+  (route) => route.includes('{slug}'),
+  'Route must include the {slug} placeholder'
+).refine(
+  (route) => [...route.matchAll(/\{([^}]+)\}/g)].every((match) => allowed.includes(match[1])),
+  `Route may only use: ${allowed.map((token) => `{${token}}`).join(', ')}`
+) }
+const CollectionRouteSchema = routeTemplate(['slug', 'collection', 'parent_uri'])
+const TaxonomyRouteSchema = routeTemplate(['slug', 'taxonomy', 'parent_uri'])
+
 export const CollectionDefinitionSchema = z.object({
   title: z.string(),
   blueprint: z.string(),
-  route: z.string().optional(),
+  route: CollectionRouteSchema.optional(),
   sortable: z.boolean().optional(),
   dated: z.boolean().optional(),
   defaultStatus: z.enum(['published', 'draft']).optional(),
@@ -18,6 +28,7 @@ export const CollectionDefinitionSchema = z.object({
 export const TaxonomyDefinitionSchema = z.object({
   title: z.string(),
   blueprint: z.string().optional(),
+  route: TaxonomyRouteSchema.optional(),
 })
 
 export const GlobalDefinitionSchema = z.object({

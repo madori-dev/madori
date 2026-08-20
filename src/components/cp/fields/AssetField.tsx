@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import Image from 'next/image'
+import { useState, useCallback, useMemo } from 'react'
 import { ImageIcon, Upload, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { FieldConfig } from '@/lib/blueprints/types'
@@ -22,17 +23,20 @@ function isImagePath(path: string) {
   return /\.(jpe?g|png|gif|webp|svg|avif)$/i.test(path)
 }
 
-export function AssetField({ value, onChange, field, error }: FieldComponentProps) {
+export function AssetField({ value, onChange, field, error: _error }: FieldComponentProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [dragging, setDragging] = useState(false)
 
-  const maxFiles = (field.options?.max_files as number | undefined) ?? 0
+  // Omitted max_files preserves historical single-asset fields; 0 means unlimited.
+  const maxFiles = (field.options?.max_files as number | undefined) ?? 1
   const isSingle = maxFiles === 1
 
   // Normalise value to always work with an array internally
-  const values: string[] = isSingle
-    ? value ? [value as string] : []
-    : Array.isArray(value) ? (value as string[]) : value ? [value as string] : []
+  const values = useMemo<string[]>(() => (
+    isSingle
+      ? value ? [value as string] : []
+      : Array.isArray(value) ? (value as string[]) : value ? [value as string] : []
+  ), [isSingle, value])
 
   const canAddMore = maxFiles === 0 || values.length < maxFiles
 
@@ -51,10 +55,12 @@ export function AssetField({ value, onChange, field, error }: FieldComponentProp
   const removeAsset = useCallback(
     (index: number) => {
       if (isSingle) {
-        onChange(null)
+        // Optional scalar fields validate as undefined; null is not a valid asset URL.
+        onChange(undefined)
       } else {
         const next = values.filter((_, i) => i !== index)
-        onChange(next.length ? next : null)
+        // Arrays retain their cardinality contract: [] is valid unless min_files requires more.
+        onChange(next)
       }
     },
     [isSingle, values, onChange]
@@ -159,9 +165,12 @@ export function AssetField({ value, onChange, field, error }: FieldComponentProp
               className="relative group flex items-center gap-3 rounded-md border border-border px-3 py-2"
             >
               {isImagePath(asset) ? (
-                <img
+                <Image
                   src={asset}
                   alt={field.display ?? 'Selected asset'}
+                  width={32}
+                  height={32}
+                  unoptimized
                   className="h-8 w-8 rounded object-cover shrink-0"
                 />
               ) : (

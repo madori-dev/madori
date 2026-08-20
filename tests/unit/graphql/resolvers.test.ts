@@ -1,12 +1,19 @@
 import { describe, it, expect, vi } from 'vitest'
 import { GraphQLError } from 'graphql'
-import { buildResolvers } from '@/lib/graphql/resolvers'
+import { buildResolvers, withErrorHandling } from '@/lib/graphql/resolvers'
 import type { GraphQLContext } from '@/lib/graphql/resolvers'
 import type { CollectionConfig } from '@/lib/config/schema'
 import type { ContentEngine } from '@/lib/content/engine'
 import type { BlueprintRegistry } from '@/lib/blueprints/registry'
 import type { Entry } from '@/lib/types'
 import { NotFoundError } from '@/lib/errors'
+import { PermissionGuard } from '@/lib/auth/guard'
+
+type Function = (
+  source: unknown,
+  args: Record<string, unknown>,
+  context: GraphQLContext,
+) => Promise<unknown>
 
 function makeEntry(overrides: Partial<Entry> = {}): Entry {
   return {
@@ -420,6 +427,29 @@ describe('buildResolvers', () => {
         (resolvers['blog'] as Function)(null, { slug: 'test' }, context)
       ).rejects.toMatchObject({
         extensions: { code: 'CUSTOM' },
+      })
+    })
+
+    it('masks unexpected exception details from GraphQL clients', async () => {
+      const resolver = withErrorHandling(async () => {
+        throw new Error('database password: should-never-reach-client')
+      })
+
+      await expect(resolver(null, {}, makeContext())).rejects.toMatchObject({
+        message: 'Internal server error',
+        extensions: { code: 'INTERNAL_ERROR' },
+      })
+    })
+
+    it('maps permission denial through outer error handling without exposing permissions', async () => {
+      const guard = new PermissionGuard({
+        hasPermission: vi.fn().mockResolvedValue(false),
+      } as never, { permissions: new Map() })
+      const resolvers = buildResolvers([makeCollection('blog')], { guard })
+
+      await expect((resolvers.blog as Function)(null, { slug: 'test' }, makeContext())).rejects.toMatchObject({
+        message: 'Unauthorized',
+        extensions: { code: 'UNAUTHORIZED' },
       })
     })
   })

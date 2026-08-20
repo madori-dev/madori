@@ -46,9 +46,11 @@ function NavLink({ item }: { item: NavigationItem }) {
   const external = item.external as boolean | undefined
   const icon = item.icon as string | undefined
 
+  if (!url) return <span className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground" role="note" aria-label={`${label ?? 'Navigation item'} is unavailable`}>{label}</span>
+
   return (
     <Link
-      href={url ?? '#'}
+      href={url}
       target={external ? '_blank' : undefined}
       rel={external ? 'noopener noreferrer' : undefined}
       className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground hover:bg-muted/50 cursor-pointer"
@@ -134,10 +136,11 @@ function NavDropdown({ item }: { item: NavigationItem }) {
               const childExternal = child.external as boolean | undefined
               const childIcon = child.icon as string | undefined
 
+              if (!childUrl) return <span key={i} className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground" role="note" aria-label={`${childLabel ?? 'Navigation item'} is unavailable`}>{childLabel}</span>
               return (
                 <Link
                   key={i}
-                  href={childUrl ?? '#'}
+                  href={childUrl}
                   target={childExternal ? '_blank' : undefined}
                   rel={childExternal ? 'noopener noreferrer' : undefined}
                   className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:text-foreground hover:bg-muted/50 cursor-pointer"

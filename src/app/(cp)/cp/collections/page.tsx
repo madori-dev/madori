@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/cp/PageHeader'
 import { EmptyState } from '@/components/cp/EmptyState'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
+import { useCapabilities } from '@/components/cp/use-capabilities'
 
 interface Collection {
   title: string
@@ -17,6 +18,7 @@ interface Collection {
 }
 
 export default function CollectionsListPage() {
+  const capabilities = useCapabilities()
   const [collections, setCollections] = useState<Collection[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -47,8 +49,8 @@ export default function CollectionsListPage() {
       <PageHeader
         title="Collections"
         description="Manage your structured content collections."
-        createHref="/cp/collections/create"
-        blueprintsHref="/cp/blueprints?type=collections"
+        createHref={capabilities?.['collections:create'] ? '/cp/collections/create' : undefined}
+        blueprintsHref={capabilities?.['blueprints:view'] ? '/cp/blueprints?type=collections' : undefined}
       />
 
       {collections.length === 0 ? (

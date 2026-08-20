@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { FieldsetResolver } from '@/lib/blueprints/fieldsets'
 import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
 import { MarkdownYamlParser } from '@/lib/fs/parser'
-import type { Blueprint } from '@/lib/blueprints/types'
+import type { Blueprint, FieldDefinition } from '@/lib/blueprints/types'
 import * as path from 'path'
 
-const resourcesPath = path.resolve(__dirname, '../../../resources')
+const resourcesPath = path.resolve(__dirname, '../../fixtures/blueprints')
+const importField = (handle: string): FieldDefinition =>
+  ({ import: handle } as unknown as FieldDefinition)
 
 describe('FieldsetResolver', () => {
   const fs = new NodeFileSystemAdapter()
@@ -13,6 +15,10 @@ describe('FieldsetResolver', () => {
   const resolver = new FieldsetResolver(fs, parser, resourcesPath)
 
   describe('loadFieldset', () => {
+    it('rejects traversal import identifiers before resolving a fieldset path', async () => {
+      await expect(resolver.loadFieldset('../secrets')).rejects.toThrow('Invalid fieldset handle')
+    })
+
     it('loads a fieldset and returns its field definitions', async () => {
       const fields = await resolver.loadFieldset('seo')
 
@@ -65,7 +71,7 @@ describe('FieldsetResolver', () => {
             display: 'Main',
             fields: [
               { handle: 'title', field: { type: 'text', required: true } },
-              { import: 'seo' } as unknown as any,
+              importField('seo'),
             ],
           },
         },
@@ -112,7 +118,7 @@ describe('FieldsetResolver', () => {
             sections: {
               seo_section: {
                 display: 'SEO',
-                fields: [{ import: 'seo' } as unknown as any],
+                fields: [importField('seo')],
               },
             },
           },
@@ -131,9 +137,9 @@ describe('FieldsetResolver', () => {
         tabs: {
           main: {
             fields: [
-              { import: 'seo' } as unknown as any,
+              importField('seo'),
               { handle: 'divider', field: { type: 'hidden' } },
-              { import: 'social' } as unknown as any,
+              importField('social'),
             ],
           },
         },
@@ -157,7 +163,7 @@ describe('FieldsetResolver', () => {
         handle: 'test',
         tabs: {
           main: {
-            fields: [{ import: 'seo_full' } as unknown as any],
+            fields: [importField('seo_full')],
           },
         },
       }
@@ -174,7 +180,7 @@ describe('FieldsetResolver', () => {
         handle: 'test',
         tabs: {
           main: {
-            fields: [{ import: 'circular_a' } as unknown as any],
+            fields: [importField('circular_a')],
           },
         },
       }

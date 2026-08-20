@@ -38,6 +38,11 @@ describe('YamlUserProvider', () => {
   }
 
   describe('getById', () => {
+    it('rejects traversal ids before constructing a user filename', async () => {
+      await expect(provider.getById('../outside')).rejects.toThrow('User id must contain')
+      await expect(provider.create({ id: '../outside', email: 'x@example.test', name: 'X', password: 'password', roles: [] })).rejects.toThrow('User id must contain')
+    })
+
     it('returns user when file exists', async () => {
       await writeUserYaml('user-1', sampleUserYaml)
 

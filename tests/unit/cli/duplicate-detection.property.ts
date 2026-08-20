@@ -14,7 +14,7 @@ import { ConflictError } from '../../../src/lib/errors'
  */
 
 // Generator for valid user IDs
-const validUserId = fc.stringMatching(/^[a-z0-9-]+$/, { minLength: 1, maxLength: 30 })
+const validUserId = fc.stringMatching(/^[a-z0-9][a-z0-9-]{0,29}$/)
 
 // Generator for valid emails
 const validEmail = fc
@@ -50,8 +50,8 @@ describe('Property 7: Duplicate ID rejection', () => {
    * Creating a user with an existing ID fails without overwriting the original file.
    */
 
-  it('creating user with existing ID fails and does not overwrite original file', () => {
-    fc.assert(
+  it('creating user with existing ID fails and does not overwrite original file', async () => {
+    await fc.assert(
       fc.asyncProperty(
         validUserId,
         validEmail,
@@ -62,6 +62,9 @@ describe('Property 7: Duplicate ID rejection', () => {
         validRoles,
         validRoles,
         async (id, email1, email2Raw, password, name1, name2, roles1, roles2) => {
+          const files = await fs.readdir(tmpDir)
+          await Promise.all(files.map((file) => fs.unlink(path.join(tmpDir, file))))
+
           // Ensure emails are different
           const email2 = email2Raw === email1 ? `alt-${email2Raw}` : email2Raw
 
@@ -97,8 +100,8 @@ describe('Property 8: Duplicate email rejection', () => {
    * Creating a user with an existing email fails and does not create a new file.
    */
 
-  it('creating user with existing email fails and no new file is created', () => {
-    fc.assert(
+  it('creating user with existing email fails and no new file is created', async () => {
+    await fc.assert(
       fc.asyncProperty(
         validUserId,
         validUserId,
@@ -108,7 +111,10 @@ describe('Property 8: Duplicate email rejection', () => {
         validName,
         validRoles,
         validRoles,
-        async (id1, id2Raw, email, password, name1, name2, roles1, roles2) => {
+        async (id1, id2Raw, email, password, name1, name2, roles1, _roles2) => {
+          const files = await fs.readdir(tmpDir)
+          await Promise.all(files.map((file) => fs.unlink(path.join(tmpDir, file))))
+
           // Ensure IDs are different
           const id2 = id2Raw === id1 ? `alt-${id2Raw}` : id2Raw
 

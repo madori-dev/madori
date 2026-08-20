@@ -42,10 +42,14 @@ const FIELD_TYPES: FieldType[] = [
   'number',
   'date',
   'asset',
+  'entries',
   'taxonomy',
   'replicator',
   'grid',
   'blocks',
+  'yaml',
+  'code',
+  'hidden',
 ]
 
 export interface FieldConfigSheetProps {
@@ -66,6 +70,9 @@ export function FieldConfigSheet({ open, onOpenChange, field, onSave }: FieldCon
   const [instructions, setInstructions] = useState('')
   const [validate, setValidate] = useState('')
   const [fieldOptions, setFieldOptions] = useState<Record<string, unknown>>({})
+  const [visibilityField, setVisibilityField] = useState('')
+  const [visibilityOperator, setVisibilityOperator] = useState<NonNullable<FieldConfig['visibility']>['operator']>('equals')
+  const [visibilityValue, setVisibilityValue] = useState('')
 
   /** Convert a display name to a snake_case handle */
   function toHandle(displayName: string): string {
@@ -75,37 +82,54 @@ export function FieldConfigSheet({ open, onOpenChange, field, onSave }: FieldCon
       .replace(/^_|_$/g, '')
   }
 
+  function serializeDefault(value: unknown): string {
+    if (typeof value === 'string') return value
+    return JSON.stringify(value)
+  }
+
+  function parseDefault(value: string): unknown {
+    if (!value) return undefined
+    try {
+      return JSON.parse(value)
+    } catch {
+      return value
+    }
+  }
+
   // Re-initialize local state when a new field is opened
   useEffect(() => {
-    if (field) {
-      setHandle(field.handle ?? '')
-      setDisplay(field.field.display ?? '')
-      setType(field.field.type ?? 'text')
-      setRequired(field.field.required ?? false)
-      setDefaultValue(field.field.default != null ? String(field.field.default) : '')
-      setPlaceholder((field.field.options?.placeholder as string) ?? '')
-      setInstructions(field.field.instructions ?? '')
-      setValidate(field.field.validate?.join(', ') ?? '')
-      setFieldOptions(field.field.options ?? {})
-      // If the field already has a handle, consider it manually set
-      setHandleManuallyEdited(!!field.handle)
-    } else {
-      resetState()
-    }
+    queueMicrotask(() => {
+      if (field) {
+        setHandle(field.handle ?? '')
+        setDisplay(field.field.display ?? '')
+        setType(field.field.type ?? 'text')
+        setRequired(field.field.required ?? false)
+        setDefaultValue(field.field.default !== undefined ? serializeDefault(field.field.default) : '')
+        setPlaceholder((field.field.options?.placeholder as string) ?? '')
+        setInstructions(field.field.instructions ?? '')
+        setValidate(field.field.validate?.join(', ') ?? '')
+        setFieldOptions(field.field.options ?? {})
+        setVisibilityField(field.field.visibility?.field ?? '')
+        setVisibilityOperator(field.field.visibility?.operator ?? 'equals')
+        setVisibilityValue(field.field.visibility?.value == null ? '' : String(field.field.visibility.value))
+        setHandleManuallyEdited(!!field.handle)
+      } else {
+        setHandle('')
+        setHandleManuallyEdited(false)
+        setDisplay('')
+        setType('text')
+        setRequired(false)
+        setDefaultValue('')
+        setPlaceholder('')
+        setInstructions('')
+        setValidate('')
+        setFieldOptions({})
+        setVisibilityField('')
+        setVisibilityOperator('equals')
+        setVisibilityValue('')
+      }
+    })
   }, [field])
-
-  function resetState() {
-    setHandle('')
-    setHandleManuallyEdited(false)
-    setDisplay('')
-    setType('text')
-    setRequired(false)
-    setDefaultValue('')
-    setPlaceholder('')
-    setInstructions('')
-    setValidate('')
-    setFieldOptions({})
-  }
 
   /** Returns the type-specific options component, or null for types without advanced options. */
   function getOptionsComponent() {
@@ -124,6 +148,7 @@ export function FieldConfigSheet({ open, onOpenChange, field, onSave }: FieldCon
         return SelectFieldOptions
       case 'replicator':
       case 'grid':
+      case 'blocks':
         return ReplicatorFieldOptions
       default:
         return null
@@ -146,19 +171,24 @@ export function FieldConfigSheet({ open, onOpenChange, field, onSave }: FieldCon
     )
   }
 
+
   function handleSave() {
     const updatedField: FieldConfig = {
       type,
       ...(display ? { display } : {}),
       ...(instructions ? { instructions } : {}),
       ...(required ? { required: true } : {}),
-      ...(defaultValue ? { default: defaultValue } : {}),
+      ...(defaultValue ? { default: parseDefault(defaultValue) } : {}),
       ...(validate ? { validate: validate.split(',').map((r) => r.trim()).filter(Boolean) } : {}),
       options: {
         ...fieldOptions,
         ...(placeholder ? { placeholder } : {}),
       },
-      ...(field?.field.visibility ? { visibility: field.field.visibility } : {}),
+      ...(visibilityField ? { visibility: {
+        field: visibilityField,
+        operator: visibilityOperator,
+        ...(!['empty', 'not_empty'].includes(visibilityOperator) ? { value: visibilityValue } : {}),
+      } } : {}),
     }
 
     // Remove empty options object
@@ -313,6 +343,29 @@ export function FieldConfigSheet({ open, onOpenChange, field, onSave }: FieldCon
           </div>
 
           {/* Advanced Options (type-specific) */}
+          <div className="space-y-2 border-t pt-4">
+            <Label className="text-xs font-medium">Conditional visibility</Label>
+            <Input value={visibilityField} onChange={(e) => setVisibilityField(e.target.value)} placeholder="Field handle to watch" className="h-8 text-sm" />
+            {visibilityField && <>
+              <select value={visibilityOperator} onChange={(e) => setVisibilityOperator(e.target.value as typeof visibilityOperator)} className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm">
+                <option value="equals">equals</option><option value="not_equals">does not equal</option><option value="contains">contains</option><option value="empty">is empty</option><option value="not_empty">is not empty</option>
+              </select>
+              {!['empty', 'not_empty'].includes(visibilityOperator) && <Input value={visibilityValue} onChange={(e) => setVisibilityValue(e.target.value)} placeholder="Comparison value" className="h-8 text-sm" />}
+            </>}
+            <p className="text-xs text-muted-foreground">Leave blank to always show this field.</p>
+          </div>
+
+          {type === 'number' && (
+            <div className="grid grid-cols-3 gap-3 border-t pt-4">
+              {(['min', 'max', 'step'] as const).map((key) => (
+                <div key={key} className="space-y-1.5">
+                  <Label htmlFor={`field-number-${key}`} className="text-xs font-medium">{key[0].toUpperCase() + key.slice(1)}</Label>
+                  <Input id={`field-number-${key}`} type="number" value={(fieldOptions[key] as number | undefined) ?? ''} onChange={(event) => setFieldOptions((options) => ({ ...options, ...(event.target.value === '' ? { [key]: undefined } : { [key]: Number(event.target.value) }) }))} className="h-8 text-sm" />
+                </div>
+              ))}
+            </div>
+          )}
+
           {renderAdvancedOptions()}
         </div>
 

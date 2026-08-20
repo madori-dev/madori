@@ -44,5 +44,9 @@ export function resolveConfigPaths(
     resourcesPath: path.resolve(projectRoot, config.resourcesPath),
     usersPath: path.resolve(projectRoot, config.usersPath),
     assetsPath: path.resolve(projectRoot, config.assetsPath),
+    seo: {
+      ...config.seo,
+      operationalStoragePath: path.resolve(projectRoot, config.seo.operationalStoragePath),
+    },
   }
 }

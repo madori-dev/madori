@@ -1,5 +1,8 @@
 'use client'
 
+import { useEffect, useState } from 'react'
+
+import { MultiSelect, type MultiSelectOption } from '@/components/cp/multi-select'
 import { FieldConfig } from '@/lib/blueprints/types'
 
 interface FieldComponentProps {
@@ -28,26 +31,62 @@ function enforceMaxItems(terms: string[], maxItems: number | undefined): string[
 }
 
 export function TaxonomyField({ value, onChange, field, error }: FieldComponentProps) {
+  const [options, setOptions] = useState<MultiSelectOption[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const maxItems = (field.options?.max_items as number | undefined) ?? 0
   const terms = parseTerms(value)
   const isAtLimit = maxItems > 0 && terms.length >= maxItems
+  const pickerOptions = [
+    ...options,
+    ...terms
+      .filter((slug) => !options.some((option) => option.value === slug))
+      .map((slug) => ({ value: slug, label: `${slug} · unavailable` })),
+  ]
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawInput = e.target.value
-    const parsed = rawInput.split(',').map((t) => t.trim()).filter(Boolean)
+  useEffect(() => {
+    let cancelled = false
 
-    // Enforce max_items: never allow more than N terms to be saved
-    const enforced = enforceMaxItems(parsed, maxItems)
+    async function loadTerms() {
+      try {
+        const configuredTaxonomy = field.options?.taxonomy as string | undefined
+        let taxonomies: Array<{ handle: string; title?: string }>
+        if (configuredTaxonomy) {
+          taxonomies = [{ handle: configuredTaxonomy }]
+        } else {
+          const res = await fetch('/api/taxonomies')
+          if (!res.ok) throw new Error('Failed to load taxonomies')
+          const json = await res.json()
+          taxonomies = json.data ?? []
+        }
 
-    // If the user is still typing (trailing comma or partial term), preserve raw input
-    // but only up to the allowed number of terms
-    if (maxItems > 0 && parsed.length > maxItems) {
-      // Truncate to max and rejoin — user sees the enforced value
-      onChange(enforced.join(', '))
-    } else {
-      onChange(rawInput)
+        const responses = await Promise.all(
+          taxonomies.map(async (taxonomy) => {
+            const res = await fetch(`/api/taxonomies/${encodeURIComponent(taxonomy.handle)}/terms`)
+            if (!res.ok) return []
+            const json = await res.json()
+            return ((json.data ?? []) as Array<{ slug: string; title?: string }>).map((term) => ({
+              value: term.slug,
+              label: configuredTaxonomy
+                ? term.title || term.slug
+                : `${term.title || term.slug} · ${taxonomy.title || taxonomy.handle}`,
+            }))
+          })
+        )
+        if (!cancelled) {
+          const unique = new Map(responses.flat().map((option) => [option.value, option]))
+          setOptions([...unique.values()])
+        }
+      } catch {
+        if (!cancelled) setLoadError('Could not load taxonomy terms')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     }
-  }
+
+    void loadTerms()
+    return () => { cancelled = true }
+  }, [field.options?.taxonomy])
 
   return (
     <div className="flex flex-col gap-1">
@@ -57,21 +96,15 @@ export function TaxonomyField({ value, onChange, field, error }: FieldComponentP
           {field.required && <span className="text-red-500 ml-0.5">*</span>}
         </label>
       )}
-      <input
-        type="text"
-        value={(value as string) ?? ''}
-        onChange={handleChange}
-        placeholder="term-1, term-2"
-        disabled={false}
-        className={`rounded-md border px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring ${error && error.length > 0 ? 'border-destructive' : 'border-border'} ${isAtLimit ? 'bg-muted/50' : ''}`}
+      <MultiSelect
+        options={pickerOptions}
+        selected={terms}
+        onChange={(selected) => onChange(enforceMaxItems(selected, maxItems))}
+        disabled={loading}
+        placeholder={loading ? 'Loading terms…' : 'Select taxonomy terms…'}
       />
-      <p className="text-xs text-muted-foreground">
-        {isAtLimit
-          ? `Maximum of ${maxItems} term${maxItems === 1 ? '' : 's'} reached`
-          : maxItems > 0
-            ? `Enter taxonomy terms separated by commas (max ${maxItems})`
-            : 'Enter taxonomy terms separated by commas (picker coming soon)'}
-      </p>
+      {isAtLimit && <p className="text-xs text-muted-foreground">Maximum of {maxItems} term{maxItems === 1 ? '' : 's'} reached</p>}
+      {loadError && <p className="text-xs text-destructive">{loadError}</p>}
       {error && error.length > 0 && (
         <p className="text-xs text-destructive">{error[0]}</p>
       )}

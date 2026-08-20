@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import { createDefinitionHandlers } from '@/app/(cp)/api/handlers/definitions'
 import { DefinitionLoader } from '@/lib/definitions/loader'
 import { DefinitionNotFoundError } from '@/lib/definitions/errors'
+import { ConflictError } from '@/lib/errors'
 
 // Mock the DefinitionLoader
 vi.mock('@/lib/definitions/loader')
@@ -190,6 +191,17 @@ describe('createDefinitionHandlers', () => {
 
       expect(res.status).toBe(500)
       expect(json.error).toContain('ENOSPC')
+    })
+
+    it('returns 409 when handle already exists', async () => {
+      vi.mocked(loader.create).mockRejectedValue(new ConflictError('Definition "taxonomies/test" already exists'))
+
+      const req = makeRequest('POST', { handle: 'test', title: 'Test' })
+      const res = await handlers.handleCreateDefinition(req, 'taxonomies')
+      const json = await res.json()
+
+      expect(res.status).toBe(409)
+      expect(json.details.handle).toBeDefined()
     })
   })
 

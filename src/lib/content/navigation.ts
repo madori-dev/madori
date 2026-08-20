@@ -4,14 +4,23 @@ import type { ContentParser } from '@/lib/fs/parser'
 import type { ContentCache } from '@/lib/cache/store'
 import type { Navigation, NavigationItem } from '@/lib/types'
 import { serializeNavigation } from '@/lib/navigation/tree'
+import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
+import { assertContentIdentifier } from './identifiers'
+import type { ContentMutationReporter } from '@/lib/mutations'
+import { noOpContentMutationReporter } from '@/lib/mutations'
 
 export class NavigationOperations {
+  private readonly atomicWriter: AtomicFileWriter
+
   constructor(
     private readonly fs: FileSystemAdapter,
     private readonly parser: ContentParser,
     private readonly cache: ContentCache,
-    private readonly contentPath: string
-  ) {}
+    private readonly contentPath: string,
+    private readonly mutations: ContentMutationReporter = noOpContentMutationReporter
+  ) {
+    this.atomicWriter = new AtomicFileWriter(fs)
+  }
 
   private get navigationDir(): string {
     return path.join(this.contentPath, 'navigation')
@@ -22,6 +31,7 @@ export class NavigationOperations {
   }
 
   async getNavigation(handle: string): Promise<Navigation | null> {
+    assertContentIdentifier(handle, 'navigation handle')
     const cached = this.cache.get<Navigation>(this.cacheKey(handle))
     if (cached) return cached
 
@@ -62,9 +72,11 @@ export class NavigationOperations {
   }
 
   async saveNavigation(handle: string, items: NavigationItem[]): Promise<Navigation> {
+    assertContentIdentifier(handle, 'navigation handle')
     const filePath = path.join(this.navigationDir, `${handle}.yaml`)
     const yaml = serializeNavigation(items)
-    await this.fs.writeFile(filePath, yaml)
+    const result = await this.atomicWriter.writeFileAtomic(filePath, yaml)
+    if (!result.success) throw result.error ?? new Error(`Could not save navigation: ${handle}`)
 
     // Invalidate cache
     this.cache.invalidate(this.cacheKey(handle))
@@ -72,6 +84,7 @@ export class NavigationOperations {
 
     const navigation: Navigation = { handle, items }
     this.cache.set(this.cacheKey(handle), navigation, [filePath])
+    this.mutations.report({ action: 'update', paths: [filePath], resource: { type: 'navigation', id: handle }, message: `Updated navigation ${handle}`, source: 'system', timestamp: Date.now() })
     return navigation
   }
 

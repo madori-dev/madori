@@ -23,6 +23,9 @@ import type { AuthContext } from '@/lib/auth/guard'
 import type { GraphQLContext } from '@/lib/graphql/resolvers'
 import type { FieldDefinition } from '@/lib/blueprints/types'
 import type { GraphQLSchema } from 'graphql'
+import { getMadori } from '@/lib/madori'
+import type { SeoGraphQLPort } from '@/lib/seo/graphql'
+import type { SeoAuditReport } from '@/lib/seo/audit'
 
 /**
  * Lazily initialized yoga instance.
@@ -82,12 +85,13 @@ async function getYoga() {
 
   const schemaGenerator = new SchemaGeneratorImpl(fieldsetProvider)
 
-  // Discover collections from blueprint registry (flat-file based)
-  const collectionBlueprints = await blueprintRegistry.listBlueprints('collections')
-  const collectionConfigs = collectionBlueprints.map((bp) => ({
-    title: bp.handle.charAt(0).toUpperCase() + bp.handle.slice(1),
-    handle: bp.handle,
-    blueprint: bp.handle,
+  // Collection definitions, not blueprint filenames, are authoritative.
+  const collectionConfigs = (await contentEngine.listCollections()).map((collection) => ({
+    title: collection.title,
+    handle: collection.handle,
+    blueprint: collection.blueprint,
+    route: collection.route,
+    defaultStatus: collection.defaultStatus,
   }))
 
   const blueprints = await Promise.all(
@@ -104,6 +108,36 @@ async function getYoga() {
   // Create PermissionGuard for GraphQL resolver access control
   const permissionChecker = new PermissionChecker(fs, parser, resolvedConfig.resourcesPath)
   const guard = new PermissionGuard(permissionChecker, { permissions: new Map() })
+  const madori = await getMadori()
+  const seoPort: SeoGraphQLPort | undefined = config.seo.enabled ? {
+    getSite: site => madori.seoRepository.getSite(site),
+    getSection: (section, handle) => madori.seoRepository.getSection(section, handle),
+    async resolve(input) {
+      return (await madori.seoRuntime.resolveEntry(input))?.resolved ?? null
+    },
+    async resolveTerm(input) {
+      return (await madori.seoRuntime.resolveTerm(input))?.resolved ?? null
+    },
+    async preview(input) {
+      return (await madori.seoRuntime.previewEntry(input, { isAuthenticated: () => true }))?.resolved ?? null
+    },
+    async previewTerm(input) {
+      return (await madori.seoRuntime.previewTerm(input, { isAuthenticated: () => true }))?.resolved ?? null
+    },
+    ...(config.seo.reports ? { async getReport(id?: string, site?: string) {
+      const snapshots = await madori.seoAuditSnapshots.list()
+      const report = (id ? snapshots.find(snapshot => snapshot.id === id) : snapshots[0])?.report ?? null
+      return report && site ? filterSeoReport(report, site) : report
+    } } : {}),
+    ...(config.seo.redirects ? {
+      listRedirects: (site?: string) => madori.seoRedirects.list(site),
+      getRedirect: (id: string) => madori.seoRedirects.get(id),
+      saveRedirect: (redirect: Parameters<NonNullable<SeoGraphQLPort['saveRedirect']>>[0], expectedRevision?: string) => madori.seoRedirects.save(redirect, { expectedRevision }),
+      deleteRedirect: (id: string, expectedRevision?: string) => madori.seoRedirects.delete(id, { expectedRevision }),
+    } : {}),
+    saveSite: (document, expectedRevision) => madori.seoRepository.saveSite(document, { expectedRevision }),
+    saveSection: (document, expectedRevision) => madori.seoRepository.saveSection(document, { expectedRevision }),
+  } : undefined
 
   // Compose auth service for session validation in GraphQL context
   const registry = new PluginRegistry()
@@ -134,7 +168,7 @@ async function getYoga() {
   const composedAuth: ComposedAuthService = compose(registry, authConfig)
 
   // Build resolvers with permission guard wrapping
-  const resolvers = buildResolvers(validCollections, { guard })
+  const resolvers = buildResolvers(validCollections, { guard, seo: seoPort })
 
   let schema: GraphQLSchema
   if (validBlueprints.length > 0) {
@@ -149,14 +183,23 @@ async function getYoga() {
     schema,
     graphqlEndpoint: resolvedConfig.graphql.path,
     fetchAPI: { Response },
-    // Control introspection based on config
-    ...(resolvedConfig.graphql.introspection ? {} : { maskedErrors: true }),
+    // Do not expose exception messages or stacks in any environment. GraphiQL
+    // introspection is independent from error masking.
+    maskedErrors: true,
     context: async ({ request }) => {
       // Extract auth context from request (Bearer token or cookie)
       let auth: AuthContext | null = null
       const authHeader = request.headers.get('authorization')
-      if (authHeader?.startsWith('Bearer ')) {
-        const token = authHeader.slice(7)
+      const cookieToken = request.headers
+        .get('cookie')
+        ?.split(';')
+        .map((cookie) => cookie.trim())
+        .find((cookie) => cookie.startsWith('madori_session='))
+        ?.slice('madori_session='.length)
+      const token = authHeader?.startsWith('Bearer ')
+        ? authHeader.slice(7)
+        : cookieToken
+      if (token) {
         const session = await composedAuth?.validateSession(token)
         if (session) {
           const user = await composedAuth?.getUser(session.userId)
@@ -177,10 +220,27 @@ async function getYoga() {
   return yogaInstance
 }
 
+function filterSeoReport(report: SeoAuditReport, site: string): SeoAuditReport {
+  const issues = report.issues.filter(issue => issue.subject.site === site)
+  const summary = { total: issues.length, info: 0, warning: 0, error: 0, critical: 0 }
+  const penalties = { info: 1, warning: 4, error: 10, critical: 20 }
+  let penalty = 0
+  for (const issue of issues) {
+    summary[issue.severity]++
+    penalty += penalties[issue.severity]
+  }
+  return { ...report, score: Math.max(0, 100 - penalty), summary, issues }
+}
+
 /**
  * Handle GET requests (GraphiQL UI in development, queries via query params).
  */
 export async function GET(request: Request) {
+  const config = await loadConfig()
+  if (config.graphql?.enabled === false) return new Response(null, { status: 404 })
+  // GraphiQL is an introspection surface. Keep GET disabled when configured
+  // off; normal query execution remains available through POST.
+  if (config.graphql?.introspection === false) return new Response(null, { status: 404 })
   const yoga = await getYoga()
   return yoga.handle(request)
 }
@@ -189,6 +249,12 @@ export async function GET(request: Request) {
  * Handle POST requests (standard GraphQL queries and mutations).
  */
 export async function POST(request: Request) {
+  const config = await loadConfig()
+  if (config.graphql?.enabled === false) return new Response(null, { status: 404 })
+  if (config.graphql?.introspection === false) {
+    const body = await request.clone().text()
+    if (/__schema|__type/.test(body)) return new Response(null, { status: 403 })
+  }
   const yoga = await getYoga()
   return yoga.handle(request)
 }

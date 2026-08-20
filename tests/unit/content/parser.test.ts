@@ -212,6 +212,12 @@ tags:
       expect(parsed.frontmatter.author).toBe('José García')
       expect(parsed.content).toBe('# こんにちは\n\nÜnïcödé body.')
     })
+
+    it('preserves YAML 1.1 numeric-looking strings', () => {
+      const parsed = parser.parseMarkdown(parser.serializeMarkdown({ grid_shadow: '0_0' }, ''))
+
+      expect(parsed.frontmatter.grid_shadow).toBe('0_0')
+    })
   })
 
   describe('parseYaml', () => {

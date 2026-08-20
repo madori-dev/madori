@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState, useTransition } from 'react'
+import { useCallback, useState, useTransition } from 'react'
 import type { FieldDefinition } from '@/lib/blueprints/types'
 import { validateFields } from '@/lib/validation'
 import type { ValidationResult } from '@/lib/validation'
@@ -47,14 +47,11 @@ export function useFieldValidation(
   const { validateOnChange: _validateOnChange = false, debounceMs: _debounceMs = 150 } = options
   const [errors, setErrorsState] = useState<Record<string, string[]>>({})
   const [, startTransition] = useTransition()
-  const fieldsRef = useRef(fields)
-  fieldsRef.current = fields
-
   const validate = useCallback(
     (values: Record<string, unknown>): ValidationResult => {
       // Build field config map from field definitions
       const fieldConfigs: Record<string, FieldDefinition['field']> = {}
-      for (const fieldDef of fieldsRef.current) {
+      for (const fieldDef of fields) {
         fieldConfigs[fieldDef.handle] = fieldDef.field
       }
 
@@ -67,12 +64,12 @@ export function useFieldValidation(
 
       return result
     },
-    [startTransition]
+    [fields, startTransition]
   )
 
   const validateField = useCallback(
     (handle: string, value: unknown): string[] => {
-      const fieldDef = fieldsRef.current.find((f) => f.handle === handle)
+      const fieldDef = fields.find((f) => f.handle === handle)
       if (!fieldDef) return []
 
       const result = validateFields(
@@ -96,7 +93,7 @@ export function useFieldValidation(
 
       return fieldErrors
     },
-    [startTransition]
+    [fields, startTransition]
   )
 
   const setErrors = useCallback((newErrors: Record<string, string[]>) => {

@@ -12,6 +12,11 @@ export type ResourceType =
   | 'navigation'
   | 'users'
   | 'settings'
+  | 'git'
+  | 'seo'
+  | 'seo-reports'
+  | 'seo-redirects'
+  | 'seo-errors'
 
 export type Action = 'view' | 'create' | 'edit' | 'delete' | 'publish'
 
@@ -80,13 +85,9 @@ export class PermissionChecker {
         if (!permission.actions.includes(action)) {
           continue
         }
-        // If a scope is requested, the permission must either have no scope
-        // (grants access to all) or match the requested scope exactly.
-        if (scope !== undefined) {
-          if (permission.scope !== undefined && permission.scope !== scope) {
-            continue
-          }
-        }
+        // Scoped grants never imply global access. An unscoped grant applies
+        // everywhere; a scoped grant applies only to that exact scope.
+        if (permission.scope !== undefined && permission.scope !== scope) continue
         return true
       }
     }

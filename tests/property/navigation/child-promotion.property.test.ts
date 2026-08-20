@@ -54,22 +54,6 @@ function findItem(items: NavigationItem[], label: string): NavigationItem | unde
 
 // --- Generators ---
 
-/** Generate a unique label from an index to ensure labels are distinct */
-const uniqueLabelArb = (index: number) => fc.constant(`item-${index}`)
-
-/** Generate a navigation item leaf (no children) */
-const leafItemArb = (labelIndex: number): fc.Arbitrary<NavigationItem> =>
-  fc.record({
-    label: fc.constant(`item-${labelIndex}`),
-    url: fc.option(fc.webUrl(), { nil: undefined }),
-    entry: fc.option(fc.stringMatching(/^[a-z]+\/[a-z-]+$/), { nil: undefined }),
-  }).map(({ label, url, entry }) => {
-    const item: NavigationItem = { label }
-    if (url !== undefined) item.url = url
-    if (entry !== undefined) item.entry = entry
-    return item
-  })
-
 /**
  * Generate a navigation tree with unique labels where at least one item has children.
  * Returns [tree, labelOfItemWithChildren] so we can target removal.

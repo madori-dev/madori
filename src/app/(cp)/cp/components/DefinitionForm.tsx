@@ -42,7 +42,9 @@ interface DefinitionFormProps {
 }
 
 const ENTITY_FIELDS: Record<EntityType, FieldConfig[]> = {
-  taxonomies: [],
+  taxonomies: [
+    { name: 'route', label: 'Route', type: 'text', placeholder: '/topics/{slug}', help: 'Public URL pattern for terms. Supports {taxonomy} and {slug}.' },
+  ],
   globals: [],
   navigations: [
     { name: 'max_depth', label: 'Max Depth', type: 'number', placeholder: 'e.g. 3', help: 'Maximum nesting depth for navigation items' },
@@ -109,7 +111,6 @@ export default function DefinitionForm({ entityType, mode, handle, listPath, tit
         }
         const json = await res.json()
         const data = json.data ?? {}
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { handle: _handle, ...rest } = data
         setFormData(rest)
       } catch (err) {
@@ -154,6 +155,7 @@ export default function DefinitionForm({ entityType, mode, handle, listPath, tit
     setSubmitting(true)
 
     try {
+      let definitionData = formData
       // If creating a new blueprint, generate an empty one first
       if (mode === 'create' && createNewBlueprint && BLUEPRINT_ENTITY_TYPES.includes(entityType)) {
         const bpHandle = handleValue
@@ -185,8 +187,7 @@ export default function DefinitionForm({ entityType, mode, handle, listPath, tit
           return
         }
 
-        // Set the blueprint field to the newly created handle
-        formData.blueprint = bpHandle
+        definitionData = { ...formData, blueprint: bpHandle }
       }
 
       const url = mode === 'create'
@@ -195,8 +196,8 @@ export default function DefinitionForm({ entityType, mode, handle, listPath, tit
       const method = mode === 'create' ? 'POST' : 'PUT'
 
       const body = mode === 'create'
-        ? { handle: handleValue, ...formData }
-        : { ...formData }
+        ? { handle: handleValue, ...definitionData }
+        : { ...definitionData }
 
       const res = await fetch(url, {
         method,

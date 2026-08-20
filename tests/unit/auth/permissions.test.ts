@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { PermissionChecker } from '@/lib/auth/permissions'
+import { parse, stringify } from 'yaml'
 import type { FileSystemAdapter } from '@/lib/fs/adapter'
 import type { ContentParser } from '@/lib/fs/parser'
 
@@ -32,11 +33,9 @@ function createMockParser(): ContentParser {
     },
     parseYaml<T>(raw: string): T {
       // Simple YAML-like parser for tests using the real yaml package
-      const { parse } = require('yaml')
       return parse(raw) as T
     },
     serializeYaml(data) {
-      const { stringify } = require('yaml')
       return stringify(data)
     },
   }
@@ -178,10 +177,9 @@ describe('PermissionChecker', () => {
       expect(result).toBe(true)
     })
 
-    it('scoped permission grants access when no scope requested', async () => {
-      // A scoped permission still grants access when no specific scope is requested
+    it('denies a scoped permission when no scope is requested', async () => {
       const result = await scopedChecker.hasPermission(['blog_editor'], 'entries', 'edit')
-      expect(result).toBe(true)
+      expect(result).toBe(false)
     })
   })
 })

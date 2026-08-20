@@ -3,10 +3,10 @@ import { BlueprintRegistry } from '@/lib/blueprints/registry'
 import { BlueprintLoader } from '@/lib/blueprints/loader'
 import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
 import { MarkdownYamlParser } from '@/lib/fs/parser'
-import type { Blueprint } from '@/lib/blueprints/types'
+import type { Blueprint, FieldType } from '@/lib/blueprints/types'
 import * as path from 'path'
 
-const resourcesPath = path.resolve(__dirname, '../../../resources')
+const resourcesPath = path.resolve(__dirname, '../../fixtures/blueprints')
 
 describe('BlueprintRegistry', () => {
   const fs = new NodeFileSystemAdapter()
@@ -395,7 +395,7 @@ describe('BlueprintRegistry', () => {
         tabs: {
           main: {
             fields: [
-              { handle: 'custom', field: { type: 'nonexistent' as any } },
+              { handle: 'custom', field: { type: 'nonexistent' as unknown as FieldType } },
             ],
           },
         },
