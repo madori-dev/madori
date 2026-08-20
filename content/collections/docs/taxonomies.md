@@ -204,6 +204,9 @@ Editors select terms from the associated taxonomy when creating or editing entri
   terms(taxonomy: "tags") {
     title
     slug
+    taxonomy
+    description
+    data
   }
 }
 ```
@@ -322,4 +325,3 @@ taxonomies:
   - tags          # Detailed labels
   - authors       # Content by author
 ```
-

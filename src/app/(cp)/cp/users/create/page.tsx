@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,7 @@ import {
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 
 export default function CreateUserPage() {
   const router = useRouter()
@@ -34,7 +35,11 @@ export default function CreateUserPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setAvailableRoles(['admin', 'editor'])
+    void fetch('/api/roles').then(async (response) => {
+      if (!response.ok) throw new Error('Unable to load roles')
+      const payload = await response.json() as { data?: Array<{ handle: string }> }
+      setAvailableRoles((payload.data ?? []).map(role => role.handle))
+    }).catch(() => setError('Unable to load available roles'))
   }, [])
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -171,9 +176,9 @@ export default function CreateUserPage() {
             </div>
 
             <div className="flex items-center gap-3 pt-2">
-              <Button type="submit" disabled={saving}>
+              <CapabilityGate resource="users" action="create"><Button type="submit" disabled={saving}>
                 {saving ? 'Creating…' : 'Create User'}
-              </Button>
+              </Button></CapabilityGate>
               <Button variant="ghost" nativeButton={false} render={<Link href="/cp/users" />}>
                 Cancel
               </Button>

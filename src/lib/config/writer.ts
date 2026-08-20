@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { CollectionConfigSchema, type CollectionConfig } from './schema'
+import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
+import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
 
 export interface ConfigWriter {
   readCollectionConfig(handle: string): Promise<CollectionConfig | null>
@@ -15,8 +17,8 @@ export class FileConfigWriter implements ConfigWriter {
     // Dynamically import the config file to get parsed state
     const absolutePath = path.resolve(this.configPath)
     const cacheBuster = `?t=${Date.now()}`
-    const module = await import(/* webpackIgnore: true */ `${absolutePath}${cacheBuster}`)
-    const rawConfig = module.default ?? module
+    const importedConfig = await import(/* webpackIgnore: true */ `${absolutePath}${cacheBuster}`)
+    const rawConfig = importedConfig.default ?? importedConfig
 
     const collections = rawConfig.collections
     if (!collections || !(handle in collections)) {
@@ -48,7 +50,7 @@ export class FileConfigWriter implements ConfigWriter {
     // Find the collections block and the target handle's object within it
     const updated = replaceCollectionEntry(content, handle, config)
 
-    await fs.writeFile(absolutePath, updated, 'utf-8')
+    await this.writeAtomic(absolutePath, updated)
   }
 
   async deleteCollectionConfig(handle: string): Promise<boolean> {
@@ -66,11 +68,16 @@ export class FileConfigWriter implements ConfigWriter {
 
     try {
       const updated = removeCollectionEntry(content, handle)
-      await fs.writeFile(absolutePath, updated, 'utf-8')
+      await this.writeAtomic(absolutePath, updated)
       return true
     } catch {
       return false
     }
+  }
+
+  private async writeAtomic(filePath: string, content: string): Promise<void> {
+    const result = await new AtomicFileWriter(new NodeFileSystemAdapter()).writeFileAtomic(filePath, content)
+    if (!result.success) throw result.error ?? new Error(`Could not write config: ${filePath}`)
   }
 }
 

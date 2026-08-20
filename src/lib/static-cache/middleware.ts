@@ -47,7 +47,8 @@ function generateCsrfToken(): string {
 export async function handleStaticCache(
   request: NextRequest,
   config: StaticCacheConfig,
-  cpPath: string
+  cpPath: string,
+  scope?: string,
 ): Promise<Response | null> {
   if (!config.enabled) return null
 
@@ -57,9 +58,13 @@ export async function handleStaticCache(
     return null
   }
 
-  const cacheKey = normalizeCacheKey(urlPath, {
+  const normalizedKey = normalizeCacheKey(urlPath, {
     queryStrings: config.queryStrings,
   })
+  const safeScope = scope && /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(scope) ? scope : null
+  const cacheKey = safeScope
+    ? `/_sites/${safeScope}${normalizedKey === '/' ? '' : normalizedKey}`
+    : normalizedKey
 
   const driver = getDriver(config)
 

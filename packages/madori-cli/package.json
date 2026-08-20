@@ -7,7 +7,7 @@
     "madori": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/create-bin-entry.mjs",
     "dev": "tsx src/index.ts"
   },
   "files": [

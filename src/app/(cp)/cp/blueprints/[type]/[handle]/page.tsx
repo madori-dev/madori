@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { FieldConfigSheet } from '@/components/cp/FieldConfigSheet'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,6 +46,7 @@ export default function BlueprintEditorPage() {
   const params = useParams()
   const type = params.type as BlueprintType
   const handle = params.handle as string
+  const capabilityResource = ({ collections: 'collections', taxonomies: 'taxonomies', globals: 'globals', navigations: 'navigation', forms: 'forms' } as const)[type] ?? 'collections'
 
   const [blueprint, setBlueprint] = useState<Blueprint | null>(null)
   const [loading, setLoading] = useState(true)
@@ -54,6 +56,7 @@ export default function BlueprintEditorPage() {
   // Field Config Sheet state
   const [selectedField, setSelectedField] = useState<FieldDefinition | null>(null)
   const [selectedFieldTab, setSelectedFieldTab] = useState<string | null>(null)
+  const [fieldTarget, setFieldTarget] = useState<{ tabKey: string; sectionKey?: string; fieldIndex: number } | null>(null)
   const [selectedFieldIndex, setSelectedFieldIndex] = useState<number | null>(null)
   const [sheetOpen, setSheetOpen] = useState(false)
 
@@ -140,6 +143,23 @@ export default function BlueprintEditorPage() {
     })
   }, [blueprint])
 
+  const addSection = useCallback((tabKey: string) => {
+    if (!blueprint) return
+    const tab = blueprint.tabs[tabKey]
+    const key = `section_${Object.keys(tab.sections ?? {}).length + 1}`
+    setBlueprint({ ...blueprint, tabs: { ...blueprint.tabs, [tabKey]: { ...tab, sections: { ...tab.sections, [key]: { fields: [] } } } } })
+  }, [blueprint])
+  const updateSection = useCallback((tabKey: string, sectionKey: string, section: { display?: string; fields: FieldDefinition[] }) => {
+    if (!blueprint) return
+    const tab = blueprint.tabs[tabKey]
+    setBlueprint({ ...blueprint, tabs: { ...blueprint.tabs, [tabKey]: { ...tab, sections: { ...tab.sections, [sectionKey]: section } } } })
+  }, [blueprint])
+  const removeSection = useCallback((tabKey: string, sectionKey: string) => {
+    if (!blueprint) return
+    const { [sectionKey]: _, ...sections } = blueprint.tabs[tabKey].sections ?? {}
+    setBlueprint({ ...blueprint, tabs: { ...blueprint.tabs, [tabKey]: { ...blueprint.tabs[tabKey], sections } } })
+  }, [blueprint])
+
   const removeField = useCallback((tabKey: string, fieldIndex: number) => {
     if (!blueprint) return
     const tab = blueprint.tabs[tabKey]
@@ -190,8 +210,20 @@ export default function BlueprintEditorPage() {
     setSelectedFieldIndex(index)
     setSheetOpen(true)
   }, [])
+  const openSectionFieldSheet = useCallback((tabKey: string, sectionKey: string, index: number, field: FieldDefinition) => {
+    setSelectedField(field); setFieldTarget({ tabKey, sectionKey, fieldIndex: index }); setSheetOpen(true)
+  }, [])
 
   const handleSheetSave = useCallback((updatedField: FieldDefinition) => {
+    if (fieldTarget?.sectionKey && blueprint) {
+      const tab = blueprint.tabs[fieldTarget.tabKey]
+      const section = tab.sections?.[fieldTarget.sectionKey]
+      if (section) {
+        const fields = [...section.fields]; fields[fieldTarget.fieldIndex] = updatedField
+        updateSection(fieldTarget.tabKey, fieldTarget.sectionKey, { ...section, fields })
+      }
+      setFieldTarget(null); setSheetOpen(false); return
+    }
     if (selectedFieldTab != null && selectedFieldIndex != null) {
       updateField(selectedFieldTab, selectedFieldIndex, updatedField)
     }
@@ -199,7 +231,7 @@ export default function BlueprintEditorPage() {
     setSelectedField(null)
     setSelectedFieldTab(null)
     setSelectedFieldIndex(null)
-  }, [selectedFieldTab, selectedFieldIndex, updateField])
+  }, [selectedFieldTab, selectedFieldIndex, updateField, fieldTarget, blueprint, updateSection])
 
   const handleSheetOpenChange = useCallback((open: boolean) => {
     setSheetOpen(open)
@@ -207,6 +239,7 @@ export default function BlueprintEditorPage() {
       setSelectedField(null)
       setSelectedFieldTab(null)
       setSelectedFieldIndex(null)
+      setFieldTarget(null)
     }
   }, [])
 
@@ -240,10 +273,10 @@ export default function BlueprintEditorPage() {
             </p>
           </div>
         </div>
-        <Button onClick={save} disabled={saving}>
+        <CapabilityGate resource={capabilityResource} action="edit"><Button onClick={save} disabled={saving}>
           <Save className="size-4" />
           {saving ? 'Saving...' : 'Save'}
-        </Button>
+        </Button></CapabilityGate>
       </div>
 
       {error && (
@@ -261,8 +294,12 @@ export default function BlueprintEditorPage() {
             tab={tab}
             canDelete={Object.keys(blueprint.tabs).length > 1}
             onFieldClick={(index, field) => openFieldSheet(tabKey, index, field)}
+            onSectionFieldClick={(sectionKey, index, field) => openSectionFieldSheet(tabKey, sectionKey, index, field)}
             onUpdateDisplay={(display) => updateTabDisplay(tabKey, display)}
             onAddField={() => addField(tabKey)}
+            onAddSection={() => addSection(tabKey)}
+            onUpdateSection={(sectionKey, section) => updateSection(tabKey, sectionKey, section)}
+            onRemoveSection={(sectionKey) => removeSection(tabKey, sectionKey)}
             onRemoveField={(i) => removeField(tabKey, i)}
             onMoveField={(from, to) => moveField(tabKey, from, to)}
             onRemoveTab={() => removeTab(tabKey)}
@@ -295,8 +332,12 @@ function TabEditor({
   tab,
   canDelete,
   onFieldClick,
+  onSectionFieldClick,
   onUpdateDisplay,
   onAddField,
+  onAddSection,
+  onUpdateSection,
+  onRemoveSection,
   onRemoveField,
   onMoveField,
   onRemoveTab,
@@ -305,8 +346,12 @@ function TabEditor({
   tab: BlueprintTab
   canDelete: boolean
   onFieldClick: (index: number, field: FieldDefinition) => void
+  onSectionFieldClick: (sectionKey: string, index: number, field: FieldDefinition) => void
   onUpdateDisplay: (display: string) => void
   onAddField: () => void
+  onAddSection: () => void
+  onUpdateSection: (key: string, section: { display?: string; fields: FieldDefinition[] }) => void
+  onRemoveSection: (key: string) => void
   onRemoveField: (index: number) => void
   onMoveField: (from: number, to: number) => void
   onRemoveTab: () => void
@@ -327,6 +372,7 @@ function TabEditor({
           <Button variant="ghost" size="icon-xs" onClick={onAddField}>
             <Plus className="size-3.5" />
           </Button>
+          <Button variant="ghost" size="sm" onClick={onAddSection}>Add section</Button>
           {canDelete && (
             <AlertDialog>
               <AlertDialogTrigger render={<Button variant="ghost" size="icon-xs" />}>
@@ -375,6 +421,12 @@ function TabEditor({
           ))
         )}
       </div>
+      {Object.entries(tab.sections ?? {}).map(([sectionKey, section]) => (
+        <div key={sectionKey} className="border-t bg-muted/10 p-4 space-y-3">
+          <div className="flex gap-2"><Input value={section.display ?? ''} onChange={(event) => onUpdateSection(sectionKey, { ...section, display: event.target.value || undefined })} placeholder={sectionKey} className="h-8" /><Button variant="ghost" size="sm" onClick={() => onUpdateSection(sectionKey, { ...section, fields: [...section.fields, makeEmptyField()] })}>Add field</Button><Button variant="ghost" size="sm" onClick={() => onRemoveSection(sectionKey)}>Delete</Button></div>
+          {section.fields.map((field, index) => <div key={`${sectionKey}-${index}`} className="flex items-center gap-2"><button type="button" className="flex-1 text-left text-sm" onClick={() => onSectionFieldClick(sectionKey, index, field)}>{field.handle || 'unnamed'}</button>{index > 0 && <Button variant="ghost" size="xs" onClick={() => { const fields = [...section.fields]; [fields[index - 1], fields[index]] = [fields[index], fields[index - 1]]; onUpdateSection(sectionKey, { ...section, fields }) }}>↑</Button>}{index < section.fields.length - 1 && <Button variant="ghost" size="xs" onClick={() => { const fields = [...section.fields]; [fields[index], fields[index + 1]] = [fields[index + 1], fields[index]]; onUpdateSection(sectionKey, { ...section, fields }) }}>↓</Button>}<Button variant="ghost" size="xs" onClick={() => onUpdateSection(sectionKey, { ...section, fields: section.fields.filter((_, current) => current !== index) })}>Remove</Button></div>)}
+        </div>
+      ))}
     </Card>
   )
 }
@@ -383,8 +435,8 @@ function TabEditor({
 
 function FieldRow({
   field,
-  index,
-  totalFields,
+  index: _index,
+  totalFields: _totalFields,
   onClick,
   onRemove,
   onMoveUp,

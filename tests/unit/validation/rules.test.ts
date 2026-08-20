@@ -94,6 +94,30 @@ describe('buildFieldSchema', () => {
     expect(schema.safeParse('hey').success).toBe(true)
   })
 
+  it('enforces min/max against visible TipTap text, not JSON markup', () => {
+    const schema = buildFieldSchema({ type: 'tiptap', validate: ['min:3', 'max:5'] })
+    expect(schema.safeParse({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }).success).toBe(false)
+    expect(schema.safeParse({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hello' }] }] }).success).toBe(true)
+    expect(schema.safeParse({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'toolong' }] }] }).success).toBe(false)
+  })
+
+  it('uses max_files to select asset cardinality and enforce file bounds', () => {
+    const multiple = buildFieldSchema({ type: 'asset', options: { min_files: 1, max_files: 2 } })
+    expect(multiple.safeParse(['/assets/a.png']).success).toBe(true)
+    expect(multiple.safeParse([]).success).toBe(false)
+    expect(multiple.safeParse(['/assets/a.png', '/assets/b.png', '/assets/c.png']).success).toBe(false)
+    const single = buildFieldSchema({ type: 'asset', options: { max_files: 1 } })
+    expect(single.safeParse('/assets/a.png').success).toBe(true)
+    expect(single.safeParse(['/assets/a.png']).success).toBe(false)
+  })
+
+  it('keeps omitted asset max_files scalar and rejects impossible cardinality', () => {
+    expect(buildFieldSchema({ type: 'asset' }).safeParse('/assets/a.png').success).toBe(true)
+    expect(buildFieldSchema({ type: 'asset' }).safeParse(['/assets/a.png']).success).toBe(false)
+    expect(buildFieldSchema({ type: 'asset', options: { min_files: 3, max_files: 2 } }).safeParse(['/assets/a.png']).success).toBe(false)
+    expect(buildFieldSchema({ type: 'asset', options: { min_files: 2 } }).safeParse('/assets/a.png').success).toBe(false)
+  })
+
   it('enforces email rule', () => {
     const field: FieldConfig = { type: 'text', validate: ['email'] }
     const schema = buildFieldSchema(field)

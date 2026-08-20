@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { Tags, Pencil } from 'lucide-react'
 
@@ -18,6 +18,7 @@ import {
 import { EmptyState } from '@/components/cp/EmptyState'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 import { DeleteDialog } from '@/components/cp/DeleteDialog'
 
 interface Term {
@@ -35,7 +36,7 @@ export default function TaxonomyTermsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  async function fetchTerms() {
+  const fetchTerms = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -48,11 +49,11 @@ export default function TaxonomyTermsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [handle])
 
   useEffect(() => {
-    fetchTerms()
-  }, [handle])
+    queueMicrotask(() => { void fetchTerms() })
+  }, [fetchTerms])
 
   async function handleDelete(termId: string) {
     const res = await fetch(`/api/content/taxonomies/${handle}/${termId}`, {
@@ -91,9 +92,9 @@ export default function TaxonomyTermsPage() {
             {terms.length} {terms.length === 1 ? 'term' : 'terms'}
           </p>
         </div>
-        <Button nativeButton={false} render={<Link href={`/cp/taxonomies/${handle}/create`} />}>
+        <CapabilityGate resource="taxonomies" action="create" scope={handle}><Button nativeButton={false} render={<Link href={`/cp/taxonomies/${handle}/create`} />}>
           Add term
-        </Button>
+        </Button></CapabilityGate>
       </div>
 
       {error && <ErrorAlert message={error} />}

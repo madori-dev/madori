@@ -1,1 +1,4 @@
-content of resources/collections/blog.yaml
+title: Blog
+blueprint: docs
+route: /blog/{slug}
+defaultStatus: draft

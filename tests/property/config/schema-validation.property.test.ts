@@ -35,6 +35,7 @@ const optionalTaxonomiesArb = fc.option(fc.array(nonEmptyStringArb, { maxLength:
 
 /** Arbitrary optional blueprints array */
 const optionalBlueprintsArb = fc.option(fc.array(nonEmptyStringArb, { maxLength: 5 }), { nil: undefined })
+const optionalRouteArb = fc.option(fc.constantFrom('/{slug}', '/blog/{slug}', '/{collection}/{slug}', '/{parent_uri}/{slug}'), { nil: undefined })
 
 /** Arbitrary optional redirects object */
 const optionalRedirectsArb = fc.option(
@@ -50,7 +51,7 @@ const validCollectionConfigArb = fc.record({
   title: nonEmptyStringArb,
   handle: nonEmptyStringArb,
   blueprint: nonEmptyStringArb,
-  route: optionalStringArb,
+  route: optionalRouteArb,
   sortable: optionalBooleanArb,
   dated: optionalBooleanArb,
   defaultStatus: optionalDefaultStatusArb,

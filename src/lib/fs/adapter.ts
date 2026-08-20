@@ -6,6 +6,8 @@ import { FileSystemError } from '@/lib/errors'
 export interface FileSystemAdapter {
   readFile(path: string): Promise<string>
   writeFile(path: string, content: string): Promise<void>
+  /** Write binary content. Optional so non-node adapters can opt out explicitly. */
+  writeBinaryFile?(path: string, content: Buffer): Promise<void>
   deleteFile(path: string): Promise<void>
   exists(path: string): Promise<boolean>
   listFiles(directory: string, pattern?: string): Promise<string[]>
@@ -13,6 +15,8 @@ export interface FileSystemAdapter {
   mkdir(path: string): Promise<void>
   copyFile(src: string, dest: string): Promise<void>
   moveFile(src: string, dest: string): Promise<void>
+  /** Optional physical path resolution for callers that must reject symlink escapes. */
+  realpath?(path: string): Promise<string>
 }
 
 export class NodeFileSystemAdapter implements FileSystemAdapter {
@@ -31,6 +35,16 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
       await fs.writeFile(filePath, content, 'utf-8')
     } catch (error) {
       throw new FileSystemError('writeFile', filePath, error instanceof Error ? error : undefined)
+    }
+  }
+
+  async writeBinaryFile(filePath: string, content: Buffer): Promise<void> {
+    try {
+      const dir = path.dirname(filePath)
+      await fs.mkdir(dir, { recursive: true })
+      await fs.writeFile(filePath, content)
+    } catch (error) {
+      throw new FileSystemError('writeBinaryFile', filePath, error instanceof Error ? error : undefined)
     }
   }
 
@@ -104,6 +118,14 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
       await fs.rename(src, dest)
     } catch (error) {
       throw new FileSystemError('moveFile', src, error instanceof Error ? error : undefined)
+    }
+  }
+
+  async realpath(filePath: string): Promise<string> {
+    try {
+      return await fs.realpath(filePath)
+    } catch (error) {
+      throw new FileSystemError('realpath', filePath, error instanceof Error ? error : undefined)
     }
   }
 }

@@ -93,6 +93,7 @@ interface NavigationTreeEditorProps {
   onChange: (items: NavigationItem[]) => void
   maxDepth?: number
   blueprint?: Blueprint | null
+  allowedCollections?: string[]
 }
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
@@ -223,7 +224,7 @@ function getBlueprintFields(blueprint: Blueprint | null | undefined): FieldDefin
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-export function NavigationTreeEditor({ items, onChange, maxDepth, blueprint }: NavigationTreeEditorProps) {
+export function NavigationTreeEditor({ items, onChange, maxDepth, blueprint, allowedCollections }: NavigationTreeEditorProps) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [activeId, setActiveId] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -248,9 +249,10 @@ export function NavigationTreeEditor({ items, onChange, maxDepth, blueprint }: N
     setExpandedIds(ids)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const idMap = useMemo(() => new Map<NavigationItem, string>(), [])
   const flatItems = useMemo(
-    () => flattenTree(items, null, 0, expandedIds, idMapRef.current),
-    [items, expandedIds]
+    () => flattenTree(items, null, 0, expandedIds, idMap),
+    [items, expandedIds, idMap]
   )
 
   const flatItemIds = useMemo(() => flatItems.map((fi) => fi.id), [flatItems])
@@ -560,6 +562,7 @@ export function NavigationTreeEditor({ items, onChange, maxDepth, blueprint }: N
           onOpenChange={setAddSheetOpen}
           onAdd={addItem}
           blueprintFields={blueprintFields}
+          allowedCollections={allowedCollections}
         />
 
         {/* Edit Item Sheet */}
@@ -574,6 +577,7 @@ export function NavigationTreeEditor({ items, onChange, maxDepth, blueprint }: N
             }
           }}
           blueprintFields={blueprintFields}
+          allowedCollections={allowedCollections}
         />
       </div>
     </TooltipProvider>
@@ -662,6 +666,7 @@ function NavigationTreeItem({
       } ${atMaxDepth ? 'bg-amber-50/50 dark:bg-amber-950/10' : ''}`}
       role="treeitem"
       aria-expanded={hasChildren ? isExpanded : undefined}
+      aria-selected={false}
       aria-level={depth + 1}
       aria-label={getItemLabel(item)}
     >
@@ -954,10 +959,14 @@ interface FieldRendererProps {
   onChange: (value: unknown) => void
 }
 
-function NavigationFieldRenderer({ field, value, onChange }: FieldRendererProps) {
+function NavigationFieldRenderer({ field, value, onChange, allowedCollections }: FieldRendererProps & { allowedCollections?: string[] }) {
   const { type, display, options } = field.field
   const label = display || field.handle
   const id = `nav-field-${field.handle}`
+
+  if (field.handle === 'entry') {
+    return <div className="space-y-1.5"><Label htmlFor="entry-reference" className="text-xs font-medium">{label}</Label><EntryReferencePicker value={(value as string) ?? ''} onChange={onChange} allowedCollections={allowedCollections} /><p className="text-xs text-muted-foreground">Entry URL is resolved from configured public route.</p></div>
+  }
 
   switch (type) {
     case 'text':
@@ -1107,19 +1116,22 @@ interface EditItemSheetProps {
   item: NavigationItem | null
   onSave: (updates: Partial<NavigationItem>) => void
   blueprintFields: FieldDefinition[]
+  allowedCollections?: string[]
 }
 
-function EditItemSheet({ open, onOpenChange, item, onSave, blueprintFields }: EditItemSheetProps) {
+function EditItemSheet({ open, onOpenChange, item, onSave, blueprintFields, allowedCollections }: EditItemSheetProps) {
   const [fields, setFields] = useState<Record<string, unknown>>({})
 
   // Sync local state when item changes
   useEffect(() => {
-    if (item) {
-      const { children: _children, ...data } = item
-      setFields({ ...data })
-    } else {
-      setFields({})
-    }
+    queueMicrotask(() => {
+      if (item) {
+        const { children: _children, ...data } = item
+        setFields({ ...data })
+      } else {
+        setFields({})
+      }
+    })
   }, [item])
 
   function handleFieldChange(handle: string, value: unknown) {
@@ -1161,6 +1173,7 @@ function EditItemSheet({ open, onOpenChange, item, onSave, blueprintFields }: Ed
                 field={field}
                 value={fields[field.handle]}
                 onChange={(val) => handleFieldChange(field.handle, val)}
+                allowedCollections={allowedCollections}
               />
             ))
           ) : (
@@ -1190,12 +1203,10 @@ function EditItemSheet({ open, onOpenChange, item, onSave, blueprintFields }: Ed
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="edit-entry" className="text-xs font-medium">Entry Reference</Label>
-                <Input
-                  id="edit-entry"
+                <EntryReferencePicker
                   value={(fields.entry as string) ?? ''}
-                  onChange={(e) => handleFieldChange('entry', e.target.value)}
-                  placeholder="collection/slug"
-                  className="h-8 text-sm"
+                  onChange={(value) => handleFieldChange('entry', value)}
+                  allowedCollections={allowedCollections}
                 />
                 <p className="text-xs text-muted-foreground">
                   Link to a content entry instead of a URL.
@@ -1235,11 +1246,12 @@ interface AddItemSheetProps {
   onOpenChange: (open: boolean) => void
   onAdd: (item: NavigationItem) => void
   blueprintFields: FieldDefinition[]
+  allowedCollections?: string[]
 }
 
 type ItemType = 'url' | 'entry' | 'text'
 
-function AddItemSheet({ open, onOpenChange, onAdd, blueprintFields }: AddItemSheetProps) {
+function AddItemSheet({ open, onOpenChange, onAdd, blueprintFields, allowedCollections }: AddItemSheetProps) {
   const [itemType, setItemType] = useState<ItemType>('url')
   const [fields, setFields] = useState<Record<string, unknown>>({})
 
@@ -1321,6 +1333,7 @@ function AddItemSheet({ open, onOpenChange, onAdd, blueprintFields }: AddItemShe
                 field={field}
                 value={fields[field.handle]}
                 onChange={(val) => handleFieldChange(field.handle, val)}
+                allowedCollections={allowedCollections}
               />
             ))
           ) : (
@@ -1405,12 +1418,10 @@ function AddItemSheet({ open, onOpenChange, onAdd, blueprintFields }: AddItemShe
               {itemType === 'entry' && (
                 <div className="space-y-1.5">
                   <Label htmlFor="add-entry" className="text-xs font-medium">Entry Reference</Label>
-                  <Input
-                    id="add-entry"
+                  <EntryReferencePicker
                     value={(fields.entry as string) ?? ''}
-                    onChange={(e) => handleFieldChange('entry', e.target.value)}
-                    placeholder="e.g. pages/getting-started"
-                    className="h-8 text-sm"
+                    onChange={(value) => handleFieldChange('entry', value)}
+                    allowedCollections={allowedCollections}
                   />
                   <p className="text-xs text-muted-foreground">
                     Collection and slug path, e.g. &ldquo;pages/docs/configuration&rdquo;
@@ -1439,4 +1450,26 @@ function AddItemSheet({ open, onOpenChange, onAdd, blueprintFields }: AddItemShe
       </SheetContent>
     </Sheet>
   )
+}
+
+function EntryReferencePicker({ value, onChange, allowedCollections }: { value: string; onChange: (value: string | undefined) => void; allowedCollections?: string[] }) {
+  const [options, setOptions] = useState<Array<{ value: string; label: string; preview: string }>>([])
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const collectionsResponse = await fetch('/api/collections')
+      if (!collectionsResponse.ok) return
+      const collections = (await collectionsResponse.json()).data as Array<{ handle: string; title?: string; route?: string }>
+      const permitted = allowedCollections?.length ? collections.filter((collection) => allowedCollections.includes(collection.handle)) : collections
+      const entries = await Promise.all(permitted.map(async (collection) => {
+        const response = await fetch(`/api/entries/${encodeURIComponent(collection.handle)}`)
+        if (!response.ok) return []
+        return ((await response.json()).data as Array<{ slug: string; title?: string }>).map((entry) => ({ value: `${collection.handle}/${entry.slug}`, label: `${entry.title ?? entry.slug} · ${collection.title ?? collection.handle}`, preview: (collection.route ?? '/{slug}').replaceAll('{collection}', collection.handle).replaceAll('{slug}', entry.slug).replaceAll('{parent_uri}/', '') }))
+      }))
+      if (!cancelled) setOptions(entries.flat())
+    })().catch(() => undefined)
+    return () => { cancelled = true }
+  }, [allowedCollections])
+  const preview = options.find((option) => option.value === value)?.preview
+  return <div className="space-y-1"><select id="entry-reference" value={value} onChange={(event) => onChange(event.target.value || undefined)} className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"><option value="">Select entry…</option>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>{preview && <p className="text-xs text-muted-foreground">Public URL: {preview}</p>}</div>
 }

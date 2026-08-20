@@ -1,0 +1,25 @@
+{
+  "schema": "madori.seo.urls.v1",
+  "cases": [
+    {
+      "id": "domain-locales",
+      "request": { "site": "en", "path": "/journal", "page": 1 },
+      "sites": { "en": "https://example.com", "fr": "https://example.fr" },
+      "localizedPaths": { "en": "/journal", "fr": "/articles" },
+      "expected": { "canonical": "https://example.com/journal", "alternates": { "en": "https://example.com/journal", "fr": "https://example.fr/articles", "x-default": "https://example.com/journal" } }
+    },
+    {
+      "id": "subdirectory-locales",
+      "request": { "site": "fr", "path": "/fr/articles", "page": 1 },
+      "sites": { "en": "https://example.com", "fr": "https://example.com/fr" },
+      "localizedPaths": { "en": "/journal", "fr": "/articles" },
+      "expected": { "canonical": "https://example.com/fr/articles", "alternates": { "en": "https://example.com/journal", "fr": "https://example.com/fr/articles", "x-default": "https://example.com/journal" } }
+    },
+    {
+      "id": "paginated-archive",
+      "request": { "site": "en", "path": "/journal", "page": 3, "pageCount": 5 },
+      "sites": { "en": "https://example.com" },
+      "expected": { "canonical": "https://example.com/journal?page=3", "previous": "https://example.com/journal?page=2", "next": "https://example.com/journal?page=4", "titleSuffix": "Page 3" }
+    }
+  ]
+}

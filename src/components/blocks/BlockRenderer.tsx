@@ -4,9 +4,16 @@ import { FeaturesGridBlock } from './FeaturesGridBlock'
 import { AboutTheCreatorBlock } from './AboutTheCreatorBlock'
 import { HtmlEmbedBlock } from './HtmlEmbedBlock'
 
-interface Block {
+export interface Block {
   _type: string
   [key: string]: unknown
+}
+
+export const publicBlockTypes = ['hero', 'basic_cta', 'features_grid', 'about_the_creator', 'html_embed'] as const
+export type PublicBlockType = (typeof publicBlockTypes)[number]
+
+export function hasPublicBlockRenderer(handle: string): handle is PublicBlockType {
+  return (publicBlockTypes as readonly string[]).includes(handle)
 }
 
 interface BlockRendererProps {
@@ -74,16 +81,11 @@ export function BlockRenderer({ blocks }: BlockRendererProps) {
             break
 
           default:
-            if (process.env.NODE_ENV === 'development') {
-              content = (
-                <div className="mx-auto my-8 max-w-5xl rounded-lg border border-dashed border-amber-300 bg-amber-50 px-6 py-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
-                  <p className="font-medium">Unknown block type: {_type}</p>
-                  <pre className="mt-2 overflow-auto text-xs">
-                    {JSON.stringify(props, null, 2)}
-                  </pre>
-                </div>
-              )
-            }
+            content = (
+              <div className="mx-auto my-8 max-w-5xl rounded-lg border border-dashed border-amber-300 bg-amber-50 px-6 py-4 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200" role="status">
+                <p className="font-medium">Block type “{_type}” has no public renderer.</p>
+              </div>
+            )
         }
 
         if (!content) return null

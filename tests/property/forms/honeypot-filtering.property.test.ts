@@ -1,6 +1,6 @@
 // Property 13: Honeypot Filtering
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 import { isHoneypotFilled } from '@/lib/content/forms'
 
@@ -31,9 +31,6 @@ const formDataArb = fc.dictionary(fieldHandleArb, nonEmptyValueArb, {
   minKeys: 1,
   maxKeys: 8,
 })
-
-/** Honeypot field name */
-const honeypotFieldArb = fc.constant('_honeypot')
 
 // --- Property Tests ---
 

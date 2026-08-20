@@ -305,7 +305,7 @@ describe('Full Cycle Integration: File watcher cache invalidation', () => {
   let cache: InMemoryContentCache
   let watcher: ChokidarFileWatcher
 
-  beforeEach(() => {
+  beforeEach(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'madori-integration-'))
     setupTempDir(tempDir)
 
@@ -319,29 +319,43 @@ describe('Full Cycle Integration: File watcher cache invalidation', () => {
     engine = new MadoriContentEngine(config, fsAdapter, parser, cache, blueprintRegistry)
 
     watcher = new ChokidarFileWatcher({ cache, basePath: tempDir })
-    watcher.start()
+    await watcher.start()
   })
 
-  afterEach(() => {
-    watcher.stop()
+  afterEach(async () => {
+    await watcher.stop()
     fs.rmSync(tempDir, { recursive: true, force: true })
   })
 
   it('invalidates cache when a file is modified externally', async () => {
-    // Create an entry via the engine
+    const filePath = path.join(tempDir, 'content/collections/blog/watched-post.md')
+    const nextEvent = () => new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Timed out waiting for watcher file event')), 3000)
+      watcher.onFileChange((event) => {
+        if ((event.type === 'add' || event.type === 'change') && event.absolutePath === filePath) {
+          clearTimeout(timeout)
+          resolve()
+        }
+      })
+    })
+
+    // Create before watching, then start from a fully-scanned stable tree. This
+    // avoids platform-specific add/change coalescing during watcher startup.
+    await watcher.stop()
     await engine.createEntry('blog', {
       title: 'Watched Post',
       slug: 'watched-post',
       status: 'published',
       content: 'Original content',
     })
+    watcher = new ChokidarFileWatcher({ cache, basePath: tempDir })
+    await watcher.start()
 
     // Read to populate cache
     const first = await engine.getEntry('blog', 'watched-post')
     expect(first!.title).toBe('Watched Post')
 
     // Directly modify the file on disk (simulating external change)
-    const filePath = path.join(tempDir, 'content/collections/blog/watched-post.md')
     const modifiedContent = `---
 title: Externally Modified
 slug: watched-post
@@ -352,13 +366,12 @@ updatedAt: "2024-01-02T00:00:00.000Z"
 
 Modified by external tool
 `
+    const changed = nextEvent()
     fs.writeFileSync(filePath, modifiedContent)
+    await changed
 
-    // Wait for watcher to detect the change and invalidate cache
-    await new Promise((resolve) => setTimeout(resolve, 500))
-
-    // Read again — should get fresh data from disk
     const second = await engine.getEntry('blog', 'watched-post')
+
     expect(second!.title).toBe('Externally Modified')
     expect(second!.content).toBe('Modified by external tool')
   }, 5000) // Extended timeout for file watcher

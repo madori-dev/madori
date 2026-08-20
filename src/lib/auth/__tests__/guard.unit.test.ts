@@ -4,7 +4,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { PermissionGuard } from '@/lib/auth/guard'
 import type { AuthContext } from '@/lib/auth/guard'
-import type { PermissionChecker, ResourceType, Action } from '@/lib/auth/permissions'
+import type { PermissionChecker } from '@/lib/auth/permissions'
+import type { GraphQLContext } from '@/lib/graphql/resolvers'
 import { AuthorizationError } from '@/lib/errors'
 
 /**
@@ -138,7 +139,7 @@ describe('PermissionGuard', () => {
       const resolver = vi.fn().mockResolvedValue({ id: '1', title: 'Hello' })
       const wrapped = guard.wrapResolver('entries', 'view', resolver)
 
-      const ctx = { auth: { userId: 'user-1', roles: ['editor'] } } as any
+      const ctx = { auth: { userId: 'user-1', roles: ['editor'] } } as GraphQLContext
       const result = await wrapped({}, { collection: 'blog' }, ctx)
 
       expect(result).toEqual({ id: '1', title: 'Hello' })
@@ -152,7 +153,7 @@ describe('PermissionGuard', () => {
       const resolver = vi.fn().mockResolvedValue({ id: '1' })
       const wrapped = guard.wrapResolver('entries', 'delete', resolver)
 
-      const ctx = { auth: { userId: 'user-1', roles: ['viewer'] } } as any
+      const ctx = { auth: { userId: 'user-1', roles: ['viewer'] } } as GraphQLContext
 
       await expect(wrapped({}, {}, ctx)).rejects.toThrow(AuthorizationError)
       expect(resolver).not.toHaveBeenCalled()
@@ -163,7 +164,7 @@ describe('PermissionGuard', () => {
       const wrapped = guard.wrapResolver('entries', 'edit', resolver)
 
       // ctx without auth defaults to null
-      const ctx = {} as any
+      const ctx = {} as GraphQLContext
 
       await expect(wrapped({}, {}, ctx)).rejects.toThrow(AuthorizationError)
       expect(resolver).not.toHaveBeenCalled()
@@ -174,7 +175,7 @@ describe('PermissionGuard', () => {
       const scopeFn = (args: { collection: string }) => args.collection
       const wrapped = guard.wrapResolver('entries', 'view', resolver, scopeFn)
 
-      const ctx = { auth: { userId: 'user-1', roles: ['blog-editor'] } } as any
+      const ctx = { auth: { userId: 'user-1', roles: ['blog-editor'] } } as GraphQLContext
       await wrapped({}, { collection: 'blog' }, ctx)
 
       expect(mockChecker.hasPermission).toHaveBeenCalledWith(
@@ -190,7 +191,7 @@ describe('PermissionGuard', () => {
       const resolver = vi.fn().mockResolvedValue([])
       const wrapped = guard.wrapResolver('entries', 'view', resolver)
 
-      const ctx = { auth: { userId: 'user-1', roles: ['admin'] } } as any
+      const ctx = { auth: { userId: 'user-1', roles: ['admin'] } } as GraphQLContext
       await wrapped({}, {}, ctx)
 
       expect(mockChecker.hasPermission).toHaveBeenCalledWith(

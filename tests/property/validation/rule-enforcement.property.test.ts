@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
-import { validateFields, isRuleApplicable } from '@/lib/validation/rules'
+import { validateFields } from '@/lib/validation/rules'
 import type { FieldConfig, FieldType } from '@/lib/blueprints/types'
 
 /**
@@ -24,12 +24,6 @@ const stringFieldTypes: FieldType[] = ['text', 'slug', 'markdown', 'tiptap', 'co
 
 /** Arbitrary string field type */
 const stringFieldTypeArb = fc.constantFrom(...stringFieldTypes)
-
-/** Arbitrary number field type */
-const numberFieldTypeArb = fc.constant('number' as FieldType)
-
-/** Arbitrary field type that supports validation */
-const validatableFieldTypeArb = fc.oneof(stringFieldTypeArb, numberFieldTypeArb)
 
 /** Generate a valid rule for a string field type (no min/max conflicts) */
 const stringRuleArb = fc.oneof(
@@ -87,9 +81,6 @@ const numberFieldConfigArb = fc.record({
   required,
   validate,
 } as FieldConfig))
-
-/** Generate any validatable FieldConfig */
-const fieldConfigArb = fc.oneof(stringFieldConfigArb, numberFieldConfigArb)
 
 /** Generate a value appropriate for a string field type */
 const stringValueArb = fc.oneof(

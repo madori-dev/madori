@@ -1,36 +1,15 @@
 import type { Metadata } from 'next'
 import { marked } from 'marked'
-import { loadConfig, resolveConfigPaths } from '@/lib/config/loader'
-import { BlueprintRegistry } from '@/lib/blueprints/registry'
-import { BlueprintLoader } from '@/lib/blueprints/loader'
-import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
-import { MarkdownYamlParser } from '@/lib/fs/parser'
-import { InMemoryContentCache } from '@/lib/cache/store'
-import { MadoriContentEngine } from '@/lib/content/engine'
 import { renderTipTapToHtml } from '@/lib/editor/renderer'
 import { BlockRenderer } from '@/components/blocks'
 import { SiteLayout } from '@/components/site/SiteLayout'
+import { BlueprintForm } from '@/components/site/BlueprintForm'
 import type { TipTapDocument } from '@/lib/editor/types'
+import { serializeJsonLd } from '@/lib/seo/outputs'
+import { getPublishedEntry, getRequestSite, resolvePublishedEntrySeo } from '@/lib/seo/next'
 
 async function getPageEntry() {
-  const config = await loadConfig()
-  const resolvedConfig = resolveConfigPaths(config, process.cwd())
-
-  const fs = new NodeFileSystemAdapter()
-  const parser = new MarkdownYamlParser()
-  const cache = new InMemoryContentCache()
-  const blueprintLoader = new BlueprintLoader(fs, parser, resolvedConfig.resourcesPath)
-  const blueprintRegistry = new BlueprintRegistry(blueprintLoader)
-
-  const contentEngine = new MadoriContentEngine(
-    resolvedConfig,
-    fs,
-    parser,
-    cache,
-    blueprintRegistry
-  )
-
-  return contentEngine.getEntry('pages', 'home')
+  return getPublishedEntry('pages', 'home')
 }
 
 interface Block {
@@ -41,13 +20,9 @@ interface Block {
 export async function generateMetadata(): Promise<Metadata> {
   const entry = await getPageEntry()
   if (!entry) return {}
-  return {
-    title: (entry.data?.meta_title as string) || entry.title,
-    description: (entry.data?.meta_description as string) || undefined,
-    openGraph: entry.data?.og_image
-      ? { images: [{ url: entry.data.og_image as string }] }
-      : undefined,
-  }
+  const site = await getRequestSite()
+  const seo = await resolvePublishedEntrySeo(site.handle, 'pages', 'home', '/')
+  return seo?.metadata as Metadata ?? {}
 }
 
 export default async function Home() {
@@ -62,6 +37,9 @@ export default async function Home() {
   }
 
   const blocks = (entry.data?.blocks as Block[]) ?? []
+  const formHandle = typeof entry.data?.form_handle === 'string' ? entry.data.form_handle : undefined
+  const site = await getRequestSite()
+  const seo = await resolvePublishedEntrySeo(site.handle, 'pages', 'home', '/')
 
   // Use structured tiptap JSON if available, fall back to markdown
   let html = ''
@@ -74,6 +52,12 @@ export default async function Home() {
   return (
     <SiteLayout>
       <main className="min-h-svh">
+        {seo?.jsonLd && (
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: serializeJsonLd(seo.jsonLd) }}
+          />
+        )}
         {/* Render blocks */}
         {blocks.length > 0 && <BlockRenderer blocks={blocks} />}
 
@@ -84,6 +68,11 @@ export default async function Home() {
               className="prose dark:prose-invert"
               dangerouslySetInnerHTML={{ __html: html }}
             />
+          </div>
+        )}
+        {formHandle && (
+          <div className="mx-auto max-w-3xl px-6 py-16">
+            <BlueprintForm handle={formHandle} className="space-y-4" />
           </div>
         )}
       </main>

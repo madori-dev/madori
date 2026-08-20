@@ -1,5 +1,9 @@
 import type { FileSystemAdapter } from '@/lib/fs/adapter'
 import type { ContentParser } from '@/lib/fs/parser'
+import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
+import * as path from 'path'
+import type { ContentMutationReporter } from '@/lib/mutations'
+import { noOpContentMutationReporter } from '@/lib/mutations'
 
 export interface RuntimeSettings {
   site_name: string
@@ -14,11 +18,16 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
 }
 
 export class RuntimeSettingsService {
+  private readonly atomicWriter: AtomicFileWriter
+
   constructor(
     private readonly fs: FileSystemAdapter,
     private readonly parser: ContentParser,
-    private readonly settingsPath: string
-  ) {}
+    private readonly settingsPath: string,
+    private readonly mutations: ContentMutationReporter = noOpContentMutationReporter
+  ) {
+    this.atomicWriter = new AtomicFileWriter(fs)
+  }
 
   async read(): Promise<RuntimeSettings> {
     await this.ensureExists()
@@ -33,7 +42,9 @@ export class RuntimeSettingsService {
 
   async write(settings: RuntimeSettings): Promise<void> {
     const yaml = this.parser.serializeYaml(settings)
-    await this.fs.writeFile(this.settingsPath, yaml)
+    const result = await this.atomicWriter.writeFileAtomic(this.settingsPath, yaml)
+    if (!result.success) throw result.error ?? new Error('Could not save runtime settings')
+    this.mutations.report({ action: 'update', paths: [path.resolve(this.settingsPath)], resource: { type: 'runtime-settings', id: 'runtime' }, message: 'Updated runtime settings', source: 'system', timestamp: Date.now() })
   }
 
   async ensureExists(): Promise<void> {

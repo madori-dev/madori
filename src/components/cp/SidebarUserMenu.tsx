@@ -37,7 +37,10 @@ export function SidebarUserMenu() {
 
   const handleLogout = async () => {
     try {
-      await fetch("/cp/api/auth/logout", { method: "POST" })
+      const response = await fetch("/api/auth/logout", { method: "POST" })
+      if (!response.ok) {
+        throw new Error("Logout request failed")
+      }
     } catch {
       // Proceed to login even if request fails
     }

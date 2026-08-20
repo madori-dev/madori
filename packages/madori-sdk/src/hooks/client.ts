@@ -8,11 +8,12 @@ import type { ListOptions } from '../index.js'
  * The API endpoint that the hooks call to fetch content.
  */
 export interface ClientHookConfig {
-  apiEndpoint?: string // default: '/api/madori'
+  /** Published-content REST API base path. Defaults to same-origin `/api/public`. */
+  apiEndpoint?: string
 }
 
 let hookConfig: ClientHookConfig = {
-  apiEndpoint: '/api/madori',
+  apiEndpoint: '/api/public',
 }
 
 /**
@@ -46,17 +47,17 @@ export function useMadoriEntry<T>(
 
   useEffect(() => {
     let cancelled = false
-    setIsLoading(true)
-    setError(null)
 
-    fetch(`${hookConfig.apiEndpoint}/entry/${collection}/${slug}`)
+    fetch(`${hookConfig.apiEndpoint}/entries/${collection}/${slug}`, {
+      credentials: 'same-origin',
+    })
       .then((res) => {
         if (!res.ok) throw new Error(`Failed to fetch entry: ${res.status}`)
         return res.json()
       })
       .then((json) => {
         if (!cancelled) {
-          setData(json as T)
+          setData((json as { data: T }).data)
           setIsLoading(false)
         }
       })
@@ -95,29 +96,31 @@ export function useMadoriEntries<T>(
   const [data, setData] = useState<T[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
+  const limit = options?.limit
+  const offset = options?.offset
+  const sort = options?.sort
+  const status = options?.status
 
   useEffect(() => {
     let cancelled = false
-    setIsLoading(true)
-    setError(null)
 
     const params = new URLSearchParams()
-    if (options?.limit != null) params.set('limit', String(options.limit))
-    if (options?.offset != null) params.set('offset', String(options.offset))
-    if (options?.sort) params.set('sort', options.sort)
-    if (options?.status) params.set('status', options.status)
+    if (limit != null) params.set('limit', String(limit))
+    if (offset != null) params.set('offset', String(offset))
+    if (sort) params.set('sort', sort)
+    if (status) params.set('status', status)
 
     const queryString = params.toString()
     const url = `${hookConfig.apiEndpoint}/entries/${collection}${queryString ? `?${queryString}` : ''}`
 
-    fetch(url)
+    fetch(url, { credentials: 'same-origin' })
       .then((res) => {
         if (!res.ok) throw new Error(`Failed to fetch entries: ${res.status}`)
         return res.json()
       })
       .then((json) => {
         if (!cancelled) {
-          setData(json as T[])
+          setData((json as { data: T[] }).data)
           setIsLoading(false)
         }
       })
@@ -131,7 +134,7 @@ export function useMadoriEntries<T>(
     return () => {
       cancelled = true
     }
-  }, [collection, JSON.stringify(options)])
+  }, [collection, limit, offset, sort, status])
 
   return { data, isLoading, error }
 }

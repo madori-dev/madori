@@ -18,13 +18,18 @@ import { BlueprintLoader } from '@/lib/blueprints/loader'
 import { BlueprintRegistry } from '@/lib/blueprints/registry'
 import { MadoriContentEngine } from '@/lib/content/engine'
 import { ChokidarFileWatcher } from '@/lib/cache/watcher'
+import { ContentMutationBus } from '@/lib/mutations'
+import { GitSyncRuntime } from '@/lib/git'
+import { createContentEngineSeoPort, FileSeoAuditSnapshotStore, FileSeoRedirectRepository, FileSeoRepository, NotFoundObservationStore, SeoAuditEngine, SeoRuntime } from '@/lib/seo'
+import { createSiteContexts, type SiteContext } from '@/lib/sites'
+import { MadoriUrlResolver } from '@/lib/routing'
 import { PermissionChecker } from '@/lib/auth/permissions'
 import { PluginRegistry } from '@/lib/auth/registry'
 import { YamlUserProviderFactory } from '@/lib/auth/providers/yaml'
 import { FileSessionStoreFactory } from '@/lib/auth/stores/file'
 import { PasswordAuthDriverFactory } from '@/lib/auth/drivers/password'
 import { compose } from '@/lib/auth/composer'
-import type { ComposedAuthService, AuthConfig } from '@/lib/auth/composer'
+import type { AuthConfig } from '@/lib/auth/composer'
 import type { ContentEngine } from '@/lib/content/engine'
 import type { FileWatcher } from '@/lib/cache/watcher'
 import type { ContentCache } from '@/lib/cache/store'
@@ -38,6 +43,16 @@ export interface MadoriInstance {
   blueprintRegistry: BlueprintRegistry
   cache: ContentCache
   fileWatcher: FileWatcher
+  mutationBus: ContentMutationBus
+  gitRuntime: GitSyncRuntime
+  seoRepository: FileSeoRepository
+  seoRedirects: FileSeoRedirectRepository
+  seoNotFound: NotFoundObservationStore
+  seoRuntime: SeoRuntime
+  seoAudit: SeoAuditEngine
+  seoAuditSnapshots: FileSeoAuditSnapshotStore
+  sites: SiteContext[]
+  urlResolver: MadoriUrlResolver
   authService: AuthService
 }
 
@@ -92,8 +107,27 @@ async function initialize(): Promise<MadoriInstance> {
   // 4. Create content cache
   const cache = new InMemoryContentCache()
 
+  // Create one publisher before composing any writer-backed service.
+  const mutationBus = new ContentMutationBus()
+
+  // Public URL identity and Git-versioned SEO settings share application config.
+  const sites = createSiteContexts(config.sites, { trailingSlash: config.seo.trailingSlash })
+  const urlResolver = new MadoriUrlResolver(config.seo.trailingSlash)
+  const seoRepository = new FileSeoRepository(fs, parser, config.resourcesPath, mutationBus)
+  const seoRedirects = new FileSeoRedirectRepository(fs, parser, config.contentPath, mutationBus, {
+    allowedExternalOrigins: config.seo.allowedRedirectOrigins,
+  })
+  const seoNotFound = new NotFoundObservationStore(fs, config.seo.operationalStoragePath, {
+    retentionDays: config.seo.reportRetentionDays,
+  })
+  const seoAudit = new SeoAuditEngine()
+  const seoAuditSnapshots = new FileSeoAuditSnapshotStore(fs, config.seo.operationalStoragePath, {
+    retentionDays: config.seo.reportRetentionDays,
+    maxSnapshots: config.seo.reportSnapshotLimit,
+  })
+
   // 5. Create blueprint loader and registry
-  const blueprintLoader = new BlueprintLoader(fs, parser, config.resourcesPath)
+  const blueprintLoader = new BlueprintLoader(fs, parser, config.resourcesPath, mutationBus)
   const blueprintRegistry = new BlueprintRegistry(blueprintLoader)
 
   // 6. Create content engine
@@ -102,22 +136,80 @@ async function initialize(): Promise<MadoriInstance> {
     fs,
     parser,
     cache,
-    blueprintRegistry
+    blueprintRegistry,
+    mutationBus
   )
 
   // 6b. Run startup orphan detection for atomic writes
   await contentEngine.init()
 
+  const seoRuntime = new SeoRuntime({
+    content: createContentEngineSeoPort(contentEngine),
+    defaults: seoRepository,
+    sites,
+    urlResolver,
+    features: config.seo,
+    systemDefaults: { title: { kind: 'field', value: 'title' } },
+    assets: {
+      publicUrl(reference, site) {
+        try {
+          const absolute = new URL(reference)
+          return (absolute.protocol === 'http:' || absolute.protocol === 'https:') && !absolute.username && !absolute.password
+            ? absolute.toString()
+            : null
+        } catch {
+          const assetPath = reference.startsWith('assets::')
+            ? `/assets/${reference.slice('assets::'.length)}`
+            : reference.startsWith('/') ? reference : `/assets/${reference}`
+          try {
+            return urlResolver.absolute(site, assetPath)
+          } catch {
+            return null
+          }
+        }
+      },
+    },
+  })
+  mutationBus.onMutation((mutation) => {
+    const { type, handle, id } = mutation.resource
+    if (type === 'entry' && handle && id) seoRuntime.invalidate({ records: [`collection:${handle}:${id}`] })
+    else if (type === 'term' && handle && id) seoRuntime.invalidate({ records: [`taxonomy:${handle}:${id}`] })
+    else if (type === 'asset' || type === 'asset-directory') seoRuntime.invalidate({ assets: ['*'] })
+    else if (type === 'seo') seoRuntime.invalidate({ sites: ['*'], sections: ['*'] })
+  })
+
+  // 6c. Share one mutation publisher across write services and integrations.
+  // Git work runs asynchronously, so a Git outage never makes content writes fail.
+  const gitRuntime = new GitSyncRuntime(config, projectRoot)
+  await gitRuntime.start(mutationBus)
+
   // 7. Create and start file watcher
   const fileWatcher = new ChokidarFileWatcher({
     cache,
     basePath: projectRoot,
+    roots: [
+      { name: 'content', path: config.contentPath },
+      { name: 'resources', path: config.resourcesPath },
+      { name: 'users', path: config.usersPath },
+      { name: 'assets', path: config.assetsPath },
+      ...config.git.trackedPaths.map((tracked, index) => ({
+        name: `git-${index}` as const,
+        path: tracked.root === 'content' ? config.contentPath
+          : tracked.root === 'resources' ? config.resourcesPath
+          : tracked.root === 'users' ? config.usersPath
+          : tracked.root === 'assets' ? config.assetsPath
+          : path.isAbsolute(tracked.root)
+            ? tracked.root
+            : `${projectRoot.replace(/[\\/]$/, '')}/${tracked.root}`,
+      })),
+    ],
   })
-  fileWatcher.start()
+  fileWatcher.onFileChange((event) => { void gitRuntime.reportFilesystemChange(event.absolutePath) })
+  await fileWatcher.start()
 
   // 8. Create auth services via adapter system
   const registry = new PluginRegistry()
-  registry.registerProvider('yaml', new YamlUserProviderFactory(fs, parser))
+  registry.registerProvider('yaml', new YamlUserProviderFactory(fs, parser, mutationBus))
   registry.registerStore('file', new FileSessionStoreFactory(fs))
 
   // PasswordAuthDriver needs a UserProvider — resolve and instantiate it first
@@ -177,6 +269,16 @@ async function initialize(): Promise<MadoriInstance> {
     blueprintRegistry,
     cache,
     fileWatcher,
+    mutationBus,
+    gitRuntime,
+    seoRepository,
+    seoRedirects,
+    seoNotFound,
+    seoRuntime,
+    seoAudit,
+    seoAuditSnapshots,
+    sites,
+    urlResolver,
     authService,
   }
 }
@@ -187,7 +289,8 @@ async function initialize(): Promise<MadoriInstance> {
  */
 export async function shutdownMadori(): Promise<void> {
   if (instance) {
-    instance.fileWatcher.stop()
+    await instance.fileWatcher.stop()
+    instance.gitRuntime.stop()
     instance = null
     initPromise = null
   }
@@ -197,7 +300,8 @@ export async function shutdownMadori(): Promise<void> {
 if (typeof process !== 'undefined') {
   const handleShutdown = () => {
     if (instance) {
-      instance.fileWatcher.stop()
+      void instance.fileWatcher.stop()
+      instance.gitRuntime.stop()
     }
   }
 

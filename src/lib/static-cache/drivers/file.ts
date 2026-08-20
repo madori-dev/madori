@@ -1,5 +1,6 @@
 import fs from 'fs/promises'
 import path from 'path'
+import { randomBytes } from 'crypto'
 import { globToRegex } from '../glob'
 import type { StaticCacheDriver } from '../drivers'
 
@@ -7,8 +8,14 @@ export class FileCacheDriver implements StaticCacheDriver {
   constructor(private storagePath: string) {}
 
   private keyToFilePath(key: string): string {
+    if (!/^\/(?:[a-zA-Z0-9._~-]+\/)*[a-zA-Z0-9._~-]*\/?$/.test(key) || key.includes('..') || key.includes('\\')) {
+      throw new Error(`Invalid cache key: ${key}`)
+    }
     const segments = key.replace(/^\//, '').replace(/\/$/, '')
-    return path.join(this.storagePath, segments || '_root', 'index.html')
+    const root = path.resolve(this.storagePath)
+    const candidate = path.resolve(root, segments || '_root', 'index.html')
+    if (!candidate.startsWith(`${root}${path.sep}`)) throw new Error(`Invalid cache key: ${key}`)
+    return candidate
   }
 
   private filePathToKey(filePath: string): string {
@@ -46,7 +53,14 @@ export class FileCacheDriver implements StaticCacheDriver {
   async set(key: string, html: string): Promise<void> {
     const filePath = this.keyToFilePath(key)
     await fs.mkdir(path.dirname(filePath), { recursive: true })
-    await fs.writeFile(filePath, html, 'utf-8')
+    const tempPath = `${filePath}.tmp.${randomBytes(8).toString('hex')}`
+    try {
+      await fs.writeFile(tempPath, html, 'utf-8')
+      await fs.rename(tempPath, filePath)
+    } catch (error) {
+      await fs.unlink(tempPath).catch(() => undefined)
+      throw error
+    }
   }
 
   async delete(key: string): Promise<void> {

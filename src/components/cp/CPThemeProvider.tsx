@@ -34,15 +34,17 @@ export function CPThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Read persisted theme on mount
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY) as Theme | null
-      if (stored === 'dark' || stored === 'light') {
-        setThemeState(stored)
+    queueMicrotask(() => {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY) as Theme | null
+        if (stored === 'dark' || stored === 'light') {
+          setThemeState(stored)
+        }
+      } catch {
+        // localStorage unavailable
       }
-    } catch {
-      // localStorage unavailable
-    }
-    setMounted(true)
+      setMounted(true)
+    })
   }, [])
 
   const setTheme = useCallback((newTheme: Theme) => {

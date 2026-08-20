@@ -8,6 +8,7 @@ import {
   DefinitionValidationError,
   DefinitionNotFoundError,
 } from '@/lib/definitions/errors'
+import { ConflictError, ValidationError } from '@/lib/errors'
 
 describe('DefinitionLoader', () => {
   let tmpDir: string
@@ -160,6 +161,23 @@ describe('DefinitionLoader', () => {
       const result = await loader.load<{ title: string; blueprint: string }>('globals', 'site')
       expect(result.title).toBe('Site Settings')
       expect(result.blueprint).toBe('main')
+    })
+
+    it('rejects duplicate handles without changing existing definition', async () => {
+      const loader = new DefinitionLoader(tmpDir)
+      await loader.create('taxonomies', 'tags', { title: 'Original Tags' })
+
+      await expect(loader.create('taxonomies', 'tags', { title: 'Replacement Tags' }))
+        .rejects.toThrow(ConflictError)
+
+      await expect(loader.load<{ title: string }>('taxonomies', 'tags'))
+        .resolves.toEqual({ title: 'Original Tags' })
+    })
+
+    it('rejects unsafe handles', async () => {
+      const loader = new DefinitionLoader(tmpDir)
+      await expect(loader.create('taxonomies', '../outside', { title: 'Tags' }))
+        .rejects.toThrow(ValidationError)
     })
   })
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { NextRequest } from 'next/server'
-import { createFormHandlers } from '@/app/(cp)/api/handlers/forms'
+import { parse, stringify } from 'yaml'
+import { createFormHandlers, resetFormSubmissionRateLimit } from '@/app/(cp)/api/handlers/forms'
 import { FormOperations } from '@/lib/content/forms'
 import { BlueprintLoader } from '@/lib/blueprints/loader'
 import { BlueprintRegistry } from '@/lib/blueprints/registry'
@@ -68,11 +69,9 @@ class InMemoryFS implements FileSystemAdapter {
  */
 const parser: ContentParser = {
   parseYaml<T>(content: string): T {
-    const { parse } = require('yaml')
     return parse(content) as T
   },
   serializeYaml(data: unknown): string {
-    const { stringify } = require('yaml')
     return stringify(data)
   },
   parseMarkdownFrontmatter<T>(content: string): { data: T; content: string } {
@@ -94,6 +93,7 @@ describe('Form Submission Validation Errors', () => {
   const resourcesPath = '/resources'
 
   beforeEach(async () => {
+    resetFormSubmissionRateLimit()
     fs = new InMemoryFS()
     cache = new InMemoryContentCache()
     formOps = new FormOperations(fs, parser, cache, contentPath, resourcesPath)
@@ -190,6 +190,24 @@ describe('Form Submission Validation Errors', () => {
     expect(body.data.data.name).toBe('Jane Smith')
   })
 
+  it('does not trust spoofed forwarding headers without trusted-proxy configuration', async () => {
+    for (let index = 0; index < 100; index++) {
+      const response = await handlers.handleSubmitForm(new NextRequest('http://localhost/api/forms/contact/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': `203.0.113.${index}` },
+        body: JSON.stringify({ name: 'Jane Smith', email: 'jane@example.com', message: 'This message is long enough to pass validation.' }),
+      }), 'contact')
+      expect(response.status).toBe(201)
+    }
+
+    const blocked = await handlers.handleSubmitForm(new NextRequest('http://localhost/api/forms/contact/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '198.51.100.200' },
+      body: JSON.stringify({ name: 'Jane Smith', email: 'jane@example.com', message: 'This message is long enough to pass validation.' }),
+    }), 'contact')
+    expect(blocked.status).toBe(429)
+  })
+
   it('returns errors keyed by field handle', async () => {
     const request = new NextRequest('http://localhost/api/forms/contact/submit', {
       method: 'POST',
@@ -242,5 +260,52 @@ describe('Form Submission Validation Errors', () => {
 
     expect(response.status).toBe(404)
     expect(body.error.code).toBe('NOT_FOUND')
+  })
+
+  it('does not let nonexistent form handles exhaust submission rate-limit buckets', async () => {
+    const nonexistent = new NextRequest('http://localhost/api/forms/missing/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Ignored' }),
+    })
+
+    for (let index = 0; index < 10_000; index++) {
+      expect((await handlers.handleSubmitForm(nonexistent, `missing-${index}`)).status).toBe(404)
+    }
+
+    const response = await handlers.handleSubmitForm(new NextRequest('http://localhost/api/forms/contact/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Jane Smith',
+        email: 'jane@example.com',
+        message: 'This valid form must not be limited by missing handles.',
+      }),
+    }), 'contact')
+
+    expect(response.status).toBe(201)
+  })
+
+  it('rejects oversized public form bodies before validation or storage', async () => {
+    const request = new NextRequest('http://localhost/api/forms/contact/submit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'x'.repeat(70 * 1024) }),
+    })
+    expect((await handlers.handleSubmitForm(request, 'contact')).status).toBe(413)
+  })
+
+  it('rate limits repeated submissions from one client', async () => {
+    const trustedProxyHandlers = createFormHandlers(formOps, blueprintRegistry, { trustedProxy: true })
+    for (let index = 0; index < 10; index++) {
+      const request = new NextRequest('http://localhost/api/forms/contact/submit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '203.0.113.7' },
+        body: JSON.stringify({ name: 'Jane Smith', email: 'jane@example.com', message: 'Enough characters for valid submission.' }),
+      })
+      expect((await trustedProxyHandlers.handleSubmitForm(request, 'contact')).status).toBe(201)
+    }
+    const blocked = new NextRequest('http://localhost/api/forms/contact/submit', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-forwarded-for': '203.0.113.7' }, body: '{}',
+    })
+    expect((await trustedProxyHandlers.handleSubmitForm(blocked, 'contact')).status).toBe(429)
   })
 })

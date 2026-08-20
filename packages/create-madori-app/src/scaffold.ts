@@ -31,6 +31,7 @@ const REMOVE_AFTER_CLONE = [
   'AGENTS.md',
   'components.json.bak',
   'vitest.config.ts',
+  'playwright.config.ts',
   'tests',
   'users',
 ]
@@ -195,9 +196,28 @@ Welcome to MADORI. This is your first blog post.
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'))
     pkg.name = projectName
     delete pkg.workspaces
+    // These scripts point into monorepo-only files removed above. Do not ship
+    // commands which fail in generated applications.
+    delete pkg.scripts?.madori
+    delete pkg.scripts?.test
+    delete pkg.scripts?.e2e
+    delete pkg.scripts?.['e2e:prepare']
+    delete pkg.devDependencies?.['@playwright/test']
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
   }
   console.log('  ✓ Configured package.json')
+
+  // pnpm 10 requires explicit approval for native build dependencies. The
+  // template's workspace setting is removed above, so retain its safe allowlist
+  // in generated projects rather than leaving installs unable to build Next.js.
+  fs.writeFileSync(
+    path.join(projectDir, 'pnpm-workspace.yaml'),
+    `allowBuilds:
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+`
+  )
 
   // Create empty user-specific directories
   const dirs = ['users', 'content/forms', 'content/navigation', 'content/taxonomies', 'public/assets']

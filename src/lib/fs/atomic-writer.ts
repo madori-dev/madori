@@ -18,13 +18,28 @@ export class AtomicFileWriter {
    * is deleted and the original file is preserved.
    */
   async writeFileAtomic(targetPath: string, content: string): Promise<AtomicWriteResult> {
+    return this.writeAtomic(targetPath, (tempPath) => this.fs.writeFile(tempPath, content))
+  }
+
+  /** Atomically write binary content when adapter supports binary writes. */
+  async writeBinaryFileAtomic(targetPath: string, content: Buffer): Promise<AtomicWriteResult> {
+    if (!this.fs.writeBinaryFile) {
+      return { success: false, error: new Error('Binary writes are not supported by this file system adapter') }
+    }
+    return this.writeAtomic(targetPath, (tempPath) => this.fs.writeBinaryFile!(tempPath, content))
+  }
+
+  private async writeAtomic(
+    targetPath: string,
+    writeTemp: (tempPath: string) => Promise<void>
+  ): Promise<AtomicWriteResult> {
     const dir = path.dirname(targetPath)
     const basename = path.basename(targetPath)
     const randomSuffix = crypto.randomBytes(8).toString('hex')
     const tempPath = path.join(dir, `${basename}.tmp.${randomSuffix}`)
 
     try {
-      await this.fs.writeFile(tempPath, content)
+      await writeTemp(tempPath)
     } catch (error) {
       return {
         success: false,

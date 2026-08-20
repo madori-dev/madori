@@ -24,7 +24,12 @@ function createMockFs(files: Map<string, string> = new Map()): FileSystemAdapter
     listFiles: vi.fn(async () => []),
     listDirectories: vi.fn(async () => []),
     copyFile: vi.fn(async () => {}),
-    moveFile: vi.fn(async () => {}),
+    moveFile: vi.fn(async (source: string, destination: string) => {
+      const content = files.get(source)
+      if (content === undefined) throw new Error(`File not found: ${source}`)
+      files.delete(source)
+      files.set(destination, content)
+    }),
   }
 }
 
@@ -43,9 +48,9 @@ describe('VersionTracker', () => {
         schemaVersion: '1.0.0',
         changelog: [],
       })
-      expect(mockFs.writeFile).toHaveBeenCalledWith(
-        manifestPath,
-        JSON.stringify({ schemaVersion: '1.0.0', changelog: [] }, null, 2)
+      expect(mockFs.moveFile).toHaveBeenCalledWith(
+        expect.stringMatching(/^\.madori\/manifest\.json\.tmp\.[a-f0-9]{16}$/),
+        manifestPath
       )
     })
 

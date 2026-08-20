@@ -193,6 +193,29 @@ describe('AssetOperations', () => {
       expect(exists).toBe(false)
     })
   })
+
+  describe('move safety', () => {
+    it('refuses move and metadata rename when destination exists', async () => {
+      await fs.writeFile(path.join(tmpDir, 'source.txt'), 'source')
+      await fs.writeFile(path.join(tmpDir, 'target.txt'), 'target')
+
+      await expect(assetOps.moveAsset('source.txt', 'target.txt')).rejects.toThrow('already exists')
+      await expect(assetOps.updateMetadata('source.txt', { filename: 'target.txt' })).rejects.toThrow('already exists')
+      expect(await fs.readFile(path.join(tmpDir, 'source.txt'), 'utf8')).toBe('source')
+      expect(await fs.readFile(path.join(tmpDir, 'target.txt'), 'utf8')).toBe('target')
+    })
+
+    it('preflights bulk moves so a collision leaves every source unchanged', async () => {
+      await fs.mkdir(path.join(tmpDir, 'destination'))
+      await fs.writeFile(path.join(tmpDir, 'one.txt'), 'one')
+      await fs.writeFile(path.join(tmpDir, 'two.txt'), 'two')
+      await fs.writeFile(path.join(tmpDir, 'destination', 'two.txt'), 'existing')
+
+      await expect(assetOps.bulkMove(['one.txt', 'two.txt'], 'destination')).rejects.toThrow('already exists')
+      expect(await fs.readFile(path.join(tmpDir, 'one.txt'), 'utf8')).toBe('one')
+      expect(await fs.readFile(path.join(tmpDir, 'two.txt'), 'utf8')).toBe('two')
+    })
+  })
 })
 
 describe('getMimeType', () => {

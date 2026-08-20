@@ -41,7 +41,11 @@ export default function CreateTermPage() {
   useEffect(() => {
     async function loadBlueprint() {
       try {
-        const res = await fetch(`/api/blueprints/taxonomies/${handle}`)
+        const definitionRes = await fetch(`/api/definitions/taxonomies/${handle}`)
+        const definition = definitionRes.ok ? await definitionRes.json() : null
+        const blueprintHandle = definition?.data?.blueprint
+        if (!blueprintHandle) return
+        const res = await fetch(`/api/blueprints/taxonomies/${blueprintHandle}`)
         if (res.ok) {
           const json = await res.json()
           const bp = json.data as Blueprint | undefined
@@ -207,6 +211,7 @@ export default function CreateTermPage() {
                     fieldDefinition={fieldDef}
                     value={blueprintFormData[fieldDef.handle]}
                     onChange={(value) => handleBlueprintFieldChange(fieldDef.handle, value)}
+                    values={blueprintFormData}
                   />
                 ))}
               </div>

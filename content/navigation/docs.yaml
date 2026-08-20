@@ -5,6 +5,10 @@ items:
     url: /docs/editor-guide
   - label: Configuration
     url: /docs/configuration
+  - label: Git Content Sync
+    url: /docs/git-sync
+  - label: SEO Architecture
+    url: /docs/seo-architecture
   - label: Collections
     url: /docs/collections
   - label: Blueprints

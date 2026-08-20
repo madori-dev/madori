@@ -9,12 +9,19 @@ export function evaluateCondition(
   formValues: Record<string, unknown>
 ): boolean {
   const fieldValue = formValues[condition.field]
+  // Authoring UI serializes comparison values as strings. Coerce only to the
+  // runtime value's primitive type so toggle and number conditions match.
+  const comparison = typeof fieldValue === 'boolean'
+    ? condition.value === true || condition.value === 'true'
+    : typeof fieldValue === 'number' && typeof condition.value === 'string' && condition.value.trim() !== ''
+      ? Number(condition.value)
+      : condition.value
 
   switch (condition.operator) {
     case 'equals':
-      return fieldValue === condition.value
+      return fieldValue === comparison
     case 'not_equals':
-      return fieldValue !== condition.value
+      return fieldValue !== comparison
     case 'contains':
       return typeof fieldValue === 'string' && fieldValue.includes(String(condition.value))
     case 'empty':

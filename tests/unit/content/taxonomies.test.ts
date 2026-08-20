@@ -90,6 +90,18 @@ describe('TaxonomyOperations', () => {
       })
     })
 
+    it('returns the configured public term route', async () => {
+      const files: Record<string, string> = {
+        '/project/resources/taxonomies/topics.yaml': 'title: Topics\nroute: /topics/{slug}\n',
+      }
+      const ops = new TaxonomyOperations(createConfig(), createMockFs(files), parser, cache)
+
+      expect(await ops.getTaxonomy('topics')).toMatchObject({
+        handle: 'topics',
+        route: '/topics/{slug}',
+      })
+    })
+
     it('returns null for non-existent taxonomy', async () => {
       const ops = new TaxonomyOperations(createConfig(), createMockFs(), parser, cache)
 

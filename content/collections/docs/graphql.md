@@ -12,6 +12,8 @@ Madori auto-generates a GraphQL schema from your blueprints and definitions. Eve
 
 In development, a GraphiQL interface is available at the endpoint URL for exploring and testing queries interactively.
 
+GraphQL requires authentication. Control panel sessions authenticate with the `madori_session` cookie; external callers must send a valid session token as `Authorization: Bearer <token>`. For anonymous browser rendering, use `@madori/sdk/hooks/client`, which reads published entries through the public content endpoint and never exposes drafts.
+
 ---
 
 ## Configuration Reference
@@ -85,9 +87,54 @@ Every collection type includes these built-in fields:
 |-------|-----------|---------|-------------|
 | `global(handle: String!)` | handle | `Global` | Get a global's data |
 | `globals` | none | `[Global]` | List all globals |
+| `taxonomy(handle: String!)` | handle | `Taxonomy` | Get taxonomy definition |
+| `taxonomies` | none | `[Taxonomy]` | List all taxonomy definitions |
 | `terms(taxonomy: String!)` | taxonomy | `[Term]` | Get taxonomy terms |
 | `navigation(handle: String!)` | handle | `Navigation` | Get a navigation tree |
 | `navigations` | none | `[Navigation]` | List all navigations |
+
+### SEO Queries and Mutations
+
+When `seo.enabled` is true, the schema adds permission-guarded SEO operations. SEO reads require `view seo`; previews expose provenance only to authorized callers. Redirect writes require `edit seo redirects` and deletes require `delete seo redirects`; report reads require `view seo reports`.
+
+| Operation | Arguments | Purpose |
+|-----------|-----------|---------|
+| `seoSite` | `site: String!` | Read site SEO defaults and revision |
+| `seoSection` | `section: String!, handle: String!` | Read collection/taxonomy defaults and revision |
+| `seoResolved` | `site`, `collection`, `slug` | Read published resolved SEO output |
+| `seoPreview` | `site`, `collection`, `slug` | Read authenticated preview output plus provenance |
+| `seoResolvedTerm` | `site`, `taxonomy`, `slug` | Read published resolved SEO for a taxonomy term |
+| `seoPreviewTerm` | `site`, `taxonomy`, `slug` | Read authenticated term preview plus provenance |
+| `seoReport` | optional `id`, optional `site` | Read latest or selected persisted audit report, optionally site-filtered |
+| `seoRedirect` | `id: String!` | Read one redirect |
+| `seoRedirects` | optional `site` | List redirects, optionally scoped to site |
+| `seoSaveSite` | `document`, optional `expectedRevision` | Save site defaults with optimistic concurrency |
+| `seoSaveSection` | `document`, optional `expectedRevision` | Save section defaults with optimistic concurrency |
+| `seoSaveRedirect` | `redirect`, optional `expectedRevision` | Save validated redirect |
+| `seoDeleteRedirect` | `id`, optional `expectedRevision` | Delete redirect |
+
+Example resolved query:
+
+```graphql
+query SeoForPage {
+  seoResolved(site: "default", collection: "pages", slug: "about") {
+    excluded
+    title
+    description
+    canonical
+    indexing
+    following
+    socialImage
+    jsonLdEnabled
+    jsonLdType
+    alternates { locale url }
+  }
+}
+```
+
+SEO GraphQL never returns server filesystem paths or operational storage details. If `seo.enabled` is false, SEO fields are not registered. Feature-specific switches (`metadata`, `structuredData`, `reports`, and `redirects`) further limit their corresponding outputs and operations.
+
+Custom JSON-LD is available through the `jsonLd.custom` `SeoJSON` scalar. Supply JSON-LD containing an `@type` through GraphQL variables; the same depth, key-count, and size limits used by REST and file storage are applied before persistence.
 
 ---
 
@@ -180,9 +227,18 @@ Every collection type includes these built-in fields:
 
 ```graphql
 {
+  taxonomies {
+    handle
+    title
+    blueprint
+  }
+
   terms(taxonomy: "tags") {
     title
     slug
+    taxonomy
+    description
+    data
   }
 }
 ```
@@ -190,7 +246,11 @@ Every collection type includes these built-in fields:
 ### Using with graphql-request
 
 ```ts
-import { gql, request } from 'graphql-request'
+import { gql, GraphQLClient } from 'graphql-request'
+
+const client = new GraphQLClient('http://localhost:3000/api/graphql', {
+  headers: { Authorization: `Bearer ${process.env.MADORI_SESSION_TOKEN}` },
+})
 
 const POSTS_QUERY = gql`
   query GetPosts($limit: Int, $offset: Int) {
@@ -209,7 +269,7 @@ const POSTS_QUERY = gql`
   }
 `
 
-const data = await request('http://localhost:3000/api/graphql', POSTS_QUERY, {
+const data = await client.request(POSTS_QUERY, {
   limit: 10,
   offset: 0,
 })
@@ -222,6 +282,7 @@ import { ApolloClient, InMemoryCache, gql } from '@apollo/client'
 
 const client = new ApolloClient({
   uri: 'http://localhost:3000/api/graphql',
+  credentials: 'same-origin', // sends the signed-in madori_session cookie
   cache: new InMemoryCache(),
 })
 
@@ -244,7 +305,10 @@ const { data } = await client.query({
 async function queryGraphQL(query: string, variables?: Record<string, unknown>) {
   const response = await fetch('http://localhost:3000/api/graphql', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.MADORI_SESSION_TOKEN}`,
+    },
     body: JSON.stringify({ query, variables }),
   })
 
@@ -269,7 +333,10 @@ const data = await queryGraphQL(`
 async function getPublishedPosts() {
   const response = await fetch(`${process.env.SITE_URL}/api/graphql`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${process.env.MADORI_SESSION_TOKEN}`,
+    },
     body: JSON.stringify({
       query: `{
         blogs(filter: { status: "published" }, sort: "createdAt:desc") {
@@ -390,20 +457,17 @@ graphql: {
 
 This disables the `__schema` and `__type` queries while leaving all other queries functional.
 
-### Static Site Generation with GraphQL
+### Static Site Generation
 
-Pre-render all pages at build time using GraphQL:
+Pre-render pages with the server SDK, which reads local flat files without exposing an authentication token:
 
 ```tsx
 // app/blog/[slug]/page.tsx
 export async function generateStaticParams() {
-  const data = await queryGraphQL(`{
-    blogs(filter: { status: "published" }) {
-      slug
-    }
-  }`)
+  const client = madoriClient<Collections>()
+  const posts = await client.listEntries('blog', { status: 'published' })
 
-  return data.blogs.map((post) => ({ slug: post.slug }))
+  return posts.map((post) => ({ slug: post.slug }))
 }
 ```
 
@@ -475,5 +539,4 @@ export function RecentPosts() {
 }
 ```
 
-Generate types by running `pnpm madori generate`. See the [CLI](/docs/cli) reference for full details on code generation.
-
+Generated projects do not bundle a CLI. Manage content with control panel, or run CLI tooling from Madori source checkout.

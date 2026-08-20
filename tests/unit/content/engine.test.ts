@@ -226,6 +226,20 @@ describe('MadoriContentEngine', () => {
     })
   })
 
+  describe('identifier containment', () => {
+    it.each([
+      ['collection handle', () => engine.listEntries('../users')],
+      ['entry slug', () => engine.getEntry('blog', '../secret')],
+      ['taxonomy handle', () => engine.getTaxonomy('../taxonomies')],
+      ['term slug', () => engine.getTerm('tags', '../secret')],
+      ['global handle', () => engine.getGlobal('../settings')],
+      ['navigation handle', () => engine.getNavigation('../main')],
+      ['form handle', () => engine.getForm('../contact')],
+    ])('rejects traversal in %s', async (_label, operation) => {
+      await expect(operation()).rejects.toThrow(ValidationError)
+    })
+  })
+
   describe('listEntries', () => {
     beforeEach(() => {
       const dir = '/project/content/collections/blog'
@@ -401,6 +415,20 @@ describe('MadoriContentEngine', () => {
       expect(entry.content).toBe('New content')
     })
 
+    it('removes a field when CP sends its JSON clear marker', async () => {
+      const filePath = '/project/content/collections/blog/hello-world.md'
+      const withAsset = fileContent.replace('status: published', 'status: published\nhero: /assets/hero.png')
+      mockFs._files.set(filePath, withAsset)
+      contentHash = computeContentHash(withAsset)
+
+      const entry = await engine.updateEntry('blog', 'hello-world', {
+        data: { hero: null },
+      }, contentHash)
+
+      expect(entry.data.hero).toBeUndefined()
+      expect(await mockFs.readFile(filePath)).not.toContain('hero:')
+    })
+
     it('throws NotFoundError for non-existent entry', async () => {
       await expect(
         engine.updateEntry('blog', 'nonexistent', { title: 'Test' }, contentHash)
@@ -423,6 +451,20 @@ describe('MadoriContentEngine', () => {
       expect(mockFs._files.has('/project/content/collections/blog/hello-world.md')).toBe(false)
       // New file should exist
       expect(mockFs._files.has('/project/content/collections/blog/new-slug.md')).toBe(true)
+    })
+
+    it('keeps original entry when source removal fails during rename', async () => {
+      const source = '/project/content/collections/blog/hello-world.md'
+      const destination = '/project/content/collections/blog/new-slug.md'
+      const originalDelete = mockFs.deleteFile
+      mockFs.deleteFile = async (filePath: string) => {
+        if (filePath === source) throw new Error('injected delete failure')
+        await originalDelete(filePath)
+      }
+
+      await expect(engine.updateEntry('blog', 'hello-world', { slug: 'new-slug' }, contentHash)).rejects.toThrow('injected delete failure')
+      expect(mockFs._files.has(source)).toBe(true)
+      expect(mockFs._files.has(destination)).toBe(false)
     })
 
     it('throws ConflictError when changing slug to existing one', async () => {

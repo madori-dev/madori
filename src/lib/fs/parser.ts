@@ -1,5 +1,12 @@
 import matter from 'gray-matter'
-import { parse as parseYamlString, stringify as stringifyYaml } from 'yaml'
+import {
+  isMap,
+  isScalar,
+  isSeq,
+  parse as parseYamlString,
+  parseDocument,
+  stringify as stringifyYaml,
+} from 'yaml'
 import * as path from 'path'
 
 export interface ContentParser {
@@ -11,7 +18,9 @@ export interface ContentParser {
 
 export class MarkdownYamlParser implements ContentParser {
   parseMarkdown(raw: string): { frontmatter: Record<string, unknown>; content: string } {
-    const { data, content } = matter(raw)
+    const { data, content } = matter(raw, {
+      engines: { yaml: parseFrontmatterYaml },
+    })
     return {
       frontmatter: data as Record<string, unknown>,
       content: content.trim(),
@@ -36,6 +45,37 @@ export class MarkdownYamlParser implements ContentParser {
 
   serializeYaml(data: unknown): string {
     return stringifyYaml(data, { lineWidth: 0 })
+  }
+}
+
+const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}(?:[Tt ][0-2]\d:[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?: ?(?:[Zz]|[+-]\d{2}(?::?\d{2})?))?)?$/
+
+/**
+ * Uses YAML 1.2 for frontmatter so plain strings such as `0_0` remain strings.
+ * Preserve gray-matter's historic behaviour for unquoted ISO dates only.
+ */
+function parseFrontmatterYaml(source: string): Record<string, unknown> {
+  const document = parseDocument(source)
+  revivePlainDates(document.contents)
+  return (document.toJS() ?? {}) as Record<string, unknown>
+}
+
+function revivePlainDates(node: unknown): void {
+  if (isScalar(node)) {
+    if (node.type === 'PLAIN' && typeof node.value === 'string' && ISO_DATE_PATTERN.test(node.value)) {
+      const date = new Date(node.value)
+      if (!Number.isNaN(date.getTime())) node.value = date
+    }
+    return
+  }
+
+  if (isMap(node)) {
+    for (const pair of node.items) revivePlainDates(pair.value)
+    return
+  }
+
+  if (isSeq(node)) {
+    for (const item of node.items) revivePlainDates(item)
   }
 }
 

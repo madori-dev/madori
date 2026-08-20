@@ -8,9 +8,15 @@ import { AssetDropzone } from '@/components/cp/assets/asset-dropzone'
 import { AssetGrid } from '@/components/cp/assets/asset-grid'
 import { UploadProgressPanel } from '@/components/cp/assets/upload-progress-panel'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useCapabilities } from '@/components/cp/use-capabilities'
 
 export default function AssetsPage() {
   const manager = useAssetManager()
+  const capabilities = useCapabilities()
+  // Capabilities load asynchronously; no mutation control renders until granted.
+  const canCreate = capabilities?.['assets:create'] === true
+  const canEdit = capabilities?.['assets:edit'] === true
+  const canDelete = capabilities?.['assets:delete'] === true
 
   useEffect(() => {
     manager.fetchAssets()
@@ -52,6 +58,9 @@ export default function AssetsPage() {
         onCreateDirectory={manager.createDirectory}
         onSelectAll={manager.selectAll}
         onClearSelection={manager.clearSelection}
+        canCreate={canCreate}
+        canEdit={canEdit}
+        canDelete={canDelete}
       />
 
       {/* Breadcrumb */}
@@ -70,7 +79,7 @@ export default function AssetsPage() {
       )}
 
       {/* Grid with dropzone */}
-      <AssetDropzone onDrop={manager.uploadFiles} uploading={manager.uploading}>
+      <AssetDropzone onDrop={manager.uploadFiles} uploading={manager.uploading} enabled={canCreate}>
         <AssetGrid
           assets={manager.assets}
           directories={manager.directories}
@@ -83,7 +92,10 @@ export default function AssetsPage() {
           onDeleteDirectory={manager.deleteDirectory}
           onRenameDirectory={manager.renameDirectory}
           onMoveAsset={manager.moveAsset}
-          onUpload={manager.uploadFiles}
+          onUpdateMetadata={manager.updateMetadata}
+          onUpload={canCreate ? manager.uploadFiles : undefined}
+          canEdit={canEdit}
+          canDelete={canDelete}
         />
       </AssetDropzone>
 

@@ -105,3 +105,95 @@ describe('handleChangePassword', () => {
     expect(json.error.code).toBe('NOT_FOUND')
   })
 })
+
+describe('handleCreateUser input validation', () => {
+  const baseUser = {
+    id: 'new-user', email: 'new@example.com', name: 'New User', password: 'safe-password', roles: ['editor'],
+  }
+
+  function setup(roleExists: (role: string) => Promise<boolean> = async () => true) {
+    const auth = {
+      login: vi.fn(), logout: vi.fn(), validateSession: vi.fn(), getUser: vi.fn(), getUserByEmail: vi.fn(), listUsers: vi.fn(),
+      createUser: vi.fn().mockImplementation(async (input) => ({ ...input, passwordHash: 'hash', createdAt: '2026-01-01T00:00:00.000Z' })),
+      updateUser: vi.fn(), deleteUser: vi.fn(),
+    } as unknown as ComposedAuthService
+    return { auth, handlers: createUserHandlers(auth, roleExists) }
+  }
+
+  it('rejects malformed emails, non-array roles, and unknown roles before create', async () => {
+    const { auth, handlers } = setup(async (role) => role === 'editor')
+    for (const body of [
+      { ...baseUser, email: 'not-an-email' },
+      { ...baseUser, email: 'new@invalid@example.com' },
+      { ...baseUser, roles: 'admin' },
+      { ...baseUser, roles: ['does-not-exist'] },
+    ]) {
+      const response = await handlers.handleCreateUser(makeRequest('POST', body))
+      expect(response.status).toBe(422)
+    }
+    expect(auth.createUser).not.toHaveBeenCalled()
+  })
+
+  it('allows only existing unique role handles', async () => {
+    const { auth, handlers } = setup(async (role) => role === 'editor')
+    const response = await handlers.handleCreateUser(makeRequest('POST', baseUser))
+    expect(response.status).toBe(201)
+    expect(auth.createUser).toHaveBeenCalledWith(baseUser)
+  })
+})
+
+describe('handleUpdateOwnUser', () => {
+  let authService: ComposedAuthService
+  let handlers: ReturnType<typeof createUserHandlers>
+
+  beforeEach(() => {
+    const testUser: User = {
+      id: 'user1',
+      email: 'test@example.com',
+      name: 'Test User',
+      roles: ['editor'],
+      passwordHash: 'hash',
+      createdAt: '2024-01-01T00:00:00.000Z',
+      theme: 'light',
+    }
+
+    authService = {
+      login: vi.fn(),
+      logout: vi.fn(),
+      validateSession: vi.fn(),
+      getUser: vi.fn(),
+      getUserByEmail: vi.fn(),
+      listUsers: vi.fn(),
+      createUser: vi.fn(),
+      updateUser: vi.fn().mockImplementation(async (_id, input) => ({ ...testUser, ...input })),
+      deleteUser: vi.fn(),
+    } as unknown as ComposedAuthService
+    handlers = createUserHandlers(authService)
+  })
+
+  it('updates only profile fields and theme', async () => {
+    const req = makeRequest('PUT', {
+      name: 'Updated User',
+      email: 'updated@example.com',
+      theme: 'dark',
+    })
+
+    const response = await handlers.handleUpdateOwnUser(req, 'user1')
+
+    expect(response.status).toBe(200)
+    expect(authService.updateUser).toHaveBeenCalledWith('user1', {
+      name: 'Updated User',
+      email: 'updated@example.com',
+      theme: 'dark',
+    })
+  })
+
+  it('rejects role and password changes', async () => {
+    const req = makeRequest('PUT', { roles: ['admin'] })
+
+    const response = await handlers.handleUpdateOwnUser(req, 'user1')
+
+    expect(response.status).toBe(403)
+    expect(authService.updateUser).not.toHaveBeenCalled()
+  })
+})

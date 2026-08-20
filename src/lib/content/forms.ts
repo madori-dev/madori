@@ -5,6 +5,10 @@ import type { ContentParser } from '@/lib/fs/parser'
 import type { ContentCache } from '@/lib/cache/store'
 import type { Form, FormSubmission } from '@/lib/types'
 import { NotFoundError } from '@/lib/errors'
+import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
+import { assertContentIdentifier } from './identifiers'
+import type { ContentMutationReporter } from '@/lib/mutations'
+import { noOpContentMutationReporter } from '@/lib/mutations'
 
 export interface SubmissionListOptions {
   page: number
@@ -28,13 +32,18 @@ export function isHoneypotFilled(data: Record<string, unknown>, honeypotField: s
 }
 
 export class FormOperations {
+  private readonly atomicWriter: AtomicFileWriter
+
   constructor(
     private readonly fs: FileSystemAdapter,
     private readonly parser: ContentParser,
     private readonly cache: ContentCache,
     private readonly contentPath: string,
-    private readonly resourcesPath: string
-  ) {}
+    private readonly resourcesPath: string,
+    private readonly mutations: ContentMutationReporter = noOpContentMutationReporter
+  ) {
+    this.atomicWriter = new AtomicFileWriter(fs)
+  }
 
   private get formsDir(): string {
     return path.join(this.contentPath, 'forms')
@@ -53,10 +62,14 @@ export class FormOperations {
   }
 
   async getForm(handle: string): Promise<Form | null> {
+    assertContentIdentifier(handle, 'form handle')
     const cached = this.cache.get<Form>(this.cacheKey(handle))
     if (cached) return cached
 
-    const filePath = path.join(this.formBlueprintsDir, `${handle}.yaml`)
+    const definition = await this.getFormDefinition(handle)
+    const blueprint = typeof definition?.blueprint === 'string' ? definition.blueprint : handle
+    assertContentIdentifier(blueprint, 'form blueprint handle')
+    const filePath = path.join(this.formBlueprintsDir, `${blueprint}.yaml`)
     const fileExists = await this.fs.exists(filePath)
     if (!fileExists) return null
 
@@ -64,12 +77,14 @@ export class FormOperations {
     const data = this.parser.parseYaml<Record<string, unknown>>(raw)
 
     const form: Form = {
-      handle: typeof data.handle === 'string' ? data.handle : handle,
-      display: typeof data.display === 'string' ? data.display : handle,
-      fields: Array.isArray(data.fields) ? data.fields : [],
+      handle,
+      display: typeof definition?.title === 'string'
+        ? definition.title
+        : typeof data.display === 'string' ? data.display : handle,
+      fields: extractFormFields(data),
     }
 
-    this.cache.set(this.cacheKey(handle), form, [filePath])
+    this.cache.set(this.cacheKey(handle), form, [filePath, path.join(this.formDefinitionsDir, `${handle}.yaml`)])
     return form
   }
 
@@ -89,13 +104,19 @@ export class FormOperations {
     const cached = this.cache.get<Form[]>('forms:list')
     if (cached) return cached
 
-    const dirExists = await this.fs.exists(this.formBlueprintsDir)
-    if (!dirExists) return []
+    const [blueprintsExist, definitionsExist] = await Promise.all([
+      this.fs.exists(this.formBlueprintsDir),
+      this.fs.exists(this.formDefinitionsDir),
+    ])
+    if (!blueprintsExist && !definitionsExist) return []
 
-    const files = await this.fs.listFiles(this.formBlueprintsDir, '*.yaml')
+    const files = [
+      ...(blueprintsExist ? await this.fs.listFiles(this.formBlueprintsDir, '*.yaml') : []),
+      ...(definitionsExist ? await this.fs.listFiles(this.formDefinitionsDir, '*.yaml') : []),
+    ]
     const forms: Form[] = []
 
-    for (const file of files) {
+    for (const file of new Set(files)) {
       const handle = path.basename(file, '.yaml')
       const form = await this.getForm(handle)
       if (form) forms.push(form)
@@ -106,6 +127,7 @@ export class FormOperations {
   }
 
   async submitForm(handle: string, data: Record<string, unknown>): Promise<FormSubmission | null> {
+    assertContentIdentifier(handle, 'form handle')
     // Verify form exists (blueprint)
     const form = await this.getForm(handle)
     if (!form) {
@@ -137,6 +159,10 @@ export class FormOperations {
       data,
     }
 
+    // Definitions may opt out of persisting visitor data while still allowing
+    // integrations to handle a successful submission.
+    if (definition?.store_submissions === false) return submission
+
     const submissionDir = path.join(this.formsDir, handle)
     const filePath = path.join(submissionDir, `${timestamp}-${id}.yaml`)
 
@@ -148,7 +174,10 @@ export class FormOperations {
     }
 
     const yaml = this.parser.serializeYaml(yamlData)
-    await this.fs.writeFile(filePath, yaml)
+    const result = await this.atomicWriter.writeFileAtomic(filePath, yaml)
+    if (!result.success) throw result.error ?? new Error(`Could not store form submission: ${handle}`)
+
+    this.mutations.report({ action: 'create', paths: [filePath], resource: { type: 'form-submission', handle, id }, message: `Stored submission for ${handle}`, source: 'system', timestamp: Date.now() })
 
     return submission
   }
@@ -157,6 +186,7 @@ export class FormOperations {
    * List submissions for a form with pagination and sorting.
    */
   async listSubmissions(handle: string, options: SubmissionListOptions): Promise<SubmissionListResult> {
+    assertContentIdentifier(handle, 'form handle')
     const submissionDir = path.join(this.formsDir, handle)
     const dirExists = await this.fs.exists(submissionDir)
 
@@ -197,12 +227,14 @@ export class FormOperations {
    * Get a single submission by ID.
    */
   async getSubmission(handle: string, id: string): Promise<FormSubmission | null> {
+    assertContentIdentifier(handle, 'form handle')
+    assertContentIdentifier(id, 'submission id')
     const submissionDir = path.join(this.formsDir, handle)
     const dirExists = await this.fs.exists(submissionDir)
     if (!dirExists) return null
 
     const files = await this.fs.listFiles(submissionDir, '*.yaml')
-    const match = files.find((f) => f.includes(id))
+    const match = files.find((file) => file.endsWith(`-${id}.yaml`))
     if (!match) return null
 
     const filePath = path.join(submissionDir, match)
@@ -221,6 +253,8 @@ export class FormOperations {
    * Delete a submission by ID.
    */
   async deleteSubmission(handle: string, id: string): Promise<void> {
+    assertContentIdentifier(handle, 'form handle')
+    assertContentIdentifier(id, 'submission id')
     const submissionDir = path.join(this.formsDir, handle)
     const dirExists = await this.fs.exists(submissionDir)
     if (!dirExists) {
@@ -228,13 +262,14 @@ export class FormOperations {
     }
 
     const files = await this.fs.listFiles(submissionDir, '*.yaml')
-    const match = files.find((f) => f.includes(id))
+    const match = files.find((file) => file.endsWith(`-${id}.yaml`))
     if (!match) {
       throw new NotFoundError('Submission', id)
     }
 
     const filePath = path.join(submissionDir, match)
     await this.fs.deleteFile(filePath)
+    this.mutations.report({ action: 'delete', paths: [filePath], resource: { type: 'form-submission', handle, id }, message: `Deleted submission ${id} from ${handle}`, source: 'system', timestamp: Date.now() })
   }
 
   /**
@@ -242,6 +277,7 @@ export class FormOperations {
    * Headers are the superset of all field handles across all submissions.
    */
   async exportCsv(handle: string): Promise<string> {
+    assertContentIdentifier(handle, 'form handle')
     const submissionDir = path.join(this.formsDir, handle)
     const dirExists = await this.fs.exists(submissionDir)
 
@@ -297,6 +333,7 @@ export class FormOperations {
    * Returns a JSON array of all submissions.
    */
   async exportJson(handle: string): Promise<string> {
+    assertContentIdentifier(handle, 'form handle')
     const submissionDir = path.join(this.formsDir, handle)
     const dirExists = await this.fs.exists(submissionDir)
 
@@ -323,11 +360,36 @@ export class FormOperations {
   }
 }
 
+/** Form blueprints may use legacy top-level fields or CP's tabs/sections shape. */
+function extractFormFields(data: Record<string, unknown>): unknown[] {
+  if (Array.isArray(data.fields)) return data.fields
+  if (!data.tabs || typeof data.tabs !== 'object') return []
+
+  const fields: unknown[] = []
+  for (const tab of Object.values(data.tabs as Record<string, unknown>)) {
+    if (!tab || typeof tab !== 'object') continue
+    const tabRecord = tab as Record<string, unknown>
+    if (Array.isArray(tabRecord.fields)) fields.push(...tabRecord.fields)
+    if (!tabRecord.sections || typeof tabRecord.sections !== 'object') continue
+    for (const section of Object.values(tabRecord.sections as Record<string, unknown>)) {
+      if (section && typeof section === 'object' && Array.isArray((section as Record<string, unknown>).fields)) {
+        fields.push(...((section as Record<string, unknown>).fields as unknown[]))
+      }
+    }
+  }
+  return fields
+}
+
 /**
  * Escape a value for CSV output. Wraps in quotes if the value contains
  * commas, quotes, or newlines.
  */
 function escapeCsvField(value: string): string {
+  // Spreadsheet applications evaluate cells beginning with formula markers,
+  // including after leading whitespace. Prefix with apostrophe to force text.
+  if (/^\s*[=+\-@]/.test(value)) {
+    value = `'${value}`
+  }
   if (value.includes(',') || value.includes('"') || value.includes('\n')) {
     return `"${value.replace(/"/g, '""')}"`
   }

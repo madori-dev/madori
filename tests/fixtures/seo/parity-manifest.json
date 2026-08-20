@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "reference": "Statamic SEO editorial workflow",
+  "fixtureSchema": "madori.seo.parity.v1",
+  "requiredCapabilities": [
+    "site-defaults", "collection-defaults", "taxonomy-defaults", "record-overrides",
+    "field-inheritance", "disabled-sources", "canonical-urls", "pagination",
+    "multi-domain-sites", "subdirectory-sites", "open-graph", "twitter-cards",
+    "social-image-fallback", "json-ld", "redirects", "not-found-observations",
+    "legacy-field-migration", "permissions", "api-contracts"
+  ],
+  "fixtureFiles": [
+    "storage-and-defaults.json", "cascade.json", "locales-and-pagination.json", "social-and-jsonld.json",
+    "redirects-and-404.json", "api-contracts.json", "permissions.json", "migration.json"
+  ],
+  "parityAcceptance": [
+    "resolved metadata is deterministic and source-attributed",
+    "record values override scoped defaults without destroying inherited values",
+    "collection and taxonomy defaults remain independently configurable",
+    "canonical and alternate URLs are locale-aware and pagination-safe",
+    "social and JSON-LD output can be disabled independently",
+    "redirect loops and chains are rejected before publication",
+    "404 observations never enter the content Git repository",
+    "legacy SEO fields remain readable throughout migration"
+  ],
+  "beyondParityAcceptance": [
+    "every resolved field exposes provenance",
+    "preview and published resolution share one contract",
+    "operational reports use opaque identifiers and redact query secrets",
+    "multi-site URL fixtures cover both domain and subdirectory strategies"
+  ]
+}

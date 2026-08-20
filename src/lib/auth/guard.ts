@@ -76,11 +76,11 @@ export class PermissionGuard {
     resource: ResourceType,
     action: Action,
     resolver: (parent: unknown, args: TArgs, ctx: GraphQLContext) => Promise<TResult>,
-    scope?: (args: TArgs) => string | undefined
+    scope?: (args: TArgs) => string | undefined | Promise<string | undefined>
   ): (parent: unknown, args: TArgs, ctx: GraphQLContext) => Promise<TResult> {
     return async (parent, args, ctx) => {
       const authContext = ctx.auth ?? null
-      const resolvedScope = scope ? scope(args) : undefined
+      const resolvedScope = scope ? await scope(args) : undefined
 
       await this.authorize(authContext, resource, action, resolvedScope)
 

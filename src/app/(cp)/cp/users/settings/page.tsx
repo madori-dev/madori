@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useCPTheme } from '@/components/cp/CPThemeProvider'
 import { toast } from 'sonner'
 import { Moon, Sun } from 'lucide-react'
@@ -48,11 +48,7 @@ export default function UserSettingsPage() {
   const [passwordSaving, setPasswordSaving] = useState(false)
   const [passwordError, setPasswordError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchProfile()
-  }, [])
-
-  async function fetchProfile() {
+  const fetchProfile = useCallback(async () => {
     try {
       setLoading(true)
       const res = await fetch('/api/users/me')
@@ -70,7 +66,11 @@ export default function UserSettingsPage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [setTheme])
+
+  useEffect(() => {
+    queueMicrotask(() => { void fetchProfile() })
+  }, [fetchProfile])
 
   function handleProfileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const { name, value } = e.target

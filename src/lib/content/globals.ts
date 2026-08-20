@@ -3,14 +3,23 @@ import type { FileSystemAdapter } from '@/lib/fs/adapter'
 import type { ContentParser } from '@/lib/fs/parser'
 import type { ContentCache } from '@/lib/cache/store'
 import type { Global } from '@/lib/types'
+import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
+import { assertContentIdentifier } from './identifiers'
+import type { ContentMutationReporter } from '@/lib/mutations'
+import { noOpContentMutationReporter } from '@/lib/mutations'
 
 export class GlobalOperations {
+  private readonly atomicWriter: AtomicFileWriter
+
   constructor(
     private readonly fs: FileSystemAdapter,
     private readonly parser: ContentParser,
     private readonly cache: ContentCache,
-    private readonly contentPath: string
-  ) {}
+    private readonly contentPath: string,
+    private readonly mutations: ContentMutationReporter = noOpContentMutationReporter
+  ) {
+    this.atomicWriter = new AtomicFileWriter(fs)
+  }
 
   private get globalsDir(): string {
     return path.join(this.contentPath, 'globals')
@@ -21,6 +30,7 @@ export class GlobalOperations {
   }
 
   async getGlobal(handle: string): Promise<Global | null> {
+    assertContentIdentifier(handle, 'global handle')
     const cached = this.cache.get<Global>(this.cacheKey(handle))
     if (cached) return cached
 
@@ -38,6 +48,7 @@ export class GlobalOperations {
     }
 
     this.cache.set(this.cacheKey(handle), global, [filePath])
+    this.mutations.report({ action: 'update', paths: [filePath], resource: { type: 'global', id: handle }, message: `Updated global ${handle}`, source: 'system', timestamp: Date.now() })
     return global
   }
 
@@ -62,10 +73,12 @@ export class GlobalOperations {
   }
 
   async updateGlobal(handle: string, data: Record<string, unknown>): Promise<Global> {
+    assertContentIdentifier(handle, 'global handle')
     const filePath = path.join(this.globalsDir, `${handle}.yaml`)
 
     const yaml = this.parser.serializeYaml(data)
-    await this.fs.writeFile(filePath, yaml)
+    const result = await this.atomicWriter.writeFileAtomic(filePath, yaml)
+    if (!result.success) throw result.error ?? new Error(`Could not update global: ${handle}`)
 
     // Invalidate cache
     this.cache.invalidate(this.cacheKey(handle))

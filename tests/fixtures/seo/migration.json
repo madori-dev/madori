@@ -1,0 +1,9 @@
+{
+  "schema": "madori.seo.migration.v1",
+  "fromVersion": 0,
+  "toVersion": 1,
+  "legacy": { "meta_title": "Legacy title", "meta_description": "Legacy description", "og_image": "assets::legacy/social.jpg" },
+  "target": { "seo": { "title": "Legacy title", "description": "Legacy description", "social": { "image": "assets::legacy/social.jpg" } } },
+  "precedenceDuringMigration": ["legacy-top-level", "nested-seo"],
+  "requirements": ["idempotent", "lossless", "dry-run", "per-file-backup", "atomic-write", "Git-visible-content-change", "legacy-read-compatible"]
+}

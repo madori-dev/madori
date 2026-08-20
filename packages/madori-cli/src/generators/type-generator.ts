@@ -24,7 +24,7 @@ export class TypeGenerator implements TypeGeneratorInterface {
   /**
    * Generate all TypeScript interface files from blueprints.
    */
-  generate(blueprints: Blueprint[]): GeneratedFile[] {
+  generate(blueprints: readonly Blueprint[]): GeneratedFile[] {
     return blueprints.map((bp) => this.generateInterface(bp))
   }
 

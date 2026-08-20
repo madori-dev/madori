@@ -54,7 +54,7 @@ Agencies are the primary audience for a Statamic-inspired flat-file CMS in the R
 | **Collection scaffolding** | A CLI command that generates collection definitions, blueprints, and example content in one step. |
 | **Blueprint generator** | Interactive blueprint creation from examples, existing content, or schema definitions. |
 | **Import/export** | Move blueprints, collections, and content between projects. |
-| **Starter site packages** | Marketing site, blog, documentation, SaaS, and agency-focused starters. |
+| **Starter site packages** | Deferred until distributable starter packages exist. |
 | **Content migration tools** | Import content from WordPress, Statamic, Markdown repositories, and other CMS platforms. |
 | **Project presets** | Opinionated project structures for common agency use cases. |
 

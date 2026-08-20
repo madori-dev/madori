@@ -1,0 +1,9 @@
+{
+  "schema": "madori.seo.api.v1",
+  "responses": {
+    "resolved": { "data": { "subject": { "type": "entry", "id": "entry-1", "site": "en" }, "title": "Welcome | Madori", "description": "Welcome page", "canonical": "https://example.com/welcome", "robots": ["index", "follow"], "alternates": {}, "openGraph": null, "twitter": null, "jsonLd": [] }, "meta": { "version": 1, "sources": { "title": "record", "description": "site", "canonical": "computed" }, "warnings": [] } },
+    "settings": { "data": { "site": "en", "enabled": true, "defaults": { "titleSuffix": "Madori", "robots": ["index", "follow"] } }, "meta": { "version": 1, "storage": "git" } },
+    "report": { "data": [{ "id": "nf_01J5N9", "path": "/missing", "hits": 4, "lastSeen": "2026-08-19T10:00:00Z" }], "meta": { "page": 1, "perPage": 50, "total": 1, "storage": "operational" } },
+    "error": { "error": { "code": "SEO_INVALID_REDIRECT", "message": "Redirect would create a loop", "fields": { "destination": ["Must not resolve to source"] } }, "meta": { "requestId": "req_opaque" } }
+  }
+}

@@ -8,6 +8,13 @@ import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors'
 import { computeContentHash, verifyContentHash } from '@/lib/content/concurrency'
 import { TaxonomyOperations } from './taxonomies'
+import { GlobalOperations } from './globals'
+import { NavigationOperations } from './navigation'
+import { AssetOperations } from './assets'
+import { FormOperations } from './forms'
+import { assertContentIdentifier } from './identifiers'
+import type { ContentMutationReporter } from '@/lib/mutations'
+import { noOpContentMutationReporter } from '@/lib/mutations'
 import type {
   Entry,
   Collection,
@@ -71,6 +78,10 @@ export interface ContentEngine {
 
 export class MadoriContentEngine implements ContentEngine {
   private readonly taxonomyOps: TaxonomyOperations
+  private readonly globalOps: GlobalOperations
+  private readonly navigationOps: NavigationOperations
+  private readonly assetOps: AssetOperations
+  private readonly formOps: FormOperations
   private readonly atomicWriter: AtomicFileWriter
   private collectionsCache: Map<string, CollectionConfig> | null = null
 
@@ -85,9 +96,14 @@ export class MadoriContentEngine implements ContentEngine {
     private readonly fs: FileSystemAdapter,
     private readonly parser: ContentParser,
     private readonly cache: ContentCache,
-    private readonly blueprintRegistry: BlueprintRegistry
+    private readonly blueprintRegistry: BlueprintRegistry,
+    private readonly mutations: ContentMutationReporter = noOpContentMutationReporter
   ) {
     this.taxonomyOps = new TaxonomyOperations(config, fs, parser, cache)
+    this.globalOps = new GlobalOperations(fs, parser, cache, config.contentPath, mutations)
+    this.navigationOps = new NavigationOperations(fs, parser, cache, config.contentPath, mutations)
+    this.assetOps = new AssetOperations(config.assetsPath, fs, mutations)
+    this.formOps = new FormOperations(fs, parser, cache, config.contentPath, config.resourcesPath, mutations)
     this.atomicWriter = new AtomicFileWriter(fs)
   }
 
@@ -202,6 +218,8 @@ export class MadoriContentEngine implements ContentEngine {
   // ─── Entries ───────────────────────────────────────────────────────────────
 
   async getEntry(collection: string, slug: string): Promise<Entry | null> {
+    assertContentIdentifier(collection, 'collection handle')
+    assertContentIdentifier(slug, 'entry slug')
     const collectionConfig = await this.getCollectionConfig(collection)
     if (!collectionConfig) {
       throw new NotFoundError('Collection', collection)
@@ -224,6 +242,7 @@ export class MadoriContentEngine implements ContentEngine {
   }
 
   async listEntries(collection: string, options?: ListOptions): Promise<Entry[]> {
+    assertContentIdentifier(collection, 'collection handle')
     const collectionConfig = await this.getCollectionConfig(collection)
     if (!collectionConfig) {
       throw new NotFoundError('Collection', collection)
@@ -254,6 +273,8 @@ export class MadoriContentEngine implements ContentEngine {
   }
 
   async createEntry(collection: string, data: EntryInput): Promise<Entry> {
+    assertContentIdentifier(collection, 'collection handle')
+    assertContentIdentifier(data.slug, 'entry slug')
     const collectionConfig = await this.getCollectionConfig(collection)
     if (!collectionConfig) {
       throw new NotFoundError('Collection', collection)
@@ -310,10 +331,15 @@ export class MadoriContentEngine implements ContentEngine {
       updatedAt: now,
     }
 
+    this.mutations.report({ action: 'create', paths: [filePath], resource: { type: 'entry', handle: collection, id: data.slug }, message: `Created entry ${collection}/${data.slug}`, source: 'system', timestamp: Date.now() })
+
     return entry
   }
 
   async updateEntry(collection: string, slug: string, data: Partial<EntryInput>, contentHash?: string): Promise<Entry> {
+    assertContentIdentifier(collection, 'collection handle')
+    assertContentIdentifier(slug, 'entry slug')
+    if (data.slug !== undefined) assertContentIdentifier(data.slug, 'entry slug')
     const collectionConfig = await this.getCollectionConfig(collection)
     if (!collectionConfig) {
       throw new NotFoundError('Collection', collection)
@@ -340,13 +366,18 @@ export class MadoriContentEngine implements ContentEngine {
     const existing = this.parseEntry(collection, slug, raw)
 
     // Merge data
+    const mergedData = { ...existing.data, ...(data.data ?? {}) }
+    // CP uses null as an explicit clear marker because JSON cannot carry undefined.
+    for (const [key, value] of Object.entries(mergedData)) {
+      if (value === null) delete mergedData[key]
+    }
     const merged: EntryInput = {
       title: data.title ?? existing.title,
       slug: data.slug ?? existing.slug,
       status: data.status ?? existing.status,
       author: data.author ?? existing.author,
       content: data.content ?? existing.content,
-      data: data.data ? { ...existing.data, ...data.data } : existing.data,
+      data: mergedData,
     }
 
     // Validate against blueprint
@@ -379,10 +410,21 @@ export class MadoriContentEngine implements ContentEngine {
       if (newExists) {
         throw new ConflictError(`Entry with slug "${data.slug}" already exists in collection "${collection}"`)
       }
-      await this.fs.deleteFile(filePath)
       const writeResult = await this.atomicWriter.writeFileAtomic(newFilePath, fileContent)
       if (!writeResult.success) {
         throw writeResult.error ?? new Error(`Atomic write failed for ${newFilePath}`)
+      }
+      // Preserve source until destination is durable. If source removal fails,
+      // remove destination again so callers never see a half-completed rename.
+      try {
+        await this.fs.deleteFile(filePath)
+      } catch (error) {
+        try {
+          await this.fs.deleteFile(newFilePath)
+        } catch {
+          // Keep original error: caller must know rename did not complete.
+        }
+        throw error
       }
     } else {
       const writeResult = await this.atomicWriter.writeFileAtomic(filePath, fileContent)
@@ -411,10 +453,16 @@ export class MadoriContentEngine implements ContentEngine {
       contentHash: computeContentHash(fileContent),
     }
 
+    const moved = data.slug !== undefined && data.slug !== slug
+    const affectedPaths = moved ? [filePath, this.getEntryFilePath(collection, entry.slug)] : [filePath]
+    this.mutations.report({ action: moved ? 'move' : 'update', paths: affectedPaths, resource: { type: 'entry', handle: collection, id: entry.slug }, message: `${moved ? 'Renamed' : 'Updated'} entry ${collection}/${slug}`, source: 'system', timestamp: Date.now() })
+
     return entry
   }
 
   async deleteEntry(collection: string, slug: string): Promise<void> {
+    assertContentIdentifier(collection, 'collection handle')
+    assertContentIdentifier(slug, 'entry slug')
     const collectionConfig = await this.getCollectionConfig(collection)
     if (!collectionConfig) {
       throw new NotFoundError('Collection', collection)
@@ -431,11 +479,13 @@ export class MadoriContentEngine implements ContentEngine {
     // Invalidate cache
     this.cache.invalidatePattern(`entries:${collection}*`)
     this.cache.invalidate(`entry:${collection}:${slug}`)
+    this.mutations.report({ action: 'delete', paths: [filePath], resource: { type: 'entry', handle: collection, id: slug }, message: `Deleted entry ${collection}/${slug}`, source: 'system', timestamp: Date.now() })
   }
 
   // ─── Taxonomies ────────────────────────────────────────────────────────────
 
   async getTaxonomy(handle: string): Promise<Taxonomy | null> {
+    assertContentIdentifier(handle, 'taxonomy handle')
     return this.taxonomyOps.getTaxonomy(handle)
   }
 
@@ -444,67 +494,76 @@ export class MadoriContentEngine implements ContentEngine {
   }
 
   async getTerm(taxonomy: string, slug: string): Promise<Term | null> {
+    assertContentIdentifier(taxonomy, 'taxonomy handle')
+    assertContentIdentifier(slug, 'term slug')
     return this.taxonomyOps.getTerm(taxonomy, slug)
   }
 
   async listTerms(taxonomy: string): Promise<Term[]> {
+    assertContentIdentifier(taxonomy, 'taxonomy handle')
     return this.taxonomyOps.listTerms(taxonomy)
   }
 
-  // ─── Globals (stub — implemented in task 6.3) ─────────────────────────────
+  // ─── Globals ──────────────────────────────────────────────────────────────
 
-  async getGlobal(_handle: string): Promise<Global | null> {
-    throw new Error('Not implemented: getGlobal will be implemented in task 6.3')
+  async getGlobal(handle: string): Promise<Global | null> {
+    assertContentIdentifier(handle, 'global handle')
+    return this.globalOps.getGlobal(handle)
   }
 
   async listGlobals(): Promise<Global[]> {
-    throw new Error('Not implemented: listGlobals will be implemented in task 6.3')
+    return this.globalOps.listGlobals()
   }
 
-  async updateGlobal(_handle: string, _data: Record<string, unknown>): Promise<Global> {
-    throw new Error('Not implemented: updateGlobal will be implemented in task 6.3')
+  async updateGlobal(handle: string, data: Record<string, unknown>): Promise<Global> {
+    assertContentIdentifier(handle, 'global handle')
+    return this.globalOps.updateGlobal(handle, data)
   }
 
-  // ─── Navigation (stub — implemented in task 6.3) ──────────────────────────
+  // ─── Navigation ───────────────────────────────────────────────────────────
 
-  async getNavigation(_handle: string): Promise<Navigation | null> {
-    throw new Error('Not implemented: getNavigation will be implemented in task 6.3')
+  async getNavigation(handle: string): Promise<Navigation | null> {
+    assertContentIdentifier(handle, 'navigation handle')
+    return this.navigationOps.getNavigation(handle)
   }
 
   async listNavigations(): Promise<Navigation[]> {
-    throw new Error('Not implemented: listNavigations will be implemented in task 6.3')
+    return this.navigationOps.listNavigations()
   }
 
-  // ─── Assets (stub — implemented in task 6.4) ──────────────────────────────
+  // ─── Assets ───────────────────────────────────────────────────────────────
 
-  async getAsset(_path: string): Promise<Asset | null> {
-    throw new Error('Not implemented: getAsset will be implemented in task 6.4')
+  async getAsset(assetPath: string): Promise<Asset | null> {
+    return this.assetOps.getAsset(assetPath)
   }
 
-  async listAssets(_directory?: string): Promise<Asset[]> {
-    throw new Error('Not implemented: listAssets will be implemented in task 6.4')
+  async listAssets(directory?: string): Promise<Asset[]> {
+    return this.assetOps.listAssets(directory)
   }
 
-  async uploadAsset(_file: File, _directory?: string): Promise<Asset> {
-    throw new Error('Not implemented: uploadAsset will be implemented in task 6.4')
+  async uploadAsset(file: File, directory?: string): Promise<Asset> {
+    const content = Buffer.from(await file.arrayBuffer())
+    return this.assetOps.uploadAsset({ name: file.name, content, type: file.type }, directory)
   }
 
-  async deleteAsset(_path: string): Promise<void> {
-    throw new Error('Not implemented: deleteAsset will be implemented in task 6.4')
+  async deleteAsset(assetPath: string): Promise<void> {
+    return this.assetOps.deleteAsset(assetPath)
   }
 
-  // ─── Forms (stub — implemented in task 6.3) ───────────────────────────────
+  // ─── Forms ────────────────────────────────────────────────────────────────
 
-  async getForm(_handle: string): Promise<Form | null> {
-    throw new Error('Not implemented: getForm will be implemented in task 6.3')
+  async getForm(handle: string): Promise<Form | null> {
+    assertContentIdentifier(handle, 'form handle')
+    return this.formOps.getForm(handle)
   }
 
   async listForms(): Promise<Form[]> {
-    throw new Error('Not implemented: listForms will be implemented in task 6.3')
+    return this.formOps.listForms()
   }
 
-  async submitForm(_handle: string, _data: Record<string, unknown>): Promise<FormSubmission | null> {
-    throw new Error('Not implemented: submitForm will be implemented in task 6.3')
+  async submitForm(handle: string, data: Record<string, unknown>): Promise<FormSubmission | null> {
+    assertContentIdentifier(handle, 'form handle')
+    return this.formOps.submitForm(handle, data)
   }
 
   // ─── Private Helpers ───────────────────────────────────────────────────────

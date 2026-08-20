@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { getInvalidationPatterns, ChokidarFileWatcher } from '@/lib/cache/watcher'
+import { getInvalidationPatterns, getWatchedFilePath, ChokidarFileWatcher, isTemporaryFilePath } from '@/lib/cache/watcher'
 import type { ContentCache } from '@/lib/cache/store'
 
 describe('getInvalidationPatterns', () => {
@@ -50,6 +50,23 @@ describe('getInvalidationPatterns', () => {
     expect(patterns).toContain('entries:blog:*')
     expect(patterns).toContain('entry:blog:*')
   })
+
+  it('recognises atomic-write temporary files', () => {
+    expect(isTemporaryFilePath('/content/post.md.tmp.abc123')).toBe(true)
+    expect(isTemporaryFilePath('/content/.post.md.swp')).toBe(true)
+    expect(isTemporaryFilePath('/content/post.md')).toBe(false)
+  })
+
+  it('maps external configured roots into stable cache paths', () => {
+    expect(getWatchedFilePath('/repositories/site-content/collections/blog/post.md', [
+      { name: 'content', path: '/repositories/site-content' },
+      { name: 'resources', path: '/project/resources' },
+    ])).toEqual({
+      absolutePath: '/repositories/site-content/collections/blog/post.md',
+      root: 'content',
+      path: 'content/collections/blog/post.md',
+    })
+  })
 })
 
 describe('ChokidarFileWatcher', () => {
@@ -79,13 +96,26 @@ describe('ChokidarFileWatcher', () => {
     expect(callback).not.toHaveBeenCalled()
   })
 
-  it('can be stopped without starting', () => {
+  it('can be stopped without starting', async () => {
     const watcher = new ChokidarFileWatcher({
       cache: mockCache,
       basePath: '/project',
     })
 
     // Should not throw
-    expect(() => watcher.stop()).not.toThrow()
+    await expect(watcher.stop()).resolves.toBeUndefined()
+  })
+
+  it('accepts resolved roots outside application base path', async () => {
+    const watcher = new ChokidarFileWatcher({
+      cache: mockCache,
+      basePath: '/project',
+      roots: [
+        { name: 'content', path: '/repositories/site-content' },
+        { name: 'resources', path: '/project/resources' },
+      ],
+    })
+
+    await expect(watcher.stop()).resolves.toBeUndefined()
   })
 })

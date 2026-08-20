@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createStreamingProcessor } from '../streaming-processor.js'
-import type { ProcessResult } from '../streaming-processor.js'
 
 async function* asyncFrom<T>(items: T[]): AsyncIterable<T> {
   for (const item of items) {

@@ -27,6 +27,7 @@ import { EmptyState } from '@/components/cp/EmptyState'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { DeleteDialog } from '@/components/cp/DeleteDialog'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
 
 interface FormSubmission {
   id: string
@@ -95,7 +96,7 @@ export default function FormSubmissionsPage() {
   }, [handle, page])
 
   useEffect(() => {
-    fetchSubmissions()
+    queueMicrotask(() => { void fetchSubmissions() })
   }, [fetchSubmissions])
 
   async function handleDelete(submissionId: string) {
@@ -197,11 +198,11 @@ export default function FormSubmissionsPage() {
                       {getSubmissionSummary(submission.data)}
                     </TableCell>
                     <TableCell>
-                      <DeleteDialog
+                      <CapabilityGate resource="forms" action="delete"><DeleteDialog
                         title="Delete submission"
                         description="Are you sure you want to delete this submission? This action cannot be undone."
                         onConfirm={() => handleDelete(submission.id)}
-                      />
+                      /></CapabilityGate>
                     </TableCell>
                   </TableRow>
                 ))}

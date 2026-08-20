@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { FieldConfig, FieldType } from '@/lib/blueprints/types'
+import { getAssetCardinality } from '@/lib/blueprints/asset-cardinality'
 
 export interface ValidationResult {
   valid: boolean
@@ -29,7 +30,8 @@ export function isRuleApplicable(rule: string, fieldType: FieldType): boolean {
   const universalRules = ['required']
 
   if (universalRules.includes(rule)) return true
-  if (['text', 'slug', 'markdown', 'tiptap', 'code'].includes(fieldType)) {
+  if (fieldType === 'tiptap') return ['min', 'max'].includes(rule)
+  if (['text', 'slug', 'markdown', 'code'].includes(fieldType)) {
     return textRules.includes(rule)
   }
   if (fieldType === 'number') return numericRules.includes(rule)
@@ -41,7 +43,7 @@ export function isRuleApplicable(rule: string, fieldType: FieldType): boolean {
  * This is a pure function with no React dependencies — shared between client and server.
  */
 export function buildFieldSchema(field: FieldConfig): z.ZodType {
-  let schema: z.ZodType = getBaseSchema(field.type)
+  let schema: z.ZodType = getBaseSchema(field)
 
   const rules = field.validate ?? []
 
@@ -65,6 +67,12 @@ export function buildFieldSchema(field: FieldConfig): z.ZodType {
     // For string types, required means non-empty
     if (isStringFieldType(field.type) && !rules.some((r) => parseRule(r)[0] === 'min')) {
       schema = (schema as z.ZodString).min(1, 'This field is required')
+    }
+    if (field.type === 'tiptap') {
+      schema = schema.refine(
+        (value) => typeof value === 'string' ? value.trim().length > 0 : Boolean(value && typeof value === 'object'),
+        'This field is required'
+      )
     }
   } else {
     schema = schema.optional() as z.ZodType
@@ -102,15 +110,18 @@ export function validateFields(
 /**
  * Returns the base Zod schema for a field type (before validation rules are applied).
  */
-function getBaseSchema(fieldType: FieldType): z.ZodType {
+function getBaseSchema(field: FieldConfig): z.ZodType {
+  const fieldType = field.type
   switch (fieldType) {
     case 'text':
     case 'slug':
     case 'markdown':
-    case 'tiptap':
     case 'code':
     case 'yaml':
       return z.string()
+
+    case 'tiptap':
+      return z.union([z.string(), z.record(z.string(), z.unknown())])
 
     case 'number':
       return z.number()
@@ -129,8 +140,14 @@ function getBaseSchema(fieldType: FieldType): z.ZodType {
     case 'date':
       return z.string()
 
-    case 'asset':
-      return z.string()
+    case 'asset': {
+      const cardinality = getAssetCardinality(field.options)
+      if (!cardinality.valid) return z.never().describe('Invalid asset cardinality')
+      let schema: z.ZodType = cardinality.multiple ? z.array(z.string()) : z.string()
+      if (cardinality.multiple && cardinality.min !== undefined) schema = (schema as z.ZodArray<z.ZodString>).min(cardinality.min)
+      if (cardinality.multiple && cardinality.max > 0) schema = (schema as z.ZodArray<z.ZodString>).max(cardinality.max)
+      return schema
+    }
 
     case 'replicator':
     case 'grid':
@@ -162,6 +179,9 @@ function applyRule(
       const minVal = Number(ruleParam)
       if (isNaN(minVal)) return schema
 
+      if (fieldType === 'tiptap') {
+        return schema.refine((value) => tiptapTextLength(value) >= minVal, `Must be at least ${minVal} characters`)
+      }
       if (isStringFieldType(fieldType)) {
         return (schema as z.ZodString).min(minVal, `Must be at least ${minVal} characters`)
       }
@@ -175,6 +195,9 @@ function applyRule(
       const maxVal = Number(ruleParam)
       if (isNaN(maxVal)) return schema
 
+      if (fieldType === 'tiptap') {
+        return schema.refine((value) => tiptapTextLength(value) <= maxVal, `Must be at most ${maxVal} characters`)
+      }
       if (isStringFieldType(fieldType)) {
         return (schema as z.ZodString).max(maxVal, `Must be at most ${maxVal} characters`)
       }
@@ -221,5 +244,20 @@ function applyRule(
  * Checks if a field type uses a string-based schema.
  */
 function isStringFieldType(fieldType: FieldType): boolean {
-  return ['text', 'slug', 'markdown', 'tiptap', 'code', 'yaml'].includes(fieldType)
+  return ['text', 'slug', 'markdown', 'code', 'yaml'].includes(fieldType)
+}
+
+
+/** Text-length rules for rich text apply to visible text nodes, not JSON markup. */
+function tiptapTextLength(value: unknown): number {
+  if (typeof value === 'string') return value.length
+  if (!value || typeof value !== 'object') return 0
+  const walk = (node: unknown): string => {
+    if (!node || typeof node !== 'object') return ''
+    const record = node as { text?: unknown; content?: unknown }
+    const text = typeof record.text === 'string' ? record.text : ''
+    const children = Array.isArray(record.content) ? record.content.map(walk).join('') : ''
+    return text + children
+  }
+  return walk(value).length
 }

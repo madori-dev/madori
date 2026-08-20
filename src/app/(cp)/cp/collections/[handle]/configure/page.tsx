@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 
@@ -35,15 +35,9 @@ export default function CollectionConfigurePage() {
   const [blueprintOptions, setBlueprintOptions] = useState<MultiSelectOption[]>([])
   const [taxonomyOptions, setTaxonomyOptions] = useState<MultiSelectOption[]>([])
 
-  useEffect(() => {
-    fetchConfig()
-    fetchBlueprints()
-    fetchTaxonomies()
-  }, [handle])
-
-  async function fetchBlueprints() {
+  const fetchBlueprints = useCallback(async () => {
     try {
-      const res = await fetch('/cp/api/blueprints/collections')
+      const res = await fetch('/api/blueprints/collections')
       if (res.ok) {
         const json = await res.json()
         const options = (json.data ?? []).map((bp: { handle: string }) => ({
@@ -55,11 +49,11 @@ export default function CollectionConfigurePage() {
     } catch {
       // Silently fail
     }
-  }
+  }, [])
 
-  async function fetchTaxonomies() {
+  const fetchTaxonomies = useCallback(async () => {
     try {
-      const res = await fetch('/cp/api/taxonomies')
+      const res = await fetch('/api/taxonomies')
       if (res.ok) {
         const json = await res.json()
         const options = (json.data ?? []).map((t: { handle: string; title: string }) => ({
@@ -71,12 +65,12 @@ export default function CollectionConfigurePage() {
     } catch {
       // Silently fail
     }
-  }
+  }, [])
 
-  async function fetchConfig() {
+  const fetchConfig = useCallback(async () => {
     try {
       setLoading(true)
-      const res = await fetch(`/cp/api/collections/${handle}`)
+      const res = await fetch(`/api/collections/${handle}`)
       if (!res.ok) {
         throw new Error(`Failed to fetch configuration: ${res.status}`)
       }
@@ -87,7 +81,17 @@ export default function CollectionConfigurePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [handle])
+
+  useEffect(() => {
+    const load = window.setTimeout(() => {
+      void fetchConfig()
+      void fetchBlueprints()
+      void fetchTaxonomies()
+    }, 0)
+
+    return () => window.clearTimeout(load)
+  }, [fetchBlueprints, fetchConfig, fetchTaxonomies])
 
   async function handleSave() {
     if (!config) return
@@ -96,7 +100,7 @@ export default function CollectionConfigurePage() {
     setErrors({})
 
     try {
-      const res = await fetch(`/cp/api/collections/${handle}`, {
+      const res = await fetch(`/api/collections/${handle}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config),
@@ -216,100 +220,11 @@ export default function CollectionConfigurePage() {
           </CardContent>
         </Card>
 
-        {/* Dates & Behaviors */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Dates &amp; Behaviors</CardTitle>
-            <CardDescription>Configure date-based entry behaviors.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="dated">Dated</Label>
-                <p className="text-xs text-muted-foreground">
-                  Entries support publish date scheduling and expiration
-                </p>
-              </div>
-              <button
-                id="dated"
-                type="button"
-                role="switch"
-                aria-checked={config.dated ?? false}
-                onClick={() => setConfig((prev) => ({ ...prev!, dated: !prev!.dated }))}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                  config.dated ? 'bg-primary' : 'bg-muted'
-                }`}
-              >
-                <span
-                  className={`pointer-events-none block size-5 rounded-full bg-card shadow-lg ring-0 transition-transform ${
-                    config.dated ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-            {errors.dated && <p className="text-xs text-destructive">{errors.dated}</p>}
-          </CardContent>
-        </Card>
-
-        {/* Ordering */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Ordering</CardTitle>
-            <CardDescription>Control how entries are sorted.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label htmlFor="sortable">Sortable</Label>
-                <p className="text-xs text-muted-foreground">
-                  Enable drag-and-drop reordering of entries
-                </p>
-              </div>
-              <button
-                id="sortable"
-                type="button"
-                role="switch"
-                aria-checked={config.sortable ?? false}
-                onClick={() => setConfig((prev) => ({ ...prev!, sortable: !prev!.sortable }))}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
-                  config.sortable ? 'bg-primary' : 'bg-muted'
-                }`}
-              >
-                <span
-                  className={`pointer-events-none block size-5 rounded-full bg-card shadow-lg ring-0 transition-transform ${
-                    config.sortable ? 'translate-x-5' : 'translate-x-0'
-                  }`}
-                />
-              </button>
-            </div>
-            {errors.sortable && <p className="text-xs text-destructive">{errors.sortable}</p>}
-
-            <div className="space-y-2">
-              <Label htmlFor="sortDirection">Sort Direction</Label>
-              <select
-                id="sortDirection"
-                value={config.sortDirection ?? 'asc'}
-                onChange={(e) =>
-                  setConfig((prev) => ({
-                    ...prev!,
-                    sortDirection: e.target.value as 'asc' | 'desc',
-                  }))
-                }
-                className="h-8 w-full cursor-pointer rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <option value="asc">Ascending</option>
-                <option value="desc">Descending</option>
-              </select>
-              {errors.sortDirection && <p className="text-xs text-destructive">{errors.sortDirection}</p>}
-            </div>
-          </CardContent>
-        </Card>
-
         {/* Content Model */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Content Model</CardTitle>
-            <CardDescription>Assign blueprints to define entry structure.</CardDescription>
+            <CardDescription>Assign one blueprint to define entry structure.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {blueprintOptions.length === 0 ? (
@@ -323,17 +238,19 @@ export default function CollectionConfigurePage() {
                 </Link>
               </p>
             ) : (
-              <MultiSelect
-                label="Blueprints"
-                options={blueprintOptions}
-                selected={config.blueprints ?? []}
-                onChange={(selected) =>
-                  setConfig((prev) => ({ ...prev!, blueprints: selected }))
-                }
-                placeholder="Select blueprints..."
-              />
+              <div className="space-y-2">
+                <Label htmlFor="blueprint">Blueprint</Label>
+                <select
+                  id="blueprint"
+                  value={config.blueprint}
+                  onChange={(event) => setConfig((prev) => ({ ...prev!, blueprint: event.target.value }))}
+                  className="h-8 w-full cursor-pointer rounded-lg border border-input bg-transparent px-2.5 py-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                >
+                  {blueprintOptions.map((blueprint) => <option key={blueprint.value} value={blueprint.value}>{blueprint.label}</option>)}
+                </select>
+              </div>
             )}
-            {errors.blueprints && <p className="text-xs text-destructive">{errors.blueprints}</p>}
+            {errors.blueprint && <p className="text-xs text-destructive">{errors.blueprint}</p>}
           </CardContent>
         </Card>
 
@@ -361,86 +278,6 @@ export default function CollectionConfigurePage() {
                 <option value="published">Published</option>
               </select>
               {errors.defaultStatus && <p className="text-xs text-destructive">{errors.defaultStatus}</p>}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Redirects */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Redirects</CardTitle>
-            <CardDescription>Configure redirect behavior for entries.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="redirects-create">Create Redirect</Label>
-              <Input
-                id="redirects-create"
-                type="text"
-                value={config.redirects?.create ?? ''}
-                onChange={(e) =>
-                  setConfig((prev) => ({
-                    ...prev!,
-                    redirects: { ...prev!.redirects, create: e.target.value },
-                  }))
-                }
-                placeholder="/redirect/after/create"
-                aria-invalid={!!errors['redirects.create']}
-              />
-              {errors['redirects.create'] && <p className="text-xs text-destructive">{errors['redirects.create']}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="redirects-404">404 Redirect</Label>
-              <Input
-                id="redirects-404"
-                type="text"
-                value={config.redirects?.['404'] ?? ''}
-                onChange={(e) =>
-                  setConfig((prev) => ({
-                    ...prev!,
-                    redirects: { ...prev!.redirects, '404': e.target.value },
-                  }))
-                }
-                placeholder="/redirect/on/404"
-                aria-invalid={!!errors['redirects.404']}
-              />
-              {errors['redirects.404'] && <p className="text-xs text-destructive">{errors['redirects.404']}</p>}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Templates */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Templates</CardTitle>
-            <CardDescription>Default template and layout for rendering.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="template">Template</Label>
-              <Input
-                id="template"
-                type="text"
-                value={config.template ?? ''}
-                onChange={(e) => setConfig((prev) => ({ ...prev!, template: e.target.value }))}
-                placeholder="default"
-                aria-invalid={!!errors.template}
-              />
-              {errors.template && <p className="text-xs text-destructive">{errors.template}</p>}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="layout">Layout</Label>
-              <Input
-                id="layout"
-                type="text"
-                value={config.layout ?? ''}
-                onChange={(e) => setConfig((prev) => ({ ...prev!, layout: e.target.value }))}
-                placeholder="default"
-                aria-invalid={!!errors.layout}
-              />
-              {errors.layout && <p className="text-xs text-destructive">{errors.layout}</p>}
             </div>
           </CardContent>
         </Card>

@@ -4,11 +4,11 @@
  * which breaks moduleResolution: NodeNext.
  */
 declare module 'next/cache' {
-  export function unstable_cache<T extends (...args: any[]) => Promise<any>>(
-    cb: T,
+  export function unstable_cache<Args extends unknown[], Result>(
+    cb: (...args: Args) => Promise<Result>,
     keyParts?: string[],
     options?: { revalidate?: number | false; tags?: string[] }
-  ): T
+  ): (...args: Args) => Promise<Result>
 
   export function revalidateTag(tag: string): void
   export function revalidatePath(path: string, type?: 'layout' | 'page'): void

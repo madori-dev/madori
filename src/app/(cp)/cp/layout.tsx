@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useCapabilities } from '@/components/cp/use-capabilities'
 import {
   LayoutDashboard,
   FolderOpen,
@@ -13,6 +14,8 @@ import {
   Users,
   FileCode2,
   Layers,
+  GitBranch,
+  Search,
 } from 'lucide-react'
 
 import {
@@ -64,12 +67,14 @@ const navGroups = [
     items: [
       { label: 'Blueprints', href: '/cp/blueprints', icon: FileCode2 },
       { label: 'Fieldsets', href: '/cp/fieldsets', icon: Layers },
+      { label: 'SEO', href: '/cp/seo', icon: Search },
     ],
   },
   {
     label: 'System',
     items: [
       { label: 'Users', href: '/cp/users', icon: Users },
+      { label: 'Git', href: '/cp/git', icon: GitBranch },
     ],
   },
 ]
@@ -77,8 +82,11 @@ const navGroups = [
 // Flat list for header breadcrumb lookup
 const allNavItems = navGroups.flatMap((g) => g.items)
 
+const navCapability: Record<string, string> = { '/cp/collections': 'collections:view', '/cp/globals': 'globals:view', '/cp/navigation': 'navigation:view', '/cp/taxonomies': 'taxonomies:view', '/cp/assets': 'assets:view', '/cp/forms': 'forms:view', '/cp/users': 'users:view', '/cp/git': 'git:view', '/cp/seo': 'seo:view', '/cp/settings': 'settings:view' }
+
 export default function CPLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
+  const capabilities = useCapabilities()
 
   // Don't render sidebar on login page
   if (pathname === '/cp/login') {
@@ -111,12 +119,16 @@ export default function CPLayout({ children }: { children: React.ReactNode }) {
           </SidebarHeader>
 
           <SidebarContent>
-            {navGroups.map((group, groupIndex) => (
+            {navGroups.map((group, groupIndex) => {
+              // Fail closed until capability contract loads; API remains final authority.
+              const items = group.items.filter(item => !navCapability[item.href] || capabilities?.[navCapability[item.href]] === true)
+              if (items.length === 0) return null
+              return (
               <SidebarGroup key={groupIndex}>
                 {group.label && <SidebarGroupLabel>{group.label}</SidebarGroupLabel>}
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {group.items.map((item) => {
+                    {items.map((item) => {
                       const isActive =
                         item.href === '/cp'
                           ? pathname === '/cp'
@@ -138,7 +150,7 @@ export default function CPLayout({ children }: { children: React.ReactNode }) {
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
-            ))}
+              )})}
           </SidebarContent>
 
           <SidebarFooter>

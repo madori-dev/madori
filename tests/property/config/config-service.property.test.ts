@@ -27,11 +27,6 @@ const validPathArb = fc
   .stringMatching(/^\.?\/[a-z][a-z0-9\-_\/]{0,20}$/)
   .filter((s) => s.trim().length > 0)
 
-/** Arbitrary non-empty string for config string fields */
-const nonEmptyStringArb = fc
-  .stringMatching(/^[a-z][a-z0-9\-_\/]{0,20}$/)
-  .filter((s) => s.trim().length > 0)
-
 /** Arbitrary partial config update with valid path values */
 const validPartialConfigArb = fc.record(
   {

@@ -10,14 +10,17 @@ import { EmptyState } from '@/components/cp/EmptyState'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { DeleteDialog } from '@/components/cp/DeleteDialog'
+import { useCapabilities } from '@/components/cp/use-capabilities'
 
 interface Taxonomy {
   handle: string
   title: string
   blueprint?: string
+  route?: string
 }
 
 export default function TaxonomiesListPage() {
+  const capabilities = useCapabilities()
   const [taxonomies, setTaxonomies] = useState<Taxonomy[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -37,7 +40,7 @@ export default function TaxonomiesListPage() {
   }
 
   useEffect(() => {
-    fetchTaxonomies()
+    queueMicrotask(() => { void fetchTaxonomies() })
   }, [])
 
   async function handleDelete(handle: string) {
@@ -54,8 +57,8 @@ export default function TaxonomiesListPage() {
       <PageHeader
         title="Taxonomies"
         description="Manage your content taxonomies and terms."
-        createHref="/cp/taxonomies/create"
-        blueprintsHref="/cp/blueprints?type=taxonomies"
+        createHref={capabilities?.['taxonomies:create'] ? '/cp/taxonomies/create' : undefined}
+        blueprintsHref={capabilities?.['blueprints:view'] ? '/cp/blueprints?type=taxonomies' : undefined}
       />
 
       {taxonomies.length === 0 ? (
@@ -74,6 +77,7 @@ export default function TaxonomiesListPage() {
               >
                 <span className="text-sm font-medium truncate">{taxonomy.title}</span>
                 <span className="text-xs text-muted-foreground truncate">{taxonomy.handle}</span>
+                {taxonomy.route && <span className="text-xs text-muted-foreground truncate">{taxonomy.route}</span>}
               </Link>
               <div className="flex items-center gap-1 shrink-0">
                 <Button

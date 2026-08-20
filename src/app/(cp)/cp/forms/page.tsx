@@ -10,6 +10,8 @@ import { EmptyState } from '@/components/cp/EmptyState'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { DeleteDialog } from '@/components/cp/DeleteDialog'
+import { CapabilityGate } from '@/components/cp/CapabilityGate'
+import { useCapabilities } from '@/components/cp/use-capabilities'
 
 interface Form {
   handle: string
@@ -20,6 +22,7 @@ interface Form {
 }
 
 export default function FormsListPage() {
+  const capabilities = useCapabilities()
   const [forms, setForms] = useState<Form[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -39,7 +42,7 @@ export default function FormsListPage() {
   }
 
   useEffect(() => {
-    fetchForms()
+    queueMicrotask(() => { void fetchForms() })
   }, [])
 
   async function handleDelete(handle: string) {
@@ -56,8 +59,8 @@ export default function FormsListPage() {
       <PageHeader
         title="Forms"
         description="Manage form definitions and submissions."
-        createHref="/cp/forms/create"
-        blueprintsHref="/cp/blueprints?type=forms"
+        createHref={capabilities?.['forms:create'] ? '/cp/forms/create' : undefined}
+        blueprintsHref={capabilities?.['forms:edit'] ? '/cp/blueprints?type=forms' : undefined}
       />
 
       {forms.length === 0 ? (
@@ -78,19 +81,19 @@ export default function FormsListPage() {
                 <span className="text-xs text-muted-foreground truncate">{form.handle}</span>
               </Link>
               <div className="flex items-center gap-1 shrink-0">
-                <Button
+                <CapabilityGate resource="forms" action="edit"><Button
                   variant="ghost"
                   size="icon-sm"
                   nativeButton={false}
                   render={<Link href={`/cp/forms/${form.handle}/edit`} />}
                 >
                   <Pencil className="size-4" />
-                </Button>
-                <DeleteDialog
+                </Button></CapabilityGate>
+                <CapabilityGate resource="forms" action="delete"><DeleteDialog
                   title="Delete form"
                   description={`Are you sure you want to delete "${form.title}"? This cannot be undone.`}
                   onConfirm={() => handleDelete(form.handle)}
-                />
+                /></CapabilityGate>
               </div>
             </div>
           ))}

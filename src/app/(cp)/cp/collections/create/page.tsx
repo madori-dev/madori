@@ -66,6 +66,27 @@ export default function CreateCollectionPage() {
     setSubmitting(true)
 
     try {
+      const existingRes = await fetch(`/api/definitions/collections/${handle}`)
+      if (existingRes.ok) {
+        setError(`A collection with handle "${handle}" already exists`)
+        return
+      }
+      if (existingRes.status !== 404) {
+        throw new Error(`Failed to check collection handle: ${existingRes.status}`)
+      }
+
+      if (createNewBlueprint) {
+        const existingBlueprintRes = await fetch(`/api/blueprints/collections/${handle}`)
+        if (existingBlueprintRes.ok) {
+          setError(`A blueprint with handle "${handle}" already exists`)
+          return
+        }
+        if (existingBlueprintRes.status !== 404) {
+          throw new Error(`Failed to check blueprint handle: ${existingBlueprintRes.status}`)
+        }
+      }
+
+      let blueprintCreated = false
       // If creating a new blueprint, generate one first
       if (createNewBlueprint) {
         const emptyBlueprint = {
@@ -92,6 +113,7 @@ export default function CreateCollectionPage() {
           setError(json.error?.message || `Failed to create blueprint (${bpRes.status})`)
           return
         }
+        blueprintCreated = true
       }
 
       // Create the collection definition
@@ -107,6 +129,9 @@ export default function CreateCollectionPage() {
 
       if (!res.ok) {
         const json = await res.json().catch(() => ({ error: 'Failed to create collection' }))
+        if (blueprintCreated) {
+          await fetch(`/api/blueprints/collections/${handle}`, { method: 'DELETE' })
+        }
         setError(json.error?.message || json.error || `Failed to create collection (${res.status})`)
         return
       }

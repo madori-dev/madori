@@ -73,6 +73,12 @@ describe('Property 7: UserProvider error semantics', () => {
       fc.asyncProperty(
         userIdArb.chain((id) => createUserInputArb(id)),
         async (input) => {
+          // Each property run shares provider directory. Remove prior generated
+          // users so a repeated random id does not make first create fail.
+          for (const entry of await fs.readdir(tmpDir)) {
+            await fs.unlink(path.join(tmpDir, entry))
+          }
+
           // First create succeeds
           await provider.create(input)
 

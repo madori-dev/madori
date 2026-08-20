@@ -9,7 +9,7 @@ interface FieldComponentProps {
   error?: string[]
 }
 
-export function ToggleField({ value, onChange, field, error }: FieldComponentProps) {
+export function ToggleField({ value, onChange, field, error: _error }: FieldComponentProps) {
   const checked = Boolean(value)
 
   return (

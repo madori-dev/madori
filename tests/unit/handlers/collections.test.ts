@@ -2,9 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 import { createCollectionHandlers } from '@/app/(cp)/api/handlers/collections'
 import { _setAuthServiceForTesting, GET, PUT } from '@/app/(cp)/api/[...path]/route'
-import type { ConfigWriter } from '@/lib/config/writer'
 import type { MadoriContentEngine } from '@/lib/content/engine'
 import type { CollectionConfig } from '@/lib/config/schema'
+import type { DefinitionLoader } from '@/lib/definitions/loader'
+import { DefinitionNotFoundError } from '@/lib/definitions/errors'
 import type { User } from '@/lib/auth/types'
 import type { ResourceType, Action } from '@/lib/auth/permissions'
 
@@ -18,7 +19,7 @@ function makeRequest(method: string, body?: unknown): NextRequest {
 }
 
 describe('createCollectionHandlers', () => {
-  let configWriter: ConfigWriter
+  let definitionLoader: Pick<DefinitionLoader, 'load' | 'update'>
   let contentEngine: MadoriContentEngine
   let handlers: ReturnType<typeof createCollectionHandlers>
 
@@ -30,17 +31,17 @@ describe('createCollectionHandlers', () => {
   }
 
   beforeEach(() => {
-    configWriter = {
-      readCollectionConfig: vi.fn(),
-      writeCollectionConfig: vi.fn(),
+    definitionLoader = {
+      load: vi.fn(),
+      update: vi.fn(),
     }
-    contentEngine = {} as MadoriContentEngine
-    handlers = createCollectionHandlers(contentEngine, configWriter)
+    contentEngine = { invalidateCollectionsCache: vi.fn() } as unknown as MadoriContentEngine
+    handlers = createCollectionHandlers(contentEngine, definitionLoader as DefinitionLoader)
   })
 
   describe('handleGetCollection', () => {
     it('returns 404 when collection not found', async () => {
-      vi.mocked(configWriter.readCollectionConfig).mockResolvedValue(null)
+      vi.mocked(definitionLoader.load).mockRejectedValue(new DefinitionNotFoundError('collections', 'nonexistent'))
 
       const req = makeRequest('GET')
       const res = await handlers.handleGetCollection(req, 'nonexistent')
@@ -52,7 +53,7 @@ describe('createCollectionHandlers', () => {
     })
 
     it('returns config data when collection exists', async () => {
-      vi.mocked(configWriter.readCollectionConfig).mockResolvedValue(validConfig)
+      vi.mocked(definitionLoader.load).mockResolvedValue(validConfig)
 
       const req = makeRequest('GET')
       const res = await handlers.handleGetCollection(req, 'blog')
@@ -81,11 +82,11 @@ describe('createCollectionHandlers', () => {
 
       expect(res.status).toBe(422)
       expect(json.error.code).toBe('VALIDATION_ERROR')
-      expect(json.error.details).toHaveProperty('handle')
+      expect(json.error.details).toHaveProperty('blueprint')
     })
 
     it('returns 200 with validated config on success', async () => {
-      vi.mocked(configWriter.writeCollectionConfig).mockResolvedValue(undefined)
+      vi.mocked(definitionLoader.update).mockResolvedValue(undefined)
 
       const req = makeRequest('PUT', validConfig)
       const res = await handlers.handleUpdateCollection(req, 'blog')
@@ -93,12 +94,14 @@ describe('createCollectionHandlers', () => {
 
       expect(res.status).toBe(200)
       expect(json.data).toEqual(validConfig)
-      expect(configWriter.writeCollectionConfig).toHaveBeenCalledWith('blog', validConfig)
+      expect(definitionLoader.update).toHaveBeenCalledWith('collections', 'blog', {
+        title: 'Blog', blueprint: 'blog', route: '/blog/{slug}',
+      })
     })
 
-    it('returns 500 when config writer throws', async () => {
-      vi.mocked(configWriter.writeCollectionConfig).mockRejectedValue(
-        new Error('Cannot write to config file')
+    it('returns 500 when definition writer throws', async () => {
+      vi.mocked(definitionLoader.update).mockRejectedValue(
+        new Error('Cannot write collection definition')
       )
 
       const req = makeRequest('PUT', validConfig)
@@ -107,7 +110,7 @@ describe('createCollectionHandlers', () => {
 
       expect(res.status).toBe(500)
       expect(json.error.code).toBe('INTERNAL_ERROR')
-      expect(json.error.message).toContain('Cannot write to config file')
+      expect(json.error.message).toContain('Cannot write collection definition')
     })
 
     it('validates sortDirection only accepts asc or desc', async () => {

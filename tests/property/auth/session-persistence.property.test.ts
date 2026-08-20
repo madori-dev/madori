@@ -44,7 +44,12 @@ function createCapturingFs(): FileSystemAdapter & { written: Map<string, string>
     },
     async mkdir(): Promise<void> {},
     async copyFile(): Promise<void> {},
-    async moveFile(): Promise<void> {},
+    async moveFile(source: string, destination: string): Promise<void> {
+      const content = written.get(source)
+      if (content === undefined) throw new Error(`File not found: ${source}`)
+      written.delete(source)
+      written.set(destination, content)
+    },
   }
 }
 

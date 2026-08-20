@@ -190,3 +190,23 @@ describe('ContentStore', () => {
     })
   })
 })
+
+describe('ContentStore identifier containment', () => {
+  let tmpDir: string
+  let store: ContentStore
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'madori-content-store-safe-'))
+    store = new ContentStore(tmpDir)
+  })
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true })
+  })
+
+  it.each(['../outside', 'nested/path', '/absolute', '..\\outside', ''])('rejects unsafe content identifier %s', async (unsafeIdentifier) => {
+    await expect(store.updateGlobal(unsafeIdentifier, { title: 'unsafe' })).rejects.toThrow(/Invalid global handle/)
+    await expect(store.createTerm(unsafeIdentifier, 'term', {})).rejects.toThrow(/Invalid taxonomy handle/)
+    await expect(store.createSubmission(unsafeIdentifier, {})).rejects.toThrow(/Invalid form handle/)
+  })
+})

@@ -57,7 +57,7 @@ export function TaxonomyFieldOptions({ options, onChange }: FieldOptionsProps) {
   // Show validation once user has interacted (blurred) or on mount if already empty
   useEffect(() => {
     if (!taxonomy) {
-      setShowValidation(true)
+      queueMicrotask(() => setShowValidation(true))
     }
   }, [taxonomy])
 

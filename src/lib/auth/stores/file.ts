@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID, createHash } from 'crypto'
 import * as path from 'path'
 import type { FileSystemAdapter } from '@/lib/fs/adapter'
+import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
 import type { Session } from '../types'
 import type { SessionStore, SessionStoreFactory } from '../contracts/session-store'
 
@@ -14,11 +15,15 @@ interface SessionFileData {
 }
 
 export class FileSessionStore implements SessionStore {
+  private readonly atomicWriter: AtomicFileWriter
+
   constructor(
     private readonly sessionsDir: string,
     private readonly fs: FileSystemAdapter,
     private readonly sessionDurationMs: number = DEFAULT_SESSION_DURATION_MS
-  ) {}
+  ) {
+    this.atomicWriter = new AtomicFileWriter(fs)
+  }
 
   private sessionFilePath(token: string): string {
     const hash = createHash('sha256').update(token).digest('hex')
@@ -41,7 +46,8 @@ export class FileSessionStore implements SessionStore {
       expiresAt: session.expiresAt,
     }
 
-    await this.fs.writeFile(filePath, JSON.stringify(data, null, 2))
+    const result = await this.atomicWriter.writeFileAtomic(filePath, JSON.stringify(data, null, 2))
+    if (!result.success) throw result.error ?? new Error(`Could not create session: ${session.id}`)
     return session
   }
 

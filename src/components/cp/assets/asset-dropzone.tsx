@@ -8,10 +8,11 @@ import { cn } from '@/lib/utils'
 interface AssetDropzoneProps {
   onDrop: (files: File[]) => void
   uploading: boolean
+  enabled: boolean
   children: React.ReactNode
 }
 
-export function AssetDropzone({ onDrop, uploading, children }: AssetDropzoneProps) {
+export function AssetDropzone({ onDrop, uploading, enabled, children }: AssetDropzoneProps) {
   const handleDrop = useCallback(
     (acceptedFiles: File[]) => {
       onDrop(acceptedFiles)
@@ -23,7 +24,7 @@ export function AssetDropzone({ onDrop, uploading, children }: AssetDropzoneProp
     onDrop: handleDrop,
     noClick: true,
     noKeyboard: true,
-    disabled: uploading,
+    disabled: uploading || !enabled,
   })
 
   return (

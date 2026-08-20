@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Plus, Trash2, GripVertical } from 'lucide-react'
 import {
   DndContext,
@@ -94,24 +94,22 @@ export function GridField({ value, onChange, field, error }: FieldComponentProps
   const [activeId, setActiveId] = useState<string | null>(null)
 
   const columns = getColumns(field)
-  const rawRows: GridRow[] = Array.isArray(value) ? (value as GridRow[]) : []
+  const rawRows = useMemo<GridRow[]>(
+    () => (Array.isArray(value) ? (value as GridRow[]) : []),
+    [value]
+  )
 
   // Ensure all rows have stable IDs for dnd-kit
-  const rowsRef = useRef<GridRow[]>(rawRows)
   const rows = useMemo(() => {
-    const withIds = ensureRowIds(rawRows)
-    if (withIds !== rawRows) {
-      rowsRef.current = withIds
-    }
-    return withIds
+    return ensureRowIds(rawRows)
   }, [rawRows])
 
   // Sync IDs back to parent if they were missing
   useEffect(() => {
-    if (rowsRef.current !== rawRows && rowsRef.current.length > 0) {
-      onChange(rowsRef.current)
+    if (rows !== rawRows && rows.length > 0) {
+      onChange(rows)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [onChange, rawRows, rows])
 
   const rowIds = useMemo(() => rows.map((r) => r._id), [rows])
 

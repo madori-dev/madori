@@ -9,19 +9,26 @@ export interface FieldOptionsProps {
 }
 
 export function AssetFieldOptions({ options, onChange }: FieldOptionsProps) {
-  const maxFiles = options.max_files != null ? String(options.max_files) : ''
+  // Blank max_files is legacy single-asset behavior, so show that effective default.
+  const maxFiles = options.max_files != null ? String(options.max_files) : '1'
   const minFiles = options.min_files != null ? String(options.min_files) : ''
+  const effectiveMax = options.max_files == null ? 1 : Number(options.max_files)
+  const isSingle = effectiveMax === 1
 
   function handleMaxFilesChange(value: string) {
     const parsed = value === '' ? undefined : parseInt(value, 10)
+    const max = parsed != null && !isNaN(parsed) ? parsed : undefined
     onChange({
       ...options,
-      max_files: parsed != null && !isNaN(parsed) ? parsed : undefined,
+      max_files: max,
+      // A scalar asset cannot meaningfully require more than one file.
+      min_files: (max ?? 1) === 1 && Number(options.min_files) > 1 ? undefined : options.min_files,
     })
   }
 
   function handleMinFilesChange(value: string) {
     const parsed = value === '' ? undefined : parseInt(value, 10)
+    if (isSingle && parsed !== undefined && parsed > 1) return
     onChange({
       ...options,
       min_files: parsed != null && !isNaN(parsed) ? parsed : undefined,
@@ -40,11 +47,12 @@ export function AssetFieldOptions({ options, onChange }: FieldOptionsProps) {
           min={0}
           value={minFiles}
           onChange={(e) => handleMinFilesChange(e.target.value)}
-          placeholder="No minimum"
+          max={isSingle ? 1 : undefined}
+          placeholder={isSingle ? '0 or 1' : 'No minimum'}
           className="h-8 text-sm"
         />
         <p className="text-xs text-muted-foreground">
-          Minimum number of files required.
+          {isSingle ? 'Single assets may require at most one file.' : 'Minimum number of files required.'}
         </p>
       </div>
 
@@ -58,11 +66,11 @@ export function AssetFieldOptions({ options, onChange }: FieldOptionsProps) {
           min={0}
           value={maxFiles}
           onChange={(e) => handleMaxFilesChange(e.target.value)}
-          placeholder="No limit"
+          placeholder="1"
           className="h-8 text-sm"
         />
         <p className="text-xs text-muted-foreground">
-          Maximum number of files allowed. Leave empty for unlimited.
+          Omitted means one asset (legacy-compatible). Set 0 for unlimited, or 2+ for multiple assets.
         </p>
       </div>
     </div>

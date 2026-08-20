@@ -243,6 +243,26 @@ export function useAssetManager() {
     }
   }, [currentDirectory, fetchAssets])
 
+  const updateMetadata = useCallback(async (assetPath: string, update: Pick<Asset, 'alt' | 'filename'>) => {
+    try {
+      const res = await fetch(`/api/assets/${assetPath}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(update),
+      })
+      if (!res.ok) throw new Error(`Metadata update failed: ${res.status}`)
+      const { data } = await res.json() as { data: Asset }
+      await fetchAssets(currentDirectory || undefined)
+      toast.success('Asset details updated')
+      return data
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Metadata update failed'
+      setError(message)
+      toast.error(message)
+      return null
+    }
+  }, [currentDirectory, fetchAssets])
+
   const bulkMove = useCallback(async (paths: string[], destination: string) => {
     try {
       const res = await fetch('/api/assets/bulk-move', {
@@ -370,6 +390,7 @@ export function useAssetManager() {
     deleteAsset,
     bulkDelete,
     moveAsset,
+    updateMetadata,
     bulkMove,
     createDirectory,
     deleteDirectory,

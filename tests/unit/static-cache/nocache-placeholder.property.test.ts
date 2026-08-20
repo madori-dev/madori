@@ -16,12 +16,19 @@ vi.mock('next/headers', () => ({
 }))
 
 import { headers } from 'next/headers'
+import type { ReactElement, ReactNode } from 'react'
 import { NoCache } from '@/components/no-cache'
 
 const mockedHeaders = vi.mocked(headers)
 
 // Helper to render an async server component to its return value
-async function renderNoCache(section: string, children: React.ReactNode) {
+type PlaceholderProps = {
+  children?: ReactNode
+  'data-nocache-section'?: string
+  'data-nocache-endpoint'?: string
+}
+
+async function renderNoCache(section: string, children: ReactNode) {
   return NoCache({ section, children })
 }
 
@@ -39,14 +46,14 @@ describe('Property 18: NoCache placeholder generation', () => {
     await fc.assert(
       fc.asyncProperty(sectionId, async (section) => {
         mockedHeaders.mockResolvedValue(
-          new Headers({ 'x-madori-cached': '1' }) as any
+          new Headers({ 'x-madori-cached': '1' }) as unknown as Awaited<ReturnType<typeof headers>>
         )
 
         const result = await renderNoCache(section, null)
 
         // Result should be a React element representing a div
         expect(result).not.toBeNull()
-        const element = result as any
+        const element = result as unknown as ReactElement<PlaceholderProps>
         expect(element.type).toBe('div')
         expect(element.props['data-nocache-section']).toBe(section)
       }),
@@ -64,12 +71,12 @@ describe('Property 18: NoCache placeholder generation', () => {
     await fc.assert(
       fc.asyncProperty(sectionId, async (section) => {
         mockedHeaders.mockResolvedValue(
-          new Headers({ 'x-madori-cached': '1' }) as any
+          new Headers({ 'x-madori-cached': '1' }) as unknown as Awaited<ReturnType<typeof headers>>
         )
 
         const result = await renderNoCache(section, null)
 
-        const element = result as any
+        const element = result as unknown as ReactElement<PlaceholderProps>
         expect(element.type).toBe('div')
         expect(element.props['data-nocache-endpoint']).toBe(
           `/_nocache/${section}`
@@ -88,13 +95,13 @@ describe('Property 18: NoCache placeholder generation', () => {
   it('renders children when not serving from cache', async () => {
     await fc.assert(
       fc.asyncProperty(sectionId, async (section) => {
-        mockedHeaders.mockResolvedValue(new Headers() as any)
+        mockedHeaders.mockResolvedValue(new Headers() as unknown as Awaited<ReturnType<typeof headers>>)
 
         const children = 'dynamic content'
         const result = await renderNoCache(section, children)
 
         // Should be a React fragment wrapping the children
-        const element = result as any
+        const element = result as unknown as ReactElement<PlaceholderProps>
         // When not cached, it returns <>{children}</> which is a fragment
         // The element type should not be 'div'
         if (element && element.type === 'div') {

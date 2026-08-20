@@ -20,6 +20,7 @@ import { YamlField } from './YamlField'
 import { CodeField } from './CodeField'
 import { HiddenField } from './HiddenField'
 import { FieldError } from './FieldError'
+import { evaluateCondition } from '@/lib/blueprints/visibility'
 
 export interface FieldComponentProps {
   value: unknown
@@ -56,9 +57,13 @@ interface FieldRendererProps {
   value: unknown
   onChange: (value: unknown) => void
   error?: string[]
+  values?: Record<string, unknown>
 }
 
-export function FieldRenderer({ fieldDefinition, value, onChange, error }: FieldRendererProps) {
+export function FieldRenderer({ fieldDefinition, value, onChange, error, values }: FieldRendererProps) {
+  if (fieldDefinition.field.visibility && values && !evaluateCondition(fieldDefinition.field.visibility, values)) {
+    return null
+  }
   const Component = fieldComponentMap[fieldDefinition.field.type]
 
   if (!Component) {

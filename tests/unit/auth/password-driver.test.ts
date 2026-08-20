@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { PasswordAuthDriver, PasswordAuthDriverFactory } from '@/lib/auth/drivers/password'
 import { AuthenticationError } from '@/lib/errors'
 import { hashPassword } from '@/lib/auth/password'

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
+import type { NextRequest } from 'next/server'
 import * as fc from 'fast-check'
 import { handleStaticCache, getDriver } from '@/lib/static-cache/middleware'
 import type { StaticCacheConfig } from '@/lib/config/schema'
@@ -41,7 +42,7 @@ describe('Property 4: Cache bypass when disabled', () => {
         pathname,
         search,
       },
-    } as any
+    } as unknown as NextRequest
   }
 
   // Disabled config

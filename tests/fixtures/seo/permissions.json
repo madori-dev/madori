@@ -1,0 +1,12 @@
+{
+  "schema": "madori.seo.permissions.v1",
+  "permissions": ["view seo reports", "edit seo defaults", "manage seo redirects"],
+  "roles": {
+    "super": { "viewReports": true, "editDefaults": true, "manageRedirects": true, "editRecordSeo": true },
+    "seo-manager": { "viewReports": true, "editDefaults": true, "manageRedirects": true, "editRecordSeo": false },
+    "editor-with-entry-access": { "viewReports": false, "editDefaults": false, "manageRedirects": false, "editRecordSeo": true },
+    "editor-without-entry-access": { "viewReports": false, "editDefaults": false, "manageRedirects": false, "editRecordSeo": false },
+    "viewer": { "viewReports": false, "editDefaults": false, "manageRedirects": false, "editRecordSeo": false }
+  },
+  "rule": "Record SEO authorization follows existing subject edit authorization; no standalone permission escalates content access."
+}

@@ -178,3 +178,34 @@ describe('AssetOperations.getMetadata', () => {
     expect(meta).toEqual({ alt: 'My image' })
   })
 })
+
+describe('AssetOperations path containment', () => {
+  let assetOps: AssetOperations
+  let tmpDir: string
+  let outsidePath: string
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(process.cwd(), 'tests', '.tmp', 'assets-safe-'))
+    outsidePath = path.join(path.dirname(tmpDir), `outside-${path.basename(tmpDir)}.txt`)
+    assetOps = new AssetOperations(tmpDir, new NodeFileSystemAdapter())
+  })
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true })
+    await fs.rm(outsidePath, { force: true })
+  })
+
+  it.each(['../outside.txt', '/tmp/outside.txt', '..\\outside.txt', ''])('rejects escaping asset path %s', async (unsafePath) => {
+    await expect(assetOps.uploadAsset({ name: unsafePath, content: 'unsafe' })).rejects.toThrow(/assets directory|relative path|filename/i)
+    await expect(fs.access(outsidePath)).rejects.toThrow()
+  })
+
+  it('writes metadata sidecars atomically without leaving temporary files', async () => {
+    await fs.writeFile(path.join(tmpDir, 'hero.jpg'), 'image')
+    await assetOps.updateMetadata('hero.jpg', { alt: 'Hero' })
+
+    const files = await fs.readdir(tmpDir)
+    expect(files).toContain('hero.jpg.meta.yaml')
+    expect(files.some((file) => file.includes('.tmp.'))).toBe(false)
+  })
+})

@@ -44,7 +44,6 @@ function parseWxrStream(filePath: string): Promise<WxrItem[]> {
     let foundRss = false
     let foundChannel = false
     let inItem = false
-    let currentTag = ''
     let currentText = ''
     let categoryDomain = ''
 
@@ -67,7 +66,6 @@ function parseWxrStream(filePath: string): Promise<WxrItem[]> {
       }
 
       if (inItem) {
-        currentTag = name
         currentText = ''
 
         if (name === 'category') {
@@ -146,7 +144,6 @@ function parseWxrStream(filePath: string): Promise<WxrItem[]> {
           break
       }
 
-      currentTag = ''
       currentText = ''
     })
 

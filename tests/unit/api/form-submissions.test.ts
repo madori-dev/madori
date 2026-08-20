@@ -69,7 +69,6 @@ function createMockParser(): ContentParser {
       // Simple YAML parser for test data (uses JSON-serialized YAML for simplicity)
       const lines = content.split('\n')
       const result: Record<string, unknown> = {}
-      let currentKey = ''
       let dataObj: Record<string, unknown> = {}
       let inData = false
 

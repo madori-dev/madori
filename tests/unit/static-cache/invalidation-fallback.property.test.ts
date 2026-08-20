@@ -1,6 +1,6 @@
 // Property 10: Invalidation fallback to entry URL
 
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 import { ApplicationCacheDriver } from '@/lib/static-cache/drivers/application'
 import { InvalidationEngine } from '@/lib/static-cache/invalidation'

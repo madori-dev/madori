@@ -13,11 +13,15 @@ import {
   GraphQLInputFieldConfigMap,
   GraphQLOutputType,
   GraphQLInputType,
+  GraphQLScalarType,
+  Kind,
 } from 'graphql'
 import type { GraphQLFieldResolver } from 'graphql'
 import type { Blueprint, FieldDefinition } from '../blueprints/types'
+import { getAssetCardinality } from '../blueprints/asset-cardinality'
 import type { CollectionConfig } from '../config/schema'
 import { sanitiseFieldHandle } from './sanitise-field-handle'
+import { seoGraphQLMutationFields, seoGraphQLQueryFields } from '@/lib/seo/graphql/schema'
 
 /**
  * Provides resolved field definitions for a fieldset handle.
@@ -41,11 +45,15 @@ function fieldTypeToGraphQL(fieldDef: FieldDefinition, replicatorType?: GraphQLO
     case 'tiptap':
     case 'select':
     case 'date':
-    case 'asset':
     case 'yaml':
     case 'code':
     case 'hidden':
       return GraphQLString
+
+    case 'asset':
+      return getAssetCardinality(field.options).multiple
+        ? new GraphQLList(GraphQLString)
+        : GraphQLString
 
     case 'replicator':
     case 'grid':
@@ -126,6 +134,75 @@ const STANDARD_ENTRY_FIELDS: GraphQLFieldConfigMap<unknown, unknown> = {
   updatedAt: { type: GraphQLString },
 }
 
+/**
+ * JSON output scalar for content whose fields are defined by user blueprints.
+ * Input is intentionally unsupported: this schema currently exposes queries only.
+ */
+const GraphQLJSON = new GraphQLScalarType({
+  name: 'JSON',
+  description: 'Arbitrary JSON content.',
+  serialize(value: unknown) {
+    return value
+  },
+  parseValue() {
+    throw new Error('JSON input is not supported')
+  },
+  parseLiteral(ast) {
+    if (ast.kind === Kind.NULL) return null
+    throw new Error('JSON input is not supported')
+  },
+})
+
+const GlobalType = new GraphQLObjectType({
+  name: 'Global',
+  fields: {
+    handle: { type: new GraphQLNonNull(GraphQLString) },
+    title: { type: GraphQLString },
+    data: { type: new GraphQLNonNull(GraphQLJSON) },
+  },
+})
+
+const NavigationType = new GraphQLObjectType({
+  name: 'Navigation',
+  fields: {
+    handle: { type: new GraphQLNonNull(GraphQLString) },
+    items: { type: new GraphQLNonNull(GraphQLJSON) },
+  },
+})
+
+const AssetType = new GraphQLObjectType({
+  name: 'Asset',
+  fields: {
+    path: { type: new GraphQLNonNull(GraphQLString) },
+    filename: { type: new GraphQLNonNull(GraphQLString) },
+    extension: { type: new GraphQLNonNull(GraphQLString) },
+    size: { type: new GraphQLNonNull(GraphQLInt) },
+    mimeType: { type: new GraphQLNonNull(GraphQLString) },
+    modifiedAt: { type: new GraphQLNonNull(GraphQLString) },
+    alt: { type: GraphQLString },
+  },
+})
+
+const TaxonomyType = new GraphQLObjectType({
+  name: 'Taxonomy',
+  fields: {
+    handle: { type: new GraphQLNonNull(GraphQLString) },
+    title: { type: new GraphQLNonNull(GraphQLString) },
+    blueprint: { type: GraphQLString },
+  },
+})
+
+const TermType = new GraphQLObjectType({
+  name: 'Term',
+  fields: {
+    title: { type: new GraphQLNonNull(GraphQLString) },
+    slug: { type: new GraphQLNonNull(GraphQLString) },
+    taxonomy: { type: new GraphQLNonNull(GraphQLString) },
+    description: { type: GraphQLString },
+    data: { type: new GraphQLNonNull(GraphQLJSON) },
+  },
+})
+
 export interface SchemaGenerator {
   generateSchema(blueprints: Blueprint[], collections: CollectionConfig[], resolvers?: Record<string, unknown>): GraphQLSchema
   generateCollectionType(collection: CollectionConfig, blueprint: Blueprint): GraphQLObjectType
@@ -188,15 +265,15 @@ export class SchemaGeneratorImpl implements SchemaGenerator {
     // Add non-collection resolvers (taxonomies, globals, navigation, assets)
     if (resolvers) {
       const nonCollectionFields: Array<{ name: string; type: GraphQLOutputType; args?: Record<string, { type: GraphQLInputType }> }> = [
-        { name: 'taxonomies', type: new GraphQLList(GraphQLString) },
-        { name: 'taxonomy', type: GraphQLString, args: { handle: { type: new GraphQLNonNull(GraphQLString) } } },
-        { name: 'terms', type: new GraphQLList(GraphQLString), args: { taxonomy: { type: new GraphQLNonNull(GraphQLString) } } },
-        { name: 'globals', type: new GraphQLList(GraphQLString) },
-        { name: 'global', type: GraphQLString, args: { handle: { type: new GraphQLNonNull(GraphQLString) } } },
-        { name: 'navigations', type: new GraphQLList(GraphQLString) },
-        { name: 'navigation', type: GraphQLString, args: { handle: { type: new GraphQLNonNull(GraphQLString) } } },
-        { name: 'assets', type: new GraphQLList(GraphQLString), args: { directory: { type: GraphQLString } } },
-        { name: 'asset', type: GraphQLString, args: { path: { type: new GraphQLNonNull(GraphQLString) } } },
+        { name: 'taxonomies', type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(TaxonomyType))) },
+        { name: 'taxonomy', type: TaxonomyType, args: { handle: { type: new GraphQLNonNull(GraphQLString) } } },
+        { name: 'terms', type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(TermType))), args: { taxonomy: { type: new GraphQLNonNull(GraphQLString) } } },
+        { name: 'globals', type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(GlobalType))) },
+        { name: 'global', type: GlobalType, args: { handle: { type: new GraphQLNonNull(GraphQLString) } } },
+        { name: 'navigations', type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(NavigationType))) },
+        { name: 'navigation', type: NavigationType, args: { handle: { type: new GraphQLNonNull(GraphQLString) } } },
+        { name: 'assets', type: new GraphQLNonNull(new GraphQLList(new GraphQLNonNull(AssetType))), args: { directory: { type: GraphQLString } } },
+        { name: 'asset', type: AssetType, args: { path: { type: new GraphQLNonNull(GraphQLString) } } },
       ]
 
       for (const field of nonCollectionFields) {
@@ -208,6 +285,10 @@ export class SchemaGeneratorImpl implements SchemaGenerator {
           }
         }
       }
+
+      // SEO is opt-in: fields exist only when an explicitly wired, guarded SEO
+      // resolver port is supplied. This preserves existing public schemas.
+      Object.assign(queryFields, seoGraphQLQueryFields(resolvers))
     }
 
     // If no collections, add a placeholder to avoid empty schema error
@@ -220,7 +301,12 @@ export class SchemaGeneratorImpl implements SchemaGenerator {
       fields: queryFields,
     })
 
-    return new GraphQLSchema({ query: queryType })
+    const mutationFields = resolvers ? seoGraphQLMutationFields(resolvers) : {}
+    const mutationType = Object.keys(mutationFields).length > 0
+      ? new GraphQLObjectType({ name: 'Mutation', fields: mutationFields })
+      : undefined
+
+    return new GraphQLSchema({ query: queryType, mutation: mutationType })
   }
 
   /**
