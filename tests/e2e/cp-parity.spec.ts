@@ -21,6 +21,37 @@ async function signInScopedEditor(page: import('@playwright/test').Page) {
 
 test.describe.configure({ mode: 'serial' })
 
+test('admin login loads one authenticated capability contract and shows full navigation', async ({ page }) => {
+  const capabilityStatuses: number[] = []
+  page.on('response', response => {
+    if (new URL(response.url()).pathname === '/api/users/capabilities') capabilityStatuses.push(response.status())
+  })
+
+  await signIn(page)
+
+  for (const label of ['Collections', 'Globals', 'Navigation', 'Taxonomies', 'Assets', 'Forms', 'SEO', 'Users', 'Git']) {
+    await expect(page.getByRole('link', { name: label, exact: true })).toBeVisible()
+  }
+  expect(capabilityStatuses).toEqual([200])
+})
+
+test('capability contract retries a transient server failure', async ({ page }) => {
+  let attempts = 0
+  await page.route('**/api/users/capabilities', async route => {
+    attempts += 1
+    if (attempts === 1) {
+      await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: { message: 'Unavailable' } }) })
+      return
+    }
+    await route.continue()
+  })
+
+  await signIn(page)
+
+  await expect(page.getByRole('link', { name: 'Collections', exact: true })).toBeVisible()
+  expect(attempts).toBe(2)
+})
+
 test('public navigation resolves entry references to configured collection routes', async ({ page }) => {
   await page.goto('/')
   const link = page.getByRole('link', { name: 'E2E article' })
@@ -227,7 +258,7 @@ test('role editor creates, edits, and protects assigned role deletion', async ({
 test('scoped editor sees only permitted content and cannot mutate other resources', async ({ page }) => {
   await signInScopedEditor(page)
 
-  await expect(page.getByRole('link', { name: 'Collections' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Collections', exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Assets' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'Users' })).toHaveCount(0)
   await expect(page.getByRole('link', { name: 'SEO' })).toHaveCount(0)

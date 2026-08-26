@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useCapabilities } from '@/components/cp/use-capabilities'
+import { CapabilityProvider, useCapabilities } from '@/components/cp/use-capabilities'
 import {
   LayoutDashboard,
   FolderOpen,
@@ -86,12 +86,17 @@ const navCapability: Record<string, string> = { '/cp/collections': 'collections:
 
 export default function CPLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
-  const capabilities = useCapabilities()
 
   // Don't render sidebar on login page
   if (pathname === '/cp/login') {
     return <>{children}<Toaster /></>
   }
+
+  return <CapabilityProvider><CPFrame pathname={pathname}>{children}</CPFrame></CapabilityProvider>
+}
+
+function CPFrame({ children, pathname }: { children: React.ReactNode; pathname: string }) {
+  const capabilities = useCapabilities()
 
   return (
     <TooltipProvider>
