@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { FileSessionStore, FileSessionStoreFactory } from '@/lib/auth/stores/file'
 import { createHash } from 'crypto'
 import type { FileSystemAdapter } from '@/lib/fs/adapter'
+import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
+import * as fs from 'node:fs/promises'
+import * as os from 'node:os'
+import * as path from 'node:path'
 
 function createMockFs(): FileSystemAdapter {
   const store = new Map<string, string>()
@@ -39,6 +43,7 @@ function createMockFs(): FileSystemAdapter {
     }),
     listDirectories: vi.fn(async () => []),
     mkdir: vi.fn(async () => {}),
+    chmod: vi.fn(async () => {}),
     copyFile: vi.fn(async () => {}),
     moveFile: vi.fn(async (source: string, destination: string) => {
       const content = store.get(source)
@@ -113,8 +118,31 @@ describe('FileSessionStore', () => {
       const parsed = JSON.parse(writtenContent)
       expect(parsed.id).toBe(session.id)
       expect(parsed.userId).toBe('user-1')
-      expect(parsed.token).toBe(session.token)
+      expect(parsed.token).toBeUndefined()
       expect(parsed.expiresAt).toBe(session.expiresAt)
+      expect(mockFs.mkdir).toHaveBeenCalledWith('/tmp/sessions')
+      expect(mockFs.chmod).toHaveBeenCalledWith('/tmp/sessions', 0o700)
+      expect(mockFs.chmod).toHaveBeenCalledWith(expect.stringContaining('.tmp.'), 0o600)
+    })
+
+    it('does not persist the bearer token', async () => {
+      const session = await store.createSession('user-1')
+      const writtenContent = (mockFs.writeFile as ReturnType<typeof vi.fn>).mock.calls[0][1]
+      expect(writtenContent).not.toContain(session.token)
+    })
+
+    it('restricts the session directory and file on Node filesystems', async () => {
+      const root = await fs.mkdtemp(path.join(os.tmpdir(), 'madori-session-mode-'))
+      const sessionsDir = path.join(root, 'sessions')
+      try {
+        const nodeStore = new FileSessionStore(sessionsDir, new NodeFileSystemAdapter())
+        const session = await nodeStore.createSession('user-1')
+        const hash = createHash('sha256').update(session.token).digest('hex')
+        expect((await fs.stat(sessionsDir)).mode & 0o777).toBe(0o700)
+        expect((await fs.stat(path.join(sessionsDir, `${hash}.json`))).mode & 0o777).toBe(0o600)
+      } finally {
+        await fs.rm(root, { recursive: true, force: true })
+      }
     })
   })
 

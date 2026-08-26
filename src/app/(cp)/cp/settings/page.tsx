@@ -15,55 +15,21 @@ import { PageHeader } from '@/components/cp/PageHeader'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { CapabilityGate } from '@/components/cp/CapabilityGate'
-
-export interface RuntimeSettings {
-  site_name: string
-  locale: string
-  timezone: string
-}
-
-export interface MadoriConfigValues {
-  contentPath: string
-  resourcesPath: string
-  usersPath: string
-  assetsPath: string
-  cp: {
-    enabled: boolean
-    path: string
-  }
-  graphql: {
-    enabled: boolean
-    path: string
-    introspection: boolean
-  }
-  auth: {
-    driver: string
-    store: string
-    provider: string
-  }
-  sites: { handle: string; url: string; locale: string; default: boolean }[]
-  seo: {
-    enabled: boolean; metadata: boolean; structuredData: boolean; sitemap: boolean; robots: boolean; humans: boolean; reports: boolean; redirects: boolean; errorTracking: boolean; socialImages: boolean; allowExternalCanonicals: boolean
-    allowedRedirectOrigins: string[]; trailingSlash: 'always' | 'never' | 'preserve'; reportRetentionDays: number; reportSnapshotLimit: number; operationalStoragePath: string
-  }
-  git: {
-    enabled: boolean; automatic: boolean; push: boolean; debounceMs: number; trackedPaths: { root: string; exclude: string[] }[]; remote: string; branch?: string; author: { useAuthenticated: boolean; name: string; email: string }; commitPrefix: string; commandTimeoutMs: number; lockTimeoutMs: number; statePath: string
-  }
-  staticCache: {
-    enabled: boolean
-    driver: string
-    storagePath: string
-    exclude: string[]
-    queryStrings: string
-    warmOnInvalidate: boolean
-    invalidationRules: { trigger: string; urls: string[] }[]
-  }
-}
+import {
+  normalizeSettingsLines as parseLines,
+  SettingsConfigSchema,
+  updateSettingsConfig,
+  validateSettingsPaths,
+  validationErrorsByPath,
+  type RuntimeSettings,
+  type SettingsConfig,
+  type SettingsConfigPath,
+} from '@/lib/settings/model'
 
 export default function MadoriSettingsPage() {
   const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettings | null>(null)
-  const [configValues, setConfigValues] = useState<MadoriConfigValues | null>(null)
-  const [configForm, setConfigForm] = useState<MadoriConfigValues | null>(null)
+  const [configValues, setConfigValues] = useState<SettingsConfig | null>(null)
+  const [configForm, setConfigForm] = useState<SettingsConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [runtimeSaving, setRuntimeSaving] = useState(false)
@@ -95,7 +61,7 @@ export default function MadoriSettingsPage() {
 
         if (!cancelled) {
           setRuntimeSettings(runtimeJson.data as RuntimeSettings)
-          const config = configJson.data as MadoriConfigValues
+          const config = SettingsConfigSchema.parse(configJson.data)
           setConfigValues(config)
           setConfigForm(config)
         }
@@ -110,49 +76,12 @@ export default function MadoriSettingsPage() {
     return () => { cancelled = true }
   }, [])
 
-  function validatePaths(form: MadoriConfigValues): Record<string, string> {
-    const errors: Record<string, string> = {}
-    const pathFields = [
-      { key: 'contentPath', label: 'Content Path' },
-      { key: 'resourcesPath', label: 'Resources Path' },
-      { key: 'usersPath', label: 'Users Path' },
-      { key: 'assetsPath', label: 'Assets Path' },
-    ] as const
-
-    for (const { key, label } of pathFields) {
-      if (!form[key] || !form[key].trim()) {
-        errors[key] = `${label} cannot be empty`
-      }
-    }
-
-    if (!form.staticCache.storagePath || !form.staticCache.storagePath.trim()) {
-      errors['staticCache.storagePath'] = 'Storage Path cannot be empty'
-    }
-
-    return errors
-  }
-
-  function updateConfigField(path: string, value: string | boolean) {
+  function updateConfigField(path: SettingsConfigPath, value: unknown) {
     if (!configForm) return
 
     setConfigForm((prev) => {
       if (!prev) return prev
-      const updated = { ...prev }
-
-      if (path.includes('.')) {
-        const [section, field] = path.split('.') as [keyof MadoriConfigValues, string]
-        const sectionValue = updated[section]
-        if (typeof sectionValue === 'object' && sectionValue !== null) {
-          ;(updated as Record<string, unknown>)[section] = {
-            ...(sectionValue as Record<string, unknown>),
-            [field]: value,
-          }
-        }
-      } else {
-        ;(updated as Record<string, unknown>)[path] = value
-      }
-
-      return updated
+      return updateSettingsConfig(prev, path, value)
     })
 
     // Clear path error when user types
@@ -165,19 +94,13 @@ export default function MadoriSettingsPage() {
     }
   }
 
-  function updateObject(path: 'sites' | 'seo' | 'git' | 'auth', value: unknown) {
-    setConfigForm(current => current ? { ...current, [path]: value } : current)
-  }
-
-  function parseLines(value: string): string[] {
-    return value.split('\n').map(item => item.trim()).filter(Boolean)
-  }
+  const updateObject = updateConfigField
 
   async function handleConfigSave(e: React.FormEvent) {
     e.preventDefault()
     if (!configForm) return
 
-    const errors = validatePaths(configForm)
+    const errors = validationErrorsByPath(validateSettingsPaths(configForm))
     if (Object.keys(errors).length > 0) {
       setPathErrors(errors)
       toast.error('Please fix validation errors before saving')

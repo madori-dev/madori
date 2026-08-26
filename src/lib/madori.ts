@@ -20,7 +20,7 @@ import { MadoriContentEngine } from '@/lib/content/engine'
 import { ChokidarFileWatcher } from '@/lib/cache/watcher'
 import { ContentMutationBus } from '@/lib/mutations'
 import { GitSyncRuntime } from '@/lib/git'
-import { createContentEngineSeoPort, FileSeoAuditSnapshotStore, FileSeoRedirectRepository, FileSeoRepository, NotFoundObservationStore, SeoAuditEngine, SeoRuntime } from '@/lib/seo'
+import { createContentEngineSeoPort, FileSeoAuditSnapshotStore, FileSeoRedirectRepository, FileSeoRepository, NotFoundObservationStore, SeoApplication, SeoAuditEngine, SeoAuditRunner, SeoRuntime } from '@/lib/seo'
 import { createSiteContexts, type SiteContext } from '@/lib/sites'
 import { MadoriUrlResolver } from '@/lib/routing'
 import { PermissionChecker } from '@/lib/auth/permissions'
@@ -49,8 +49,7 @@ export interface MadoriInstance {
   seoRedirects: FileSeoRedirectRepository
   seoNotFound: NotFoundObservationStore
   seoRuntime: SeoRuntime
-  seoAudit: SeoAuditEngine
-  seoAuditSnapshots: FileSeoAuditSnapshotStore
+  seoApplication: SeoApplication
   sites: SiteContext[]
   urlResolver: MadoriUrlResolver
   authService: AuthService
@@ -170,6 +169,22 @@ async function initialize(): Promise<MadoriInstance> {
       },
     },
   })
+  const seoApplication = new SeoApplication({
+    runtime: seoRuntime,
+    redirects: seoRedirects,
+    observations: seoNotFound,
+    reportSnapshots: seoAuditSnapshots,
+    reportRunner: new SeoAuditRunner({
+      content: createContentEngineSeoPort(contentEngine),
+      runtime: seoRuntime,
+      redirects: seoRedirects,
+      engine: seoAudit,
+      snapshots: seoAuditSnapshots,
+      sites,
+    }),
+    reportsEnabled: config.seo.reports,
+    defaultSite: sites.find(site => site.isDefault)?.handle ?? sites[0]?.handle,
+  })
   mutationBus.onMutation((mutation) => {
     const { type, handle, id } = mutation.resource
     if (type === 'entry' && handle && id) seoRuntime.invalidate({ records: [`collection:${handle}:${id}`] })
@@ -275,8 +290,7 @@ async function initialize(): Promise<MadoriInstance> {
     seoRedirects,
     seoNotFound,
     seoRuntime,
-    seoAudit,
-    seoAuditSnapshots,
+    seoApplication,
     sites,
     urlResolver,
     authService,

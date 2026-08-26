@@ -6,7 +6,7 @@ import * as os from 'os'
 import { exportArchive } from '../archive-exporter.js'
 import { importArchive } from '../archive-importer.js'
 import { readManifest } from '../manifest.js'
-import extractZip from 'extract-zip'
+import { Open } from 'unzipper'
 
 /**
  * Property 7: Export/Import round-trip preserves content
@@ -261,7 +261,7 @@ describe('Export/Import Round-Trip — Property Tests', () => {
           const exportResult = await exportArchive({ outputPath: archivePath, format: 'zip' })
 
           // Extract archive to inspect manifest directly
-          await extractZip(exportResult.archivePath, { dir: extractDir })
+          await (await Open.file(exportResult.archivePath)).extract({ path: extractDir })
 
           // Manifest should be at madori-export/manifest.json inside the archive
           const manifestPath = path.join(extractDir, 'madori-export', 'manifest.json')

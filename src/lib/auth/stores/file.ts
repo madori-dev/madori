@@ -10,7 +10,6 @@ const DEFAULT_SESSION_DURATION_MS = 24 * 60 * 60 * 1000 // 24 hours
 interface SessionFileData {
   id: string
   userId: string
-  token: string
   expiresAt: string
 }
 
@@ -42,11 +41,12 @@ export class FileSessionStore implements SessionStore {
     const data: SessionFileData = {
       id: session.id,
       userId: session.userId,
-      token: session.token,
       expiresAt: session.expiresAt,
     }
 
-    const result = await this.atomicWriter.writeFileAtomic(filePath, JSON.stringify(data, null, 2))
+    await this.fs.mkdir(this.sessionsDir)
+    await this.restrictPath(this.sessionsDir, 0o700)
+    const result = await this.atomicWriter.writeFileAtomic(filePath, JSON.stringify(data, null, 2), { mode: 0o600 })
     if (!result.success) throw result.error ?? new Error(`Could not create session: ${session.id}`)
     return session
   }
@@ -57,9 +57,18 @@ export class FileSessionStore implements SessionStore {
     if (!exists) {
       return null
     }
+    await this.restrictPath(this.sessionsDir, 0o700)
+    await this.restrictPath(filePath)
 
-    const raw = await this.fs.readFile(filePath)
-    const data: SessionFileData = JSON.parse(raw)
+    let data: SessionFileData
+    try {
+      const parsed: unknown = JSON.parse(await this.fs.readFile(filePath))
+      if (!isSessionFileData(parsed)) throw new Error('Invalid session data')
+      data = parsed
+    } catch {
+      await this.fs.deleteFile(filePath)
+      return null
+    }
 
     const now = new Date()
     const expiresAt = new Date(data.expiresAt)
@@ -72,7 +81,7 @@ export class FileSessionStore implements SessionStore {
     return {
       id: data.id,
       userId: data.userId,
-      token: data.token,
+      token,
       expiresAt: data.expiresAt,
     }
   }
@@ -88,6 +97,7 @@ export class FileSessionStore implements SessionStore {
   async cleanExpired(): Promise<number> {
     const dirExists = await this.fs.exists(this.sessionsDir)
     if (!dirExists) return 0
+    await this.restrictPath(this.sessionsDir, 0o700)
 
     const files = await this.fs.listFiles(this.sessionsDir, '*.json')
     let removed = 0
@@ -95,9 +105,12 @@ export class FileSessionStore implements SessionStore {
 
     for (const file of files) {
       const filePath = path.join(this.sessionsDir, file)
+      await this.restrictPath(filePath)
       const raw = await this.fs.readFile(filePath)
       try {
-        const data: SessionFileData = JSON.parse(raw)
+        const parsed: unknown = JSON.parse(raw)
+        if (!isSessionFileData(parsed)) throw new Error('Invalid session data')
+        const data = parsed
         if (now >= new Date(data.expiresAt)) {
           await this.fs.deleteFile(filePath)
           removed++
@@ -111,6 +124,19 @@ export class FileSessionStore implements SessionStore {
 
     return removed
   }
+
+  private async restrictPath(filePath: string, mode = 0o600): Promise<void> {
+    if (this.fs.chmod) await this.fs.chmod(filePath, mode)
+  }
+}
+
+function isSessionFileData(value: unknown): value is SessionFileData {
+  if (!value || typeof value !== 'object') return false
+  const data = value as Record<string, unknown>
+  return typeof data.id === 'string'
+    && typeof data.userId === 'string'
+    && typeof data.expiresAt === 'string'
+    && Number.isFinite(Date.parse(data.expiresAt))
 }
 
 export class FileSessionStoreFactory implements SessionStoreFactory {

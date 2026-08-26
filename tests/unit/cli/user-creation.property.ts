@@ -22,7 +22,7 @@ const validEmail = fc
   )
   .map(([local, domain, tld]) => `${local}@${domain}.${tld}`)
 const validName = fc.string({ minLength: 1, maxLength: 50 }).filter((s) => s.trim().length > 0)
-const validPassword = fc.string({ minLength: 8, maxLength: 64 }).filter((s) => s.length >= 8)
+const validPassword = fc.string({ minLength: 12, maxLength: 64 })
 const validRoles = fc
   .subarray(['admin', 'editor'] as const, { minLength: 1 })
   .map((arr) => [...arr])

@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto'
 import { input, password, checkbox } from '@inquirer/prompts'
+import { validatePasswordPolicy } from '../../../../src/lib/auth/password-policy.js'
 
 export interface UserPromptResult {
   id: string
@@ -18,8 +19,8 @@ export function validateEmail(value: string): string | true {
 }
 
 export function validatePassword(value: string): string | true {
-  if (value.length < 8) return 'Password must be at least 8 characters'
-  return true
+  const result = validatePasswordPolicy(value)
+  return result.valid ? true : result.message
 }
 
 export async function promptForUserDetails(): Promise<UserPromptResult> {

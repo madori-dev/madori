@@ -1,8 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { Suspense, useEffect, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { Suspense, useCallback, useEffect, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { FileCode2 } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
@@ -26,6 +26,7 @@ const blueprintTypes: { type: BlueprintType; label: string; description: string 
 
 function BlueprintsListContent() {
   const capabilities = useCapabilities()
+  const router = useRouter()
   const searchParams = useSearchParams()
   const filterType = searchParams.get('type') as BlueprintType | null
 
@@ -37,13 +38,13 @@ function BlueprintsListContent() {
     ? blueprintTypes.filter(({ type }) => type === filterType)
     : blueprintTypes
 
-  async function fetchAll() {
+  const fetchAll = useCallback(async () => {
     try {
       const results: Record<string, Blueprint[]> = {}
       for (const { type } of blueprintTypes) {
         const res = await fetch(`/api/blueprints/${type}`)
         if (res.status === 401) {
-          window.location.href = '/cp/login'
+          router.replace('/cp/login')
           return
         }
         if (res.ok) {
@@ -59,11 +60,11 @@ function BlueprintsListContent() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [router])
 
   useEffect(() => {
     queueMicrotask(() => { void fetchAll() })
-  }, [])
+  }, [fetchAll])
 
   async function handleDelete(type: string, handle: string) {
     const res = await fetch(`/api/blueprints/${type}/${handle}`, { method: 'DELETE' })

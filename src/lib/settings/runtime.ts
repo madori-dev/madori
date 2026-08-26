@@ -4,12 +4,9 @@ import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
 import * as path from 'path'
 import type { ContentMutationReporter } from '@/lib/mutations'
 import { noOpContentMutationReporter } from '@/lib/mutations'
+import type { RuntimeSettings } from '@/lib/settings/model'
 
-export interface RuntimeSettings {
-  site_name: string
-  locale: string
-  timezone: string
-}
+export type { RuntimeSettings } from '@/lib/settings/model'
 
 const DEFAULT_SETTINGS: RuntimeSettings = {
   site_name: 'My Madori Site',

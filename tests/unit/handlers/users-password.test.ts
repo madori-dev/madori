@@ -66,7 +66,7 @@ describe('handleChangePassword', () => {
   it('returns 401 when current password is incorrect', async () => {
     const req = makeRequest('POST', {
       currentPassword: 'wrong-password',
-      newPassword: 'new-pass',
+      newPassword: 'new-secure-password',
     })
     const res = await handlers.handleChangePassword(req, 'user1')
     const json = await res.json()
@@ -96,7 +96,7 @@ describe('handleChangePassword', () => {
 
     const req = makeRequest('POST', {
       currentPassword: 'any',
-      newPassword: 'new-pass',
+      newPassword: 'new-secure-password',
     })
     const res = await handlers.handleChangePassword(req, 'unknown-id')
     const json = await res.json()
@@ -139,6 +139,13 @@ describe('handleCreateUser input validation', () => {
     const response = await handlers.handleCreateUser(makeRequest('POST', baseUser))
     expect(response.status).toBe(201)
     expect(auth.createUser).toHaveBeenCalledWith(baseUser)
+  })
+
+  it('rejects passwords outside shared policy before create', async () => {
+    const { auth, handlers } = setup()
+    const response = await handlers.handleCreateUser(makeRequest('POST', { ...baseUser, password: 'short' }))
+    expect(response.status).toBe(422)
+    expect(auth.createUser).not.toHaveBeenCalled()
   })
 })
 

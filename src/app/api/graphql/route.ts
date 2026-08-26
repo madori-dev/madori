@@ -25,7 +25,6 @@ import type { FieldDefinition } from '@/lib/blueprints/types'
 import type { GraphQLSchema } from 'graphql'
 import { getMadori } from '@/lib/madori'
 import type { SeoGraphQLPort } from '@/lib/seo/graphql'
-import type { SeoAuditReport } from '@/lib/seo/audit'
 
 /**
  * Lazily initialized yoga instance.
@@ -113,22 +112,18 @@ async function getYoga() {
     getSite: site => madori.seoRepository.getSite(site),
     getSection: (section, handle) => madori.seoRepository.getSection(section, handle),
     async resolve(input) {
-      return (await madori.seoRuntime.resolveEntry(input))?.resolved ?? null
+      return (await madori.seoApplication.resolve({ type: 'entry', ...input }))?.resolved ?? null
     },
     async resolveTerm(input) {
-      return (await madori.seoRuntime.resolveTerm(input))?.resolved ?? null
+      return (await madori.seoApplication.resolve({ type: 'term', ...input }))?.resolved ?? null
     },
     async preview(input) {
-      return (await madori.seoRuntime.previewEntry(input, { isAuthenticated: () => true }))?.resolved ?? null
+      return (await madori.seoApplication.preview({ type: 'entry', ...input }))?.resolved ?? null
     },
     async previewTerm(input) {
-      return (await madori.seoRuntime.previewTerm(input, { isAuthenticated: () => true }))?.resolved ?? null
+      return (await madori.seoApplication.preview({ type: 'term', ...input }))?.resolved ?? null
     },
-    ...(config.seo.reports ? { async getReport(id?: string, site?: string) {
-      const snapshots = await madori.seoAuditSnapshots.list()
-      const report = (id ? snapshots.find(snapshot => snapshot.id === id) : snapshots[0])?.report ?? null
-      return report && site ? filterSeoReport(report, site) : report
-    } } : {}),
+    ...(config.seo.reports ? { getReport: (id?: string, site?: string) => madori.seoApplication.getReport({ id, site }) } : {}),
     ...(config.seo.redirects ? {
       listRedirects: (site?: string) => madori.seoRedirects.list(site),
       getRedirect: (id: string) => madori.seoRedirects.get(id),
@@ -218,18 +213,6 @@ async function getYoga() {
   })
 
   return yogaInstance
-}
-
-function filterSeoReport(report: SeoAuditReport, site: string): SeoAuditReport {
-  const issues = report.issues.filter(issue => issue.subject.site === site)
-  const summary = { total: issues.length, info: 0, warning: 0, error: 0, critical: 0 }
-  const penalties = { info: 1, warning: 4, error: 10, critical: 20 }
-  let penalty = 0
-  for (const issue of issues) {
-    summary[issue.severity]++
-    penalty += penalties[issue.severity]
-  }
-  return { ...report, score: Math.max(0, 100 - penalty), summary, issues }
 }
 
 /**

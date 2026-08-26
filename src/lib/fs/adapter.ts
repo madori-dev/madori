@@ -13,6 +13,8 @@ export interface FileSystemAdapter {
   listFiles(directory: string, pattern?: string): Promise<string[]>
   listDirectories(directory: string): Promise<string[]>
   mkdir(path: string): Promise<void>
+  /** Set POSIX permissions. Optional for adapters without permission semantics. */
+  chmod?(path: string, mode: number): Promise<void>
   copyFile(src: string, dest: string): Promise<void>
   moveFile(src: string, dest: string): Promise<void>
   /** Optional physical path resolution for callers that must reject symlink escapes. */
@@ -98,6 +100,14 @@ export class NodeFileSystemAdapter implements FileSystemAdapter {
       await fs.mkdir(dirPath, { recursive: true })
     } catch (error) {
       throw new FileSystemError('mkdir', dirPath, error instanceof Error ? error : undefined)
+    }
+  }
+
+  async chmod(filePath: string, mode: number): Promise<void> {
+    try {
+      await fs.chmod(filePath, mode)
+    } catch (error) {
+      throw new FileSystemError('chmod', filePath, error instanceof Error ? error : undefined)
     }
   }
 

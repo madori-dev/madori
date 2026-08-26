@@ -1,7 +1,9 @@
 import * as fs from 'fs/promises'
+import { createWriteStream } from 'fs'
 import * as path from 'path'
 import * as os from 'os'
-import extractZip from 'extract-zip'
+import { pipeline } from 'stream/promises'
+import { Open } from 'unzipper'
 import * as tar from 'tar'
 import { select } from '@inquirer/prompts'
 import { readManifest } from './manifest.js'
@@ -105,10 +107,53 @@ function detectFormat(archivePath: string): ArchiveFormat {
  */
 async function extractArchive(archivePath: string, targetDir: string, format: ArchiveFormat): Promise<void> {
   if (format === 'zip') {
-    await extractZip(archivePath, { dir: targetDir })
+    const archive = await Open.file(archivePath)
+    const extractionRoot = path.resolve(targetDir)
+
+    for (const entry of archive.files) {
+      const destination = resolveZipEntryDestination(
+        entry.path,
+        extractionRoot,
+        entry.externalFileAttributes,
+      )
+
+      if (entry.type === 'Directory') {
+        await fs.mkdir(destination, { recursive: true })
+        continue
+      }
+
+      await fs.mkdir(path.dirname(destination), { recursive: true })
+      await pipeline(entry.stream(), createWriteStream(destination, { flags: 'wx' }))
+    }
   } else {
     await tar.extract({ file: archivePath, cwd: targetDir })
   }
+}
+
+export function resolveZipEntryDestination(
+  entryPath: string,
+  targetDir: string,
+  externalFileAttributes = 0,
+): string {
+  const normalizedPath = entryPath.replaceAll('\\', '/')
+  const segments = normalizedPath.split('/').filter(Boolean)
+  const extractionRoot = path.resolve(targetDir)
+  const destination = path.resolve(extractionRoot, ...segments)
+  const unixMode = externalFileAttributes >>> 16
+
+  if (
+    normalizedPath.includes('\0')
+    || path.posix.isAbsolute(normalizedPath)
+    || /^[A-Za-z]:\//.test(normalizedPath)
+    || segments.length === 0
+    || segments.includes('..')
+    || !destination.startsWith(`${extractionRoot}${path.sep}`)
+    || (unixMode & 0o170000) === 0o120000
+  ) {
+    throw new Error(`Unsafe ZIP entry: ${entryPath}`)
+  }
+
+  return destination
 }
 
 /**

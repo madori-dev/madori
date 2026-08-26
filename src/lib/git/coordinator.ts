@@ -176,10 +176,10 @@ export class GitSyncCoordinator {
         const [author, ...coAuthors] = work.authors.length ? work.authors : this.options.botAuthor ? [this.options.botAuthor] : []
         commit = await commitStaged(root, message, author, coAuthors, this.options.commandTimeoutMs, work.paths)
       }
-      let pendingPush = work.pushPending
+      const pendingPush = work.pushPending
       let pushed = false
       if (this.options.push && (commit || pendingPush)) {
-        try { await pushRepository(root, this.options.remote, this.options.branch, this.options.commandTimeoutMs); pendingPush = false; pushed = true }
+        try { await pushRepository(root, this.options.remote, this.options.branch, this.options.commandTimeoutMs); pushed = true }
         catch (error) {
           work.pushPending = true
           // Commit is durable. Clear its mutation payload so retry performs a push only;

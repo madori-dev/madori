@@ -46,9 +46,9 @@ Your site is now running at [http://localhost:3000](http://localhost:3000).
 Visit [http://localhost:3000/cp](http://localhost:3000/cp) and sign in with:
 
 - **Email:** `admin@example.com`
-- **Password:** `password`
+- **Password:** randomly generated and printed once during setup
 
-> ⚠️ Change the default password after your first login.
+> ⚠️ Store the generated password securely and change it after your first login.
 
 ## What's in your project
 

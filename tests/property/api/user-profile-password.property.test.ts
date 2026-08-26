@@ -39,10 +39,9 @@ const validEmailArb = fc
   )
   .map(([local, domain, tld]) => `${local}@${domain}.${tld}`)
 
-/** Arbitrary password: non-empty string */
+/** Arbitrary policy-compliant password */
 const passwordArb = fc
-  .string({ minLength: 1, maxLength: 32 })
-  .filter((s) => s.trim().length > 0)
+  .string({ minLength: 12, maxLength: 32 })
 
 /** Arbitrary non-email string: missing @, empty local, or no domain dot */
 const invalidEmailArb = fc.oneof(

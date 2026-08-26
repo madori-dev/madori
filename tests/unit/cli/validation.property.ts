@@ -51,11 +51,11 @@ describe('Property 4: Email validation', () => {
 describe('Property 5: Password length validation', () => {
   /**
    * **Validates: Requirements 6.4**
-   * validatePassword accepts iff length >= 8
+   * validatePassword accepts iff length is between 12 and 128 Unicode code points
    */
 
-  it('accepts any string with length >= 8', () => {
-    const longEnough = fc.string({ minLength: 8 })
+  it('accepts any string with length between 12 and 128', () => {
+    const longEnough = fc.string({ minLength: 12, maxLength: 128 })
 
     fc.assert(
       fc.property(longEnough, (pwd) => {
@@ -64,11 +64,14 @@ describe('Property 5: Password length validation', () => {
     )
   })
 
-  it('rejects any string with length < 8', () => {
-    const tooShort = fc.string({ minLength: 0, maxLength: 7 })
+  it('rejects any string with length below 12 or above 128', () => {
+    const invalidLength = fc.oneof(
+      fc.string({ minLength: 0, maxLength: 11 }),
+      fc.string({ minLength: 129, maxLength: 150 }),
+    )
 
     fc.assert(
-      fc.property(tooShort, (pwd) => {
+      fc.property(invalidLength, (pwd) => {
         expect(validatePassword(pwd)).not.toBe(true)
       })
     )

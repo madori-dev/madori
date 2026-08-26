@@ -25,8 +25,8 @@ const validEmail = fc
   )
   .map(([local, domain, tld]) => `${local}@${domain}.${tld}`)
 
-// Generator for valid passwords (>= 8 chars)
-const validPassword = fc.string({ minLength: 8, maxLength: 20 })
+// Generator for valid passwords
+const validPassword = fc.string({ minLength: 12, maxLength: 20 })
 
 // Generator for valid names
 const validName = fc.string({ minLength: 1, maxLength: 30 }).filter((s) => s.trim().length > 0)

@@ -51,7 +51,7 @@ function createUserInputArb(id: string) {
     id: fc.constant(id),
     email: fc.emailAddress(),
     name: fc.string({ minLength: 1, maxLength: 30 }),
-    password: fc.string({ minLength: 4, maxLength: 30 }),
+    password: fc.string({ minLength: 12, maxLength: 30 }),
     roles: fc.array(fc.constantFrom('admin', 'editor', 'viewer'), { minLength: 1, maxLength: 3 }),
   })
 }

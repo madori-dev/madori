@@ -51,15 +51,21 @@ const FieldDefinitionSchema = z.object({
   field: FieldConfigSchema,
 })
 
+const FieldsetImportSchema = z.object({
+  import: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]*$/, 'Invalid fieldset import handle'),
+})
+
+const FieldLayoutEntrySchema = z.union([FieldDefinitionSchema, FieldsetImportSchema])
+
 const BlueprintSectionSchema = z.object({
   display: z.string().optional(),
-  fields: z.array(FieldDefinitionSchema),
+  fields: z.array(FieldLayoutEntrySchema),
 })
 
 const BlueprintTabSchema = z.object({
   display: z.string().optional(),
   sections: z.record(z.string(), BlueprintSectionSchema).optional(),
-  fields: z.array(FieldDefinitionSchema).default([]),
+  fields: z.array(FieldLayoutEntrySchema).default([]),
 })
 
 const BlueprintSchema = z.object({
@@ -72,6 +78,8 @@ export {
   VisibilityConditionSchema,
   FieldConfigSchema,
   FieldDefinitionSchema,
+  FieldsetImportSchema,
+  FieldLayoutEntrySchema,
   BlueprintSectionSchema,
   BlueprintTabSchema,
   BlueprintSchema,
@@ -124,18 +132,22 @@ export class BlueprintValidator {
 
     // Check for unknown validation rule names
     for (const [tabKey, tab] of Object.entries(data.tabs)) {
-      this.checkFieldRules(tab.fields, `tabs.${tabKey}.fields`, errors)
-      this.checkAssetCardinality(tab.fields, `tabs.${tabKey}.fields`, errors)
+      const fields = tab.fields.filter((entry): entry is z.infer<typeof FieldDefinitionSchema> => 'field' in entry)
+      this.checkFieldRules(fields, `tabs.${tabKey}.fields`, errors)
+      this.checkAssetCardinality(fields, `tabs.${tabKey}.fields`, errors)
 
       if (tab.sections) {
         for (const [secKey, section] of Object.entries(tab.sections)) {
+          const sectionFields = section.fields.filter(
+            (entry): entry is z.infer<typeof FieldDefinitionSchema> => 'field' in entry
+          )
           this.checkFieldRules(
-            section.fields,
+            sectionFields,
             `tabs.${tabKey}.sections.${secKey}.fields`,
             errors
           )
           this.checkAssetCardinality(
-            section.fields,
+            sectionFields,
             `tabs.${tabKey}.sections.${secKey}.fields`,
             errors
           )
@@ -346,6 +358,23 @@ export class BlueprintValidator {
   /** Map a Zod issue to a BlueprintValidationError. */
   private mapZodIssue(issue: z.core.$ZodIssue, path: string): BlueprintValidationError {
     // Determine error code based on the Zod issue
+    if (issue.code === 'invalid_union') {
+      const alternatives = (issue as unknown as {
+        errors: Array<Array<{ code: string; path: PropertyKey[]; message: string }>>
+      }).errors.flat()
+      const invalidFieldType = alternatives.find((alternative) =>
+        alternative.code === 'invalid_value'
+        && alternative.path.at(-2) === 'field'
+        && alternative.path.at(-1) === 'type'
+      )
+      if (invalidFieldType) {
+        return {
+          path: `${path}.field.type`,
+          message: invalidFieldType.message,
+          code: 'INVALID_TYPE',
+        }
+      }
+    }
     if (issue.code === 'invalid_value' || (issue as { code: string }).code === 'invalid_enum_value') {
       // Check if it's a field type issue by path
       if (path.includes('.field.type')) {

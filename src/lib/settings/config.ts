@@ -3,13 +3,19 @@ import path from 'node:path'
 import { MadoriConfigSchema, type MadoriConfig, type MadoriConfigInput } from '@/lib/config/schema'
 import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
 import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
+import {
+  parseSettingsConfigEdit,
+  projectSettingsConfig,
+  validateSettingsPaths,
+  type SettingsConfig,
+} from '@/lib/settings/model'
 
 export interface ValidationResult {
   valid: boolean
   errors: { field: string; message: string }[]
 }
 
-const PATH_FIELDS = ['contentPath', 'resourcesPath', 'usersPath', 'assetsPath'] as const
+let configImportRevision = 0
 
 /**
  * Service for reading, writing, and validating the madori.config.ts file.
@@ -26,26 +32,22 @@ export class MadoriConfigService {
    */
   async read(): Promise<MadoriConfig> {
     const absolutePath = path.resolve(this.configPath)
-    const cacheBuster = `?t=${Date.now()}`
+    const cacheBuster = `?revision=${++configImportRevision}`
     const importedConfig = await import(/* webpackIgnore: true */ `${absolutePath}${cacheBuster}`)
     const rawConfig = importedConfig.default ?? importedConfig
     return MadoriConfigSchema.parse(rawConfig)
   }
 
   /** Browser-safe view. Auth adapter options can contain credentials. */
-  async readPublic(): Promise<Omit<MadoriConfig, 'auth'> & { auth: Pick<MadoriConfig['auth'], 'driver' | 'store' | 'provider'> }> {
-    const config = await this.read()
-    return {
-      ...config,
-      auth: { driver: config.auth.driver, store: config.auth.store, provider: config.auth.provider },
-    }
+  async readPublic(): Promise<SettingsConfig> {
+    return projectSettingsConfig(await this.read())
   }
 
   /**
    * Writes a partial config update to madori.config.ts, preserving the
    * import statement and export default structure.
    */
-  async write(config: Partial<MadoriConfigInput>): Promise<void> {
+  async write(config: unknown): Promise<void> {
     const absolutePath = path.resolve(this.configPath)
 
     // Read the current file content
@@ -53,7 +55,8 @@ export class MadoriConfigService {
 
     // Read the existing config to merge with updates
     const existing = await this.read()
-    const merged = deepMerge(existing, config)
+    const edit = parseSettingsConfigEdit(config)
+    const merged = deepMerge(existing, edit)
 
     // Validate merged configuration, not only submitted fields. This keeps
     // partial writes from producing a config that cannot be loaded at runtime.
@@ -75,35 +78,32 @@ export class MadoriConfigService {
    * path values for contentPath, resourcesPath, usersPath, assetsPath.
    */
   async validate(config: Partial<MadoriConfigInput>): Promise<ValidationResult> {
-    const errors: { field: string; message: string }[] = []
-    for (const field of PATH_FIELDS) {
-      if (field in config) {
-        const value = (config as Record<string, unknown>)[field]
-        if (typeof value === 'string' && value.trim() === '') {
-          errors.push({ field, message: 'Path value must not be empty or whitespace-only' })
-        }
-      }
-    }
-    return { valid: errors.length === 0, errors }
+    return validateSettingsPaths(config)
   }
 
   /** Validate update against complete config which will be persisted. */
-  async validateForWrite(config: Partial<MadoriConfigInput>): Promise<ValidationResult> {
-    return validateConfig(deepMerge(await this.read(), config))
+  async validateForWrite(config: unknown): Promise<ValidationResult> {
+    let edit
+    try {
+      edit = parseSettingsConfigEdit(config)
+    } catch (error) {
+      const issues = error && typeof error === 'object' && 'issues' in error
+        ? (error as { issues: { path: PropertyKey[]; message: string }[] }).issues
+        : [{ path: [] as PropertyKey[], message: 'Invalid settings configuration' }]
+      return {
+        valid: false,
+        errors: issues.map((issue) => ({
+          field: issue.path.map(String).join('.') || 'config',
+          message: issue.message,
+        })),
+      }
+    }
+    return validateConfig(deepMerge(await this.read(), edit))
   }
 }
 
 function validateConfig(config: Record<string, unknown>): ValidationResult {
-  const errors: { field: string; message: string }[] = []
-
-  for (const field of PATH_FIELDS) {
-    if (field in config) {
-      const value = config[field]
-      if (typeof value === 'string' && value.trim() === '') {
-        errors.push({ field, message: 'Path value must not be empty or whitespace-only' })
-      }
-    }
-  }
+  const errors = [...validateSettingsPaths(config).errors]
 
   // App Router route files are statically located. Accepting an arbitrary
   // configured path here would persist a value that cannot receive requests.
@@ -298,7 +298,7 @@ function escapeString(str: string): string {
  */
 function deepMerge<T extends Record<string, unknown>>(
   target: T,
-  source: Partial<T>
+  source: Record<string, unknown>
 ): T {
   const result = { ...target } as Record<string, unknown>
 

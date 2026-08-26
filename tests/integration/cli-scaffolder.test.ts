@@ -47,6 +47,7 @@ describe('CLI Scaffolder Integration', () => {
       'resources/collections',
       'users',
       'public/assets',
+      'storage/seo',
       'src/app',
     ]
 
@@ -122,6 +123,8 @@ describe('CLI Scaffolder Integration', () => {
     expect(user.password_hash).toBeDefined()
     expect(user.password_hash).toContain('scrypt:')
     expect(user.roles).toContain('admin')
+    expect(fs.statSync(usersDir).mode & 0o777).toBe(0o700)
+    expect(fs.statSync(path.join(usersDir, userFiles[0])).mode & 0o777).toBe(0o600)
   })
 
   it('generates sample blog entry', () => {
