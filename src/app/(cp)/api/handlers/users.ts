@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { ComposedAuthService } from '@/lib/auth/composer'
 import { NotFoundError, ConflictError } from '@/lib/errors'
 import { verifyPassword } from '@/lib/auth/password'
+import { validatePasswordPolicy } from '@/lib/auth/password-policy'
 import { assertSafeUserId } from '@/lib/auth/providers/yaml'
 
 /**
@@ -100,6 +101,13 @@ export function createUserHandlers(
         { status: 422 }
       )
     }
+    const passwordValidation = validatePasswordPolicy(password)
+    if (!passwordValidation.valid) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: passwordValidation.message } },
+        { status: 422 }
+      )
+    }
     if (roles !== undefined && (!Array.isArray(roles) || roles.some((role) => !isValidRoleHandle(role)))) {
       return NextResponse.json(
         { error: { code: 'VALIDATION_ERROR', message: 'roles must be an array of role handles' } },
@@ -144,6 +152,16 @@ export function createUserHandlers(
     }
     const body = await request.json()
     const { email, name, password, roles, theme } = body
+
+    if (password !== undefined) {
+      const passwordValidation = validatePasswordPolicy(password)
+      if (!passwordValidation.valid) {
+        return NextResponse.json(
+          { error: { code: 'VALIDATION_ERROR', message: passwordValidation.message } },
+          { status: 422 }
+        )
+      }
+    }
 
     // Validate email format if provided
     if (email !== undefined) {
@@ -251,6 +269,14 @@ export function createUserHandlers(
     if (!currentPassword || !newPassword) {
       return NextResponse.json(
         { error: { code: 'VALIDATION_ERROR', message: 'currentPassword and newPassword are required' } },
+        { status: 422 }
+      )
+    }
+
+    const passwordValidation = validatePasswordPolicy(newPassword)
+    if (!passwordValidation.valid) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: passwordValidation.message } },
         { status: 422 }
       )
     }

@@ -23,9 +23,9 @@ pnpm dev
 
 Visit `http://localhost:3000/cp` to access the control panel.
 
-**Default credentials:**
+`create-madori-app` prints one-time generated credentials during setup:
 - Email: `admin@example.com`
-- Password: `password`
+- Password: randomly generated; store output securely and change it after first login
 
 ## Features
 
@@ -95,8 +95,8 @@ const config = {
 
 ## Requirements
 
-- Node.js 18+
-- pnpm (recommended)
+- Node.js 22+
+- pnpm 11.22.0
 
 ## Development
 
@@ -110,6 +110,10 @@ Run tests:
 ```bash
 pnpm test
 ```
+
+## Production
+
+Production deployments require persistent storage, one writable instance, verified backups, health monitoring, and complete release gates. Follow the [production operations runbook](docs/operations/production.md) and [security policy](SECURITY.md).
 
 ## License
 

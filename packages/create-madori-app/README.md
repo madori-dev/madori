@@ -36,15 +36,15 @@ pnpm dev
 
 ## Requirements
 
-- Node.js 18+
-- pnpm (recommended) or npm
+- Node.js 22+
+- pnpm 11.22+
 
 ## Default credentials
 
 After scaffolding, log in to the control panel with:
 
 - **Email:** admin@example.com
-- **Password:** password
+- **Password:** randomly generated and printed once during setup
 
 ⚠️ Change these after first login.
 

@@ -21,6 +21,7 @@ import {
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { CapabilityGate } from '@/components/cp/CapabilityGate'
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, validatePasswordPolicy } from '@/lib/auth/password-policy'
 
 interface UserData {
   id: string
@@ -93,6 +94,13 @@ export default function EditUserPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (form.password) {
+      const passwordValidation = validatePasswordPolicy(form.password)
+      if (!passwordValidation.valid) {
+        setError(passwordValidation.message)
+        return
+      }
+    }
     setSaving(true)
     setError(null)
 
@@ -183,10 +191,16 @@ export default function EditUserPage() {
                 id="password"
                 name="password"
                 type="password"
+                minLength={form.password ? PASSWORD_MIN_LENGTH : undefined}
+                maxLength={PASSWORD_MAX_LENGTH}
+                aria-describedby="password-help"
                 value={form.password}
                 onChange={handleChange}
                 placeholder="Leave blank to keep current"
               />
+              <p id="password-help" className="text-sm text-muted-foreground">
+                New passwords must contain {PASSWORD_MIN_LENGTH}–{PASSWORD_MAX_LENGTH} characters
+              </p>
             </div>
 
             <div className="space-y-3">

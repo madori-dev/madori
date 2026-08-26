@@ -8,6 +8,11 @@ export interface AtomicWriteResult {
   error?: Error
 }
 
+export interface AtomicWriteOptions {
+  /** POSIX file mode applied before the temporary file becomes visible at targetPath. */
+  mode?: number
+}
+
 export class AtomicFileWriter {
   constructor(private readonly fs: FileSystemAdapter) {}
 
@@ -17,8 +22,11 @@ export class AtomicFileWriter {
    * atomically to the target path. On rename failure, the temp file
    * is deleted and the original file is preserved.
    */
-  async writeFileAtomic(targetPath: string, content: string): Promise<AtomicWriteResult> {
-    return this.writeAtomic(targetPath, (tempPath) => this.fs.writeFile(tempPath, content))
+  async writeFileAtomic(targetPath: string, content: string, options: AtomicWriteOptions = {}): Promise<AtomicWriteResult> {
+    return this.writeAtomic(targetPath, async (tempPath) => {
+      await this.fs.writeFile(tempPath, content)
+      if (options.mode !== undefined && this.fs.chmod) await this.fs.chmod(tempPath, options.mode)
+    })
   }
 
   /** Atomically write binary content when adapter supports binary writes. */

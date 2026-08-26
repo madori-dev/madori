@@ -17,8 +17,8 @@ function hashPasswordSync(password: string): string {
 
 /** Items to always strip from the cloned template */
 const REMOVE_AFTER_CLONE = [
-  'packages',
-  'pnpm-workspace.yaml',
+  'packages/create-madori-app',
+  'packages/madori-sdk',
   'pnpm-lock.yaml',
   'package-lock.json',
   '.claude',
@@ -198,11 +198,11 @@ Welcome to MADORI. This is your first blog post.
     delete pkg.workspaces
     // These scripts point into monorepo-only files removed above. Do not ship
     // commands which fail in generated applications.
-    delete pkg.scripts?.madori
     delete pkg.scripts?.test
     delete pkg.scripts?.e2e
     delete pkg.scripts?.['e2e:prepare']
     delete pkg.devDependencies?.['@playwright/test']
+    pkg.scripts.verify = 'pnpm lint && pnpm exec tsc --noEmit && pnpm build && pnpm audit --prod --audit-level high'
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n')
   }
   console.log('  ✓ Configured package.json')
@@ -212,7 +212,10 @@ Welcome to MADORI. This is your first blog post.
   // in generated projects rather than leaving installs unable to build Next.js.
   fs.writeFileSync(
     path.join(projectDir, 'pnpm-workspace.yaml'),
-    `allowBuilds:
+    `packages:
+  - 'packages/*'
+
+allowBuilds:
   esbuild: true
   sharp: true
   unrs-resolver: true
@@ -220,10 +223,12 @@ Welcome to MADORI. This is your first blog post.
   )
 
   // Create empty user-specific directories
-  const dirs = ['users', 'content/forms', 'content/navigation', 'content/taxonomies', 'public/assets']
+  const dirs = ['content/forms', 'content/navigation', 'content/taxonomies', 'public/assets', 'storage/seo']
   for (const dir of dirs) {
     fs.mkdirSync(path.join(projectDir, dir), { recursive: true })
   }
+  fs.mkdirSync(path.join(projectDir, 'users'), { recursive: true, mode: 0o700 })
+  fs.chmodSync(path.join(projectDir, 'users'), 0o700)
 
   // Copy .env.example to .env
   const envExamplePath = path.join(projectDir, '.env.example')
@@ -234,7 +239,7 @@ Welcome to MADORI. This is your first blog post.
   }
 
   // Write initial admin user
-  const adminPassword = 'password'
+  const adminPassword = randomBytes(18).toString('base64url')
   const adminId = crypto.randomUUID()
   const passwordHash = hashPasswordSync(adminPassword)
   fs.writeFileSync(
@@ -246,9 +251,38 @@ password_hash: ${passwordHash}
 roles:
   - admin
 created_at: ${new Date().toISOString()}
-`
+`,
+    { mode: 0o600 },
   )
   console.log('  ✓ Created initial admin user')
+
+  const workflowDir = path.join(projectDir, '.github', 'workflows')
+  fs.mkdirSync(workflowDir, { recursive: true })
+  fs.writeFileSync(path.join(workflowDir, 'ci.yml'), `name: Required CI
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 11.22.0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify
+`)
 
   console.log(`
   ✅ MADORI project created!
@@ -263,10 +297,10 @@ created_at: ${new Date().toISOString()}
     • http://localhost:3000/cp — Control Panel
     • http://localhost:3000/api/graphql — GraphQL API
 
-  Default admin login:
+  Generated admin login (store this password now):
     Email:    admin@example.com
-    Password: password
+    Password: ${adminPassword}
 
-  ⚠️  Change the default admin password after first login!
+  ⚠️  This password is shown once. Change it after first login.
 `)
 }

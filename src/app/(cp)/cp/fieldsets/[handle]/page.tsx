@@ -42,6 +42,7 @@ import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
 import { FieldConfigSheet } from '@/components/cp/FieldConfigSheet'
 import { CapabilityGate } from '@/components/cp/CapabilityGate'
+import { editFieldList } from '@/lib/field-layout'
 
 import type { FieldConfig, FieldDefinition, FieldType } from '@/lib/blueprints/types'
 
@@ -129,24 +130,19 @@ export default function FieldsetEditorPage() {
   }, [handle, fields, isBlock, displayName])
 
   function addField() {
-    setFields([...fields, { handle: '', field: { type: 'text' } }])
+    setFields((current) => editFieldList(current, { type: 'add' }))
   }
 
   function removeField(index: number) {
-    setFields(fields.filter((_, i) => i !== index))
+    setFields((current) => editFieldList(current, { type: 'remove', index }))
   }
 
   function updateField(index: number, updated: FieldDefinition) {
-    const next = [...fields]
-    next[index] = updated
-    setFields(next)
+    setFields((current) => editFieldList(current, { type: 'update', index, field: updated }))
   }
 
   function moveField(from: number, to: number) {
-    const next = [...fields]
-    const [moved] = next.splice(from, 1)
-    next.splice(to, 0, moved)
-    setFields(next)
+    setFields((current) => editFieldList(current, { type: 'move', from, to }))
   }
 
   function toggleExpanded(id: string) {

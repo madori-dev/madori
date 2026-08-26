@@ -256,7 +256,7 @@ function text(value: unknown): string | undefined {
 }
 
 function isSource(value: unknown): value is SeoSource {
-  if (typeof value !== 'object' || value === null) return false
+  if (!value || typeof value !== 'object') return false
   const source = value as { kind?: unknown; value?: unknown }
   if (source.kind === 'inherit' || source.kind === 'disabled') return source.value === undefined
   return (source.kind === 'literal' || source.kind === 'field' || source.kind === 'template')

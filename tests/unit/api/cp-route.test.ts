@@ -282,6 +282,24 @@ created_at: "2024-01-01T00:00:00.000Z"
       expect(data.error.code).toBe('AUTHENTICATION_ERROR')
     })
 
+    it('rate limits repeated login failures for one account', async () => {
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const response = await POST(makeRequest('POST', 'http://localhost:3000/cp/api/auth/login', {
+          email: 'limited@example.com',
+          password: 'wrong-password',
+        }), params(['auth', 'login']))
+        expect(response.status).toBe(401)
+      }
+
+      const response = await POST(makeRequest('POST', 'http://localhost:3000/cp/api/auth/login', {
+        email: 'limited@example.com',
+        password: 'wrong-password',
+      }), params(['auth', 'login']))
+
+      expect(response.status).toBe(429)
+      expect(response.headers.get('retry-after')).toBeTruthy()
+    })
+
     it('returns 422 when email or password is missing', async () => {
       const request = makeRequest('POST', 'http://localhost:3000/cp/api/auth/login', {
         email: 'test@example.com',

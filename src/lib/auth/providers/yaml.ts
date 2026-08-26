@@ -4,6 +4,7 @@ import type { FileSystemAdapter } from '@/lib/fs/adapter'
 import type { ContentParser } from '@/lib/fs/parser'
 import { NotFoundError, ConflictError } from '@/lib/errors'
 import { hashPassword } from '../password'
+import { assertPasswordPolicy } from '../password-policy'
 import * as path from 'path'
 import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
 import type { ContentMutationReporter } from '@/lib/mutations'
@@ -83,6 +84,7 @@ export class YamlUserProvider implements UserProvider {
     if (!exists) {
       throw new NotFoundError('User', id)
     }
+    await this.restrictPath(filePath)
     const raw = await this.fs.readFile(filePath)
     const yaml = this.parser.parseYaml<UserYaml>(raw)
     return userFromYaml(yaml)
@@ -96,10 +98,12 @@ export class YamlUserProvider implements UserProvider {
   async list(): Promise<User[]> {
     const dirExists = await this.fs.exists(this.usersPath)
     if (!dirExists) return []
+    await this.restrictPath(this.usersPath, 0o700)
     const files = await this.fs.listFiles(this.usersPath, '*.yaml')
     const users: User[] = []
     for (const file of files) {
       const filePath = path.join(this.usersPath, file)
+      await this.restrictPath(filePath)
       const raw = await this.fs.readFile(filePath)
       const yaml = this.parser.parseYaml<UserYaml>(raw)
       users.push(userFromYaml(yaml))
@@ -114,6 +118,7 @@ export class YamlUserProvider implements UserProvider {
     if (exists) {
       throw new ConflictError(`User with id "${input.id}" already exists`)
     }
+    assertPasswordPolicy(input.password)
 
     const passwordHash = await hashPassword(input.password)
     const user: User = {
@@ -142,6 +147,7 @@ export class YamlUserProvider implements UserProvider {
     if (input.lastLogin !== undefined) user.lastLogin = input.lastLogin
     if (input.theme !== undefined) user.theme = input.theme
     if (input.password !== undefined) {
+      assertPasswordPolicy(input.password)
       user.passwordHash = await hashPassword(input.password)
     }
 
@@ -164,8 +170,14 @@ export class YamlUserProvider implements UserProvider {
   }
 
   private async writeUserAtomic(filePath: string, content: string): Promise<void> {
-    const result = await this.atomicWriter.writeFileAtomic(filePath, content)
+    await this.fs.mkdir(this.usersPath)
+    await this.restrictPath(this.usersPath, 0o700)
+    const result = await this.atomicWriter.writeFileAtomic(filePath, content, { mode: 0o600 })
     if (!result.success) throw result.error ?? new Error(`Could not write user: ${filePath}`)
+  }
+
+  private async restrictPath(filePath: string, mode = 0o600): Promise<void> {
+    if (this.fs.chmod) await this.fs.chmod(filePath, mode)
   }
 
   private report(action: 'create' | 'update' | 'delete', filePath: string, id: string): void {

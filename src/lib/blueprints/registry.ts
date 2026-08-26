@@ -1,224 +1,76 @@
-import { z } from 'zod'
-import type { BlueprintLoader } from './loader'
-import type { Blueprint, BlueprintType, FieldDefinition, FieldConfig } from './types'
-import type { BlueprintValidationResult } from './validator'
-import { evaluateCondition } from './visibility'
+import type { FileSystemAdapter } from '@/lib/fs/adapter'
+import type { ContentParser } from '@/lib/fs/parser'
+import type { ContentMutationReporter } from '@/lib/mutations'
+import { DefinitionRepository, type ValidationResult } from './repository'
+import type { Blueprint, BlueprintType } from './types'
 
-/**
- * Result of validating data against a blueprint schema.
- */
-export interface ValidationResult {
-  success: boolean
-  errors?: Record<string, string[]>
+const unavailableFileSystem: FileSystemAdapter = {
+  readFile: async () => { throw new Error('No filesystem configured') },
+  writeFile: async () => { throw new Error('No filesystem configured') },
+  deleteFile: async () => { throw new Error('No filesystem configured') },
+  exists: async () => false,
+  listFiles: async () => [],
+  listDirectories: async () => [],
+  mkdir: async () => { throw new Error('No filesystem configured') },
+  copyFile: async () => { throw new Error('No filesystem configured') },
+  moveFile: async () => { throw new Error('No filesystem configured') },
+}
+
+const unavailableParser: ContentParser = {
+  parseMarkdown: () => { throw new Error('No parser configured') },
+  serializeMarkdown: () => { throw new Error('No parser configured') },
+  parseYaml: () => { throw new Error('No parser configured') },
+  serializeYaml: () => { throw new Error('No parser configured') },
 }
 
 /**
- * Registry for loading blueprints and generating Zod schemas for runtime validation.
+ * Backwards-compatible name for DefinitionRepository.
+ * Existing callers may still pass a BlueprintLoader; dependencies are adopted
+ * without retaining old Registry-to-Loader forwarding seam.
  */
-export class BlueprintRegistry {
-  constructor(private readonly loader: BlueprintLoader) {}
-
-  /**
-   * Load a single blueprint by type and handle.
-   */
-  async getBlueprint(
-    type: BlueprintType,
-    handle: string
-  ): Promise<Blueprint | null> {
-    return this.loader.loadBlueprint(type, handle)
+export class BlueprintRegistry extends DefinitionRepository {
+  constructor(loader: DefinitionRepository)
+  constructor(
+    fs: FileSystemAdapter,
+    parser: ContentParser,
+    resourcesPath: string,
+    mutations?: ContentMutationReporter
+  )
+  constructor(
+    source: DefinitionRepository | FileSystemAdapter,
+    parser?: ContentParser,
+    resourcesPath?: string,
+    mutations?: ContentMutationReporter
+  ) {
+    if (source instanceof DefinitionRepository) {
+      super(...BlueprintRegistry.dependenciesOf(source))
+      return
+    }
+    // Some legacy callers constructed a Registry with a loader-shaped test
+    // double solely to use in-process validation behaviour.
+    if (typeof (source as FileSystemAdapter).readFile !== 'function') {
+      super(unavailableFileSystem, unavailableParser, '')
+      return
+    }
+    if (!parser || !resourcesPath) throw new Error('BlueprintRegistry requires parser and resourcesPath')
+    super(source, parser, resourcesPath, mutations)
   }
 
-  /**
-   * List all blueprints of a given type.
-   */
+  async getBlueprint(type: BlueprintType, handle: string): Promise<Blueprint | null> {
+    return this.read({ kind: 'blueprint', type, handle })
+  }
+
   async listBlueprints(type: BlueprintType): Promise<Blueprint[]> {
-    return this.loader.listBlueprints(type)
+    return this.list({ kind: 'blueprint', type })
   }
 
-  /**
-   * Save a blueprint (create or update).
-   */
   async saveBlueprint(type: BlueprintType, handle: string, blueprint: Blueprint): Promise<void> {
-    return this.loader.saveBlueprint(type, handle, blueprint)
+    await this.write({ kind: 'blueprint', type, handle }, blueprint)
   }
 
-  validateBlueprint(blueprint: unknown): BlueprintValidationResult {
-    return this.loader.validateBlueprint(blueprint)
-  }
-
-  /**
-   * Delete a blueprint.
-   */
   async deleteBlueprint(type: BlueprintType, handle: string): Promise<boolean> {
-    return this.loader.deleteBlueprint(type, handle)
-  }
-
-  /**
-   * Generate a Zod schema from a blueprint's field definitions.
-   * Iterates all fields across all tabs and sections to build a z.object() schema.
-   */
-  generateZodSchema(blueprint: Blueprint): z.ZodType {
-    const shape: Record<string, z.ZodType> = {}
-
-    for (const tab of Object.values(blueprint.tabs)) {
-      // Process top-level tab fields
-      for (const field of tab.fields) {
-        shape[field.handle] = this.fieldToZod(field)
-      }
-
-      // Process section fields
-      if (tab.sections) {
-        for (const section of Object.values(tab.sections)) {
-          for (const field of section.fields) {
-            shape[field.handle] = this.fieldToZod(field)
-          }
-        }
-      }
-    }
-
-    return z.object(shape)
-  }
-
-  /**
-   * Validate arbitrary data against a blueprint using the generated Zod schema.
-   * Returns structured errors grouped by field handle.
-   */
-  validateData(blueprint: Blueprint, data: Record<string, unknown>): ValidationResult {
-    const shape: Record<string, z.ZodType> = {}
-    for (const tab of Object.values(blueprint.tabs)) {
-      for (const field of [...tab.fields, ...Object.values(tab.sections ?? {}).flatMap((section) => section.fields)]) {
-        if (!field.field.visibility || evaluateCondition(field.field.visibility, data)) {
-          shape[field.handle] = this.fieldToZod(field)
-        }
-      }
-    }
-    const schema = z.object(shape)
-    const result = schema.safeParse(data)
-
-    if (result.success) {
-      return { success: true }
-    }
-
-    const errors: Record<string, string[]> = {}
-    for (const issue of result.error!.issues) {
-      const fieldPath = issue.path.length > 0 ? issue.path.join('.') : '_root'
-      if (!errors[fieldPath]) {
-        errors[fieldPath] = []
-      }
-      errors[fieldPath].push(issue.message)
-    }
-
-    return { success: false, errors }
-  }
-
-  /**
-   * Convert a single field definition to a Zod schema type.
-   */
-  private fieldToZod(fieldDef: FieldDefinition): z.ZodType {
-    const { field } = fieldDef
-    let schema = this.fieldTypeToZod(field)
-
-    // Apply default value
-    if (field.default !== undefined) {
-      schema = (schema as z.ZodType & { default: (v: unknown) => z.ZodType }).default(field.default)
-    }
-
-    // Apply optional if not required (and no default already set)
-    if (!field.required && field.default === undefined) {
-      schema = schema.optional()
-    }
-
-    return schema
-  }
-
-  /**
-   * Map a field type to its base Zod schema.
-   */
-  private fieldTypeToZod(field: FieldConfig): z.ZodType {
-    switch (field.type) {
-      case 'text':
-        return field.required ? z.string().min(1) : z.string()
-
-      case 'slug':
-        return z.string().regex(/^[a-z0-9-]+$/)
-
-      case 'markdown':
-        return z.string()
-
-      case 'tiptap':
-        // Editor emits structured TipTap JSON; retain string support for legacy content.
-        return z.union([z.string(), z.record(z.string(), z.unknown())])
-
-      case 'number':
-        return z.number()
-
-      case 'toggle':
-        return z.boolean()
-
-      case 'select': {
-        const options = this.extractSelectOptions(field.options)
-        if (options && options.length > 0) {
-          return z.enum(options as [string, ...string[]])
-        }
-        return z.string()
-      }
-
-      case 'multiselect':
-        return z.array(z.string())
-
-      case 'date':
-        return z.string()
-
-      case 'asset':
-        return z.string()
-
-      case 'entries':
-        return z.array(z.string())
-
-      case 'taxonomy':
-        return z.array(z.string())
-
-      case 'replicator':
-        return z.array(z.record(z.string(), z.unknown()))
-
-      case 'blocks':
-        return z.array(z.record(z.string(), z.unknown()))
-
-      case 'grid':
-        return z.array(z.record(z.string(), z.unknown()))
-
-      case 'yaml':
-        return z.string()
-
-      case 'code':
-        return z.string()
-
-      case 'hidden':
-        return z.unknown()
-
-      default:
-        return z.unknown()
-    }
-  }
-
-  /**
-   * Extract string options from a field's options config.
-   * Options can be an array of strings or a record of key-value pairs.
-   */
-  private extractSelectOptions(options?: Record<string, unknown>): string[] | null {
-    if (!options) return null
-
-    // Options might be stored directly as an array value
-    if (Array.isArray(options)) {
-      return (options as unknown[]).filter((o): o is string => typeof o === 'string')
-    }
-
-    // Options might be a record with string values
-    const values = Object.values(options)
-    if (values.length > 0 && values.every((v) => typeof v === 'string')) {
-      return values as string[]
-    }
-
-    return null
+    return (await this.remove({ kind: 'blueprint', type, handle })).deleted
   }
 }
+
+export type { ValidationResult }

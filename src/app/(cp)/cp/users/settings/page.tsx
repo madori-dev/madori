@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { PageHeader } from '@/components/cp/PageHeader'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { ListSkeleton } from '@/components/cp/ListSkeleton'
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, validatePasswordPolicy } from '@/lib/auth/password-policy'
 
 interface UserProfile {
   id: string
@@ -132,8 +133,9 @@ export default function UserSettingsPage() {
       return
     }
 
-    if (passwordForm.newPassword.length < 1) {
-      setPasswordError('New password is required')
+    const passwordValidation = validatePasswordPolicy(passwordForm.newPassword)
+    if (!passwordValidation.valid) {
+      setPasswordError(passwordValidation.message)
       return
     }
 
@@ -269,9 +271,15 @@ export default function UserSettingsPage() {
                 name="newPassword"
                 type="password"
                 required
+                minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_LENGTH}
+                aria-describedby="new-password-help"
                 value={passwordForm.newPassword}
                 onChange={handlePasswordChange}
               />
+              <p id="new-password-help" className="text-sm text-muted-foreground">
+                {PASSWORD_MIN_LENGTH}–{PASSWORD_MAX_LENGTH} characters
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -281,6 +289,8 @@ export default function UserSettingsPage() {
                 name="confirmPassword"
                 type="password"
                 required
+                minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_LENGTH}
                 value={passwordForm.confirmPassword}
                 onChange={handlePasswordChange}
               />

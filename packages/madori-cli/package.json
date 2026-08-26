@@ -17,12 +17,12 @@
     "@inquirer/prompts": "^7.0.0",
     "archiver": "^8.0.0",
     "commander": "^13.0.0",
-    "extract-zip": "^2.0.1",
     "gray-matter": "^4.0.3",
     "sax": "^1.6.0",
     "simple-git": "^3.36.0",
     "tar": "^7.5.21",
     "turndown": "^7.2.4",
+    "unzipper": "0.12.3",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
@@ -30,6 +30,7 @@
     "@types/archiver": "^7.0.0",
     "@types/sax": "^1.2.7",
     "@types/turndown": "^5.0.6",
+    "@types/unzipper": "0.10.11",
     "tsx": "^4.22.3",
     "typescript": "^5.0.0"
   }

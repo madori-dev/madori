@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { ErrorAlert } from '@/components/cp/ErrorAlert'
 import { CapabilityGate } from '@/components/cp/CapabilityGate'
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, validatePasswordPolicy } from '@/lib/auth/password-policy'
 
 export default function CreateUserPage() {
   const router = useRouter()
@@ -57,6 +58,11 @@ export default function CreateUserPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    const passwordValidation = validatePasswordPolicy(form.password)
+    if (!passwordValidation.valid) {
+      setError(passwordValidation.message)
+      return
+    }
     setSaving(true)
     setError(null)
 
@@ -151,10 +157,16 @@ export default function CreateUserPage() {
                 name="password"
                 type="password"
                 required
+                minLength={PASSWORD_MIN_LENGTH}
+                maxLength={PASSWORD_MAX_LENGTH}
+                aria-describedby="password-help"
                 value={form.password}
                 onChange={handleChange}
                 placeholder="••••••••"
               />
+              <p id="password-help" className="text-sm text-muted-foreground">
+                {PASSWORD_MIN_LENGTH}–{PASSWORD_MAX_LENGTH} characters
+              </p>
             </div>
 
             <div className="space-y-3">

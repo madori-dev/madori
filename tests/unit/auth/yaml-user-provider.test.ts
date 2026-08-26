@@ -131,11 +131,12 @@ describe('YamlUserProvider', () => {
 
   describe('create', () => {
     it('creates user YAML file and returns user', async () => {
+      await fs.chmod(tmpDir, 0o755)
       const input = {
         id: 'new-user',
         email: 'new@test.com',
         name: 'New User',
-        password: 'secret123',
+        password: 'secure-passphrase',
         roles: ['editor'],
       }
 
@@ -147,6 +148,8 @@ describe('YamlUserProvider', () => {
       expect(user.roles).toEqual(['editor'])
       expect(user.passwordHash).toMatch(/^scrypt:/)
       expect(user.createdAt).toBeDefined()
+      expect((await fs.stat(tmpDir)).mode & 0o777).toBe(0o700)
+      expect((await fs.stat(path.join(tmpDir, 'new-user.yaml'))).mode & 0o777).toBe(0o600)
     })
 
     it('writes snake_case YAML to disk', async () => {
@@ -154,7 +157,7 @@ describe('YamlUserProvider', () => {
         id: 'yaml-test',
         email: 'yaml@test.com',
         name: 'YAML Test',
-        password: 'pass',
+        password: 'secure-passphrase',
         roles: ['admin'],
       }
 
@@ -174,7 +177,7 @@ describe('YamlUserProvider', () => {
         id: 'existing',
         email: 'dup@test.com',
         name: 'Duplicate',
-        password: 'pass',
+        password: 'secure-passphrase',
         roles: [],
       }
 
@@ -183,6 +186,16 @@ describe('YamlUserProvider', () => {
   })
 
   describe('update', () => {
+    it('restricts existing user files when read', async () => {
+      await writeUserYaml('user-1', sampleUserYaml)
+      const userPath = path.join(tmpDir, 'user-1.yaml')
+      await fs.chmod(userPath, 0o644)
+
+      await provider.getById('user-1')
+
+      expect((await fs.stat(userPath)).mode & 0o777).toBe(0o600)
+    })
+
     it('updates specified fields', async () => {
       await writeUserYaml('user-1', sampleUserYaml)
 
@@ -199,7 +212,7 @@ describe('YamlUserProvider', () => {
     it('hashes new password on update', async () => {
       await writeUserYaml('user-1', sampleUserYaml)
 
-      const updated = await provider.update('user-1', { password: 'newpassword' })
+      const updated = await provider.update('user-1', { password: 'new-password-value' })
 
       expect(updated.passwordHash).toMatch(/^scrypt:/)
       expect(updated.passwordHash).not.toBe('scrypt:abc:def')

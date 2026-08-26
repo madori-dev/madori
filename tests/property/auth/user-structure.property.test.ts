@@ -23,7 +23,7 @@ import type { CreateUserInput } from '@/lib/auth/types'
 const emailArb = fc.stringMatching(/^[a-z][a-z0-9]{0,8}@[a-z]{2,6}\.[a-z]{2,4}$/)
 const nameArb = fc.stringMatching(/^[A-Za-z ]{1,32}$/).filter((s) => s.trim().length > 0)
 const idArb = fc.stringMatching(/^[a-z0-9][a-z0-9_-]{0,31}$/)
-const passwordArb = fc.string({ minLength: 4, maxLength: 32 })
+const passwordArb = fc.string({ minLength: 12, maxLength: 32 })
 const rolesArb = fc.array(fc.stringMatching(/^[a-z]{2,12}$/), { minLength: 1, maxLength: 4 })
 
 const createUserInputArb: fc.Arbitrary<CreateUserInput> = fc.record({

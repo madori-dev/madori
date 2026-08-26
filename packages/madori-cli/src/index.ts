@@ -16,6 +16,7 @@ import { registerMigrateMarkdown } from './commands/migrate-markdown.js'
 import { registerGenerate } from './commands/generate.js'
 import { registerGit } from './commands/git.js'
 import { registerMigrateSeo } from './seo/migrate-seo.js'
+import { registerOperations } from './commands/operations.js'
 
 const program = new Command()
 
@@ -41,6 +42,7 @@ registerInitPreset(program)
 registerGenerate(program)
 registerGit(program)
 registerMigrateSeo(program)
+registerOperations(program)
 
 program.parseAsync(process.argv).catch((error: Error) => {
   console.error(`Error: ${error.message}`)

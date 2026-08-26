@@ -88,6 +88,37 @@ describe('MadoriConfigService', () => {
     })
   })
 
+  describe('write()', () => {
+    it('preserves private auth adapter configuration during a partial public auth edit', async () => {
+      await fs.writeFile(configPath, `export default {
+  auth: {
+    driver: 'password',
+    store: 'file',
+    provider: 'yaml',
+    driverConfig: { clientSecret: 'driver-secret' },
+    storeConfig: { encryptionKey: 'store-secret' },
+    providerConfig: { accessToken: 'provider-secret' },
+  },
+}
+`)
+      const service = new MadoriConfigService(configPath)
+
+      await service.write({ auth: { driver: 'oauth' } })
+      const persisted = await service.read()
+
+      expect(persisted).toMatchObject({
+        auth: {
+          driver: 'oauth',
+          store: 'file',
+          provider: 'yaml',
+          driverConfig: { clientSecret: 'driver-secret' },
+          storeConfig: { encryptionKey: 'store-secret' },
+          providerConfig: { accessToken: 'provider-secret' },
+        },
+      })
+    })
+  })
+
   describe('rewriteConfigFile()', () => {
     it('preserves import statement and export default pattern', () => {
       const original = `import type { MadoriConfigInput } from './src/lib/config/schema'

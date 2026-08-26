@@ -42,6 +42,27 @@ export interface FieldDefinition {
   field: FieldConfig
 }
 
+export interface FieldsetImport {
+  import: string
+}
+
+export type FieldLayoutEntry = FieldDefinition | FieldsetImport
+
+export interface Fieldset {
+  handle: string
+  fields: FieldLayoutEntry[]
+  is_block: boolean
+  display?: string
+}
+
+export function isFieldDefinition(entry: FieldLayoutEntry): entry is FieldDefinition {
+  return 'handle' in entry && 'field' in entry
+}
+
+export function isFieldsetImport(entry: FieldLayoutEntry): entry is FieldsetImport {
+  return 'import' in entry
+}
+
 export interface BlueprintSection {
   display?: string
   fields: FieldDefinition[]

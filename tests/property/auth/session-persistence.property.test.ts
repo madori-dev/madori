@@ -7,8 +7,8 @@ import type { FileSystemAdapter } from '@/lib/fs/adapter'
  * Property 5: FileSessionStore persistence round-trip
  *
  * For any created session, the corresponding JSON file SHALL exist on disk
- * and contain a valid JSON object with fields matching the returned Session
- * (id, userId, token, expiresAt).
+ * and contain a valid JSON object with non-secret fields matching the returned
+ * Session. Bearer tokens SHALL remain only in the caller and cookie.
  *
  * **Validates: Requirements 3.2, 3.3**
  */
@@ -54,7 +54,7 @@ function createCapturingFs(): FileSystemAdapter & { written: Map<string, string>
 }
 
 describe('Property 5: FileSessionStore persistence round-trip', () => {
-  it('for any userId, createSession writes a JSON file with matching id, userId, token, expiresAt', async () => {
+  it('for any userId, createSession persists matching metadata without bearer token', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.string({ minLength: 1, maxLength: 64 }).filter((s) => s.trim().length > 0),
@@ -77,10 +77,11 @@ describe('Property 5: FileSessionStore persistence round-trip', () => {
           // Content should be valid JSON
           const parsed = JSON.parse(fileContent)
 
-          // All four fields must match the returned session
+          // Stored metadata must match without persisting bearer credential
           expect(parsed.id).toBe(session.id)
           expect(parsed.userId).toBe(session.userId)
-          expect(parsed.token).toBe(session.token)
+          expect(parsed.token).toBeUndefined()
+          expect(fileContent).not.toContain(session.token)
           expect(parsed.expiresAt).toBe(session.expiresAt)
         }
       ),
