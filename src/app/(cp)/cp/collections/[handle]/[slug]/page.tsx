@@ -163,6 +163,7 @@ export default function EntryEditorPage() {
         contentStr = serializeTipTapToMarkdown(content as import('@/lib/editor/types').TipTapDocument)
       }
       const visibleData = filterPayloadByVisibility(allBlueprintFields.map((field) => ({ handle: field.handle, visibility: field.field.visibility })), data)
+      if ('seo' in data) visibleData.seo = data.seo
       if (structuredContent) visibleData.content_json = structuredContent
       // JSON omits undefined. Preserve an editor clear as null so updateEntry can
       // remove stale frontmatter before validating the optional field.
@@ -240,25 +241,27 @@ export default function EntryEditorPage() {
     )
   }
 
-  // Separate tabs into content tabs and sidebar
-  const contentTabs: { key: string; label: string; fields: FieldDefinition[]; sections: { key: string; label: string; fields: FieldDefinition[] }[] }[] = []
-  const sidebarFields: FieldDefinition[] = []
+  const contentTabs: { key: string; label: string; fields: FieldDefinition[]; sections: { key: string; label: string; fields: FieldDefinition[] }[]; showSeoEditor: boolean }[] = []
+  let hasSeoTab = false
   if (blueprint) {
     for (const [tabKey, tab] of Object.entries(blueprint.tabs)) {
+      const showSeoEditor = tabKey.toLowerCase() === 'seo' || tab.display?.toLowerCase() === 'seo' || tab.fields.some(field => field.handle === 'seo')
       const visibleFields = tab.fields.filter(field => field.handle !== 'seo')
       const sections = Object.entries(tab.sections ?? {}).map(([sectionKey, section]) => ({
         key: sectionKey,
         label: section.display ?? sectionKey.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
         fields: section.fields.filter((field) => field.handle !== 'seo'),
       })).filter((section) => section.fields.length > 0)
-      if (tabKey === 'sidebar') {
-        sidebarFields.push(...visibleFields, ...sections.flatMap((section) => section.fields))
-      } else if (visibleFields.length > 0 || sections.length > 0) {
-        const label = tab.display ?? tabKey.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
-        contentTabs.push({ key: tabKey, label, fields: visibleFields, sections })
+      if (visibleFields.length > 0 || sections.length > 0 || showSeoEditor) {
+        const label = tab.display ?? (tabKey === 'sidebar' ? 'Settings' : tabKey.replace(/[_-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()))
+        contentTabs.push({ key: tabKey, label, fields: visibleFields, sections, showSeoEditor })
       }
+      hasSeoTab ||= showSeoEditor
     }
   }
+  const needsFallbackContent = contentTabs.length === 0
+  if (needsFallbackContent) contentTabs.push({ key: '__content', label: 'Content', fields: [], sections: [], showSeoEditor: false })
+  if (!hasSeoTab) contentTabs.push({ key: '__seo', label: 'SEO', fields: [], sections: [], showSeoEditor: true })
 
   return (
     <div>
@@ -293,9 +296,8 @@ export default function EntryEditorPage() {
       )}
 
       <form onSubmit={handleSave} className="mt-6">
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Main content area with tabs */}
-          <div className="flex-1 min-w-0">
+        <div>
+          <div className="min-w-0">
             <Tabs defaultValue={contentTabs[0]?.key ?? 'main'}>
               {contentTabs.length > 1 && (
                 <TabsList variant="line" className="mb-5">
@@ -325,28 +327,21 @@ export default function EntryEditorPage() {
                       {section.fields.map((fieldDef) => <FieldRenderer key={fieldDef.handle} fieldDefinition={fieldDef as TypedFieldDefinition} value={formData[fieldDef.handle]} onChange={(value) => handleFieldChange(fieldDef.handle, value)} error={fieldErrors[fieldDef.handle]} values={formData} />)}
                     </section>
                   ))}
+                  {needsFallbackContent && tab.key === '__content' && (
+                    <div>
+                      <label htmlFor="field-content" className="block text-sm font-medium text-foreground">Content</label>
+                      <textarea
+                        id="field-content"
+                        value={(formData.content as string) ?? ''}
+                        onChange={(e) => handleFieldChange('content', e.target.value)}
+                        rows={12}
+                        className="mt-1 block w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
+                      />
+                    </div>
+                  )}
+                  {tab.showSeoEditor && <SeoRecordEditor value={formData.seo} onChange={(value) => handleFieldChange('seo', value)} />}
                 </TabsContent>
               ))}
-
-              {/* Fallback content field if no blueprint defines one */}
-              {contentTabs.every((tab) => !tab.fields.some((f) => f.handle === 'content')) &&
-                !sidebarFields.some((f) => f.handle === 'content') &&
-                contentTabs.length === 0 && (
-                <div className="space-y-5">
-                  <div>
-                    <label htmlFor="field-content" className="block text-sm font-medium text-foreground">
-                      Content
-                    </label>
-                    <textarea
-                      id="field-content"
-                      value={(formData.content as string) ?? ''}
-                      onChange={(e) => handleFieldChange('content', e.target.value)}
-                      rows={12}
-                      className="mt-1 block w-full rounded-md border border-border bg-background px-3 py-2 text-sm font-mono shadow-sm focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-                    />
-                  </div>
-                </div>
-              )}
             </Tabs>
 
             <div className="flex items-center gap-3 border-t border-border pt-5 mt-5">
@@ -368,30 +363,6 @@ export default function EntryEditorPage() {
               )}
             </div>
           </div>
-
-          {/* Sidebar panel */}
-          <aside className="w-full lg:w-72 lg:shrink-0">
-            <div className="lg:sticky lg:top-6 space-y-5">
-              {sidebarFields.length > 0 && (
-                <div className="space-y-5 rounded-lg border border-border bg-card p-4">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Settings
-                  </h3>
-                  {sidebarFields.map((fieldDef) => (
-                    <FieldRenderer
-                      key={fieldDef.handle}
-                      fieldDefinition={fieldDef as TypedFieldDefinition}
-                      value={formData[fieldDef.handle]}
-                      onChange={(value) => handleFieldChange(fieldDef.handle, value)}
-                      error={fieldErrors[fieldDef.handle]}
-                      values={formData}
-                    />
-                  ))}
-                </div>
-              )}
-              <SeoRecordEditor value={formData.seo} onChange={(value) => handleFieldChange('seo', value)} />
-            </div>
-          </aside>
         </div>
       </form>
     </div>

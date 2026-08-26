@@ -62,7 +62,7 @@ test('authenticated editor creates, edits, and detects stale entry changes', asy
   await page.locator('#field-content').fill('First version')
   await page.getByRole('button', { name: 'Create Entry' }).click()
   await expect(page).toHaveURL(/\/cp\/collections\/e2e-articles\/browser-entry$/)
-  await expect(page.getByRole('complementary').getByText('SEO', { exact: true })).toBeVisible()
+  await expect(page.getByRole('tab', { name: 'SEO', exact: true })).toBeVisible()
 
   await page.getByRole('textbox', { name: 'Content' }).fill('Second version')
   await page.getByRole('button', { name: 'Save' }).click()

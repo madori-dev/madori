@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import * as path from 'path'
 import { loadConfig, resolveConfigPaths } from '@/lib/config/loader'
 import { PermissionChecker } from '@/lib/auth/permissions'
+import { applyFeatureAvailability } from '@/lib/auth/capabilities'
 import { PermissionGuard } from '@/lib/auth/guard'
 import type { AuthContext } from '@/lib/auth/guard'
 import { PluginRegistry } from '@/lib/auth/registry'
@@ -642,12 +643,14 @@ async function dispatch(
 
   if (routePath === 'users/capabilities' && method === 'GET') {
     const handler = withAuth(async (_req, context) => {
+      const { config } = await getMadori()
       const resources: ResourceType[] = ['collections', 'entries', 'taxonomies', 'assets', 'globals', 'forms', 'navigation', 'users', 'settings', 'git', 'seo', 'seo-reports', 'seo-redirects', 'seo-errors']
       const actions: Action[] = ['view', 'create', 'edit', 'delete', 'publish']
       const checks: Array<[ResourceType, Action]> = resources.flatMap(resource => actions.map(action => [resource, action] as [ResourceType, Action]))
       const values = await Promise.all(checks.map(async ([resource, action]) => [`${resource}:${action}`, await context.authService.hasPermission(context.user, resource, action)] as const))
       const scopedEntries = await contentEngineInstance.listCollections().then(async collections => Object.fromEntries(await Promise.all(collections.map(async collection => [collection.handle, Object.fromEntries(await Promise.all(actions.map(async action => [action, await context.authService.hasPermission(context.user, 'entries', action, collection.handle)] as const)))])))).catch(() => ({}))
-      return NextResponse.json({ data: { capabilities: Object.fromEntries(values), scopes: { entries: scopedEntries } } })
+      const capabilities = applyFeatureAvailability(Object.fromEntries(values), { seo: config.seo.enabled })
+      return NextResponse.json({ data: { capabilities, scopes: { entries: scopedEntries } } })
     })
     return handler(request, authService, pathSegments)
   }

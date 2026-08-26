@@ -105,6 +105,28 @@ describe('Control Panel route-family interfaces', () => {
     await expect(response?.json()).resolves.toEqual({ data: [{ handle: 'seo', is_block: true, display: 'SEO' }] })
   })
 
+  it('loads existing Fieldsets whose handles contain underscores', async () => {
+    const permissions: Array<RoutePermission | null> = []
+    const read = vi.fn(async () => ({
+      handle: 'about_the_creator',
+      fields: [{ handle: 'name', field: { type: 'text' } }],
+    }))
+    const family = createDefinitionRouteFamily({
+      repository: { read } as unknown as DefinitionRepository,
+      handlers: {} as ReturnType<typeof createDefinitionHandlers>,
+      runAuthenticated: runner(permissions),
+    })
+
+    const response = await family(
+      new NextRequest('https://example.test/api/fieldsets/about_the_creator'),
+      ['fieldsets', 'about_the_creator'],
+    )
+
+    expect(response?.status).toBe(200)
+    expect(read).toHaveBeenCalledWith({ kind: 'fieldset', handle: 'about_the_creator' })
+    expect(permissions).toEqual([{ resource: 'collections', action: 'view' }])
+  })
+
   it('rejects unsafe Blueprint handles before authentication', async () => {
     const permissions: Array<RoutePermission | null> = []
     const family = createDefinitionRouteFamily({

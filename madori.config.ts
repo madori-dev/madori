@@ -21,7 +21,8 @@ const config: MadoriConfigInput & { collections?: Record<string, unknown> } = {
   },
 
   seo: {
-    errorTracking: Boolean(e2eRoot),
+    enabled: true,
+    errorTracking: true,
     socialImages: Boolean(e2eRoot),
     operationalStoragePath: e2eRoot ? `${e2eRoot}/storage/seo` : './storage/seo',
   },

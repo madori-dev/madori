@@ -97,6 +97,24 @@ test('entry editor uses assigned blueprint and renders section fields', async ({
   await expect(page.getByText('Entry saved')).toBeVisible()
 })
 
+test('entry SEO overrides live in the SEO tab and persist', async ({ page }) => {
+  await signIn(page)
+  await page.goto('/cp/collections/e2e-assigned/roundtrip')
+
+  await expect(page.getByRole('tab', { name: 'SEO', exact: true })).toBeVisible()
+  await expect(page.locator('aside')).toHaveCount(0)
+  await expect(page.getByLabel('SEO title source')).toBeHidden()
+  await page.getByRole('tab', { name: 'SEO', exact: true }).click()
+  await page.getByLabel('SEO title source').click()
+  await page.getByRole('option', { name: 'Custom text' }).click()
+  await page.getByLabel('SEO title', { exact: true }).fill('Assigned entry override')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(page.getByText('Entry saved')).toBeVisible()
+
+  const entry = await page.evaluate(() => fetch('/api/entries/e2e-assigned/roundtrip').then(response => response.json()))
+  expect(entry.data.data.seo.title).toEqual({ kind: 'literal', value: 'Assigned entry override' })
+})
+
 test('optional asset selection can be cleared before create and after edit', async ({ page }) => {
   await signIn(page)
   const assetName = await page.evaluate(async () => (await (await fetch('/api/assets')).json()).data[0].filename as string)

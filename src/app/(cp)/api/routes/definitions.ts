@@ -26,7 +26,7 @@ function error(code: string, message: string, status: number, details?: unknown)
 }
 
 function isSafeRouteHandle(handle: string): boolean {
-  return /^[a-z0-9][a-z0-9-]*$/.test(handle)
+  return /^[a-z0-9][a-z0-9_-]*$/.test(handle)
 }
 
 function removalResponse(reference: DefinitionReference, result: Awaited<ReturnType<DefinitionRepository['remove']>>): NextResponse {
@@ -71,7 +71,7 @@ export function createDefinitionRouteFamily(dependencies: DefinitionRoutes): Rou
     if (family === 'fieldsets' && (pathSegments.length === 1 || pathSegments.length === 2)) {
       if ((pathSegments.length === 1 && method !== 'GET') || (pathSegments.length === 2 && !['GET', 'PUT', 'DELETE'].includes(method))) return null
       if (pathSegments.length === 2 && !isSafeRouteHandle(typeOrHandle)) {
-        return error('BAD_REQUEST', 'Handle must use lowercase letters, numbers, and hyphens', 400)
+        return error('BAD_REQUEST', 'Handle must use lowercase letters, numbers, underscores, and hyphens', 400)
       }
       const action: Action | null = method === 'GET' ? 'view' : method === 'PUT' ? 'edit' : method === 'DELETE' ? 'delete' : null
       if (!action) return null
@@ -97,7 +97,7 @@ export function createDefinitionRouteFamily(dependencies: DefinitionRoutes): Rou
     if (family === 'blueprints' && ((pathSegments.length === 2 && method === 'GET') || pathSegments.length === 3)) {
       if (!isValidBlueprintType(typeOrHandle)) return error('BAD_REQUEST', `Invalid blueprint type: ${typeOrHandle}`, 400)
       if (pathSegments.length === 3 && !isSafeRouteHandle(handle)) {
-        return error('BAD_REQUEST', 'Handle must use lowercase letters, numbers, and hyphens', 400)
+        return error('BAD_REQUEST', 'Handle must use lowercase letters, numbers, underscores, and hyphens', 400)
       }
       const resource = resources[typeOrHandle]
       const action: Action | null = method === 'GET' ? 'view' : method === 'PUT' ? 'edit' : method === 'DELETE' ? 'delete' : null

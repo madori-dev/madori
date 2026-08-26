@@ -60,6 +60,13 @@ async function main() {
             field:
               type: text
               instructions: A short summary
+  seo:
+    display: SEO
+    fields:
+      - handle: meta_title
+        field:
+          type: text
+          display: Meta title
 `)
   await write('content/collections/e2e-assigned/roundtrip.md', `---
 title: Assigned entry

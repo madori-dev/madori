@@ -21,7 +21,7 @@ describe('SEO configuration', () => {
       humans: true,
       reports: true,
       redirects: true,
-      errorTracking: false,
+      errorTracking: true,
       socialImages: false,
       allowExternalCanonicals: false,
       allowedRedirectOrigins: [],
