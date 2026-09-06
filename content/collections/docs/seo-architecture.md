@@ -3,164 +3,144 @@ title: SEO Architecture
 slug: seo-architecture
 status: published
 createdAt: 2026-08-19T00:00:00.000Z
-updatedAt: 2026-08-19T00:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # SEO Architecture
 
-This document freezes Madori SEO Wave 0 contracts before implementation. Fixtures in `tests/fixtures/seo` are normative examples; implementation must satisfy them without changing their meaning.
+Madori's SEO implementation separates authored defaults and overrides from resolution, output adapters and operational reports. This page describes current code; the earlier Wave 0 implementation checklist has been replaced by the working contracts below. Fixtures under `tests/fixtures/seo` and tests under `tests/unit/seo` record compatibility expectations.
 
-## Goals
+## Components and data flow
 
-Madori must match Statamic-style SEO editorial workflows: global defaults, collection and taxonomy defaults, record overrides, inheritance, social previews, structured data, redirects, reporting, and multi-site URL handling. Madori goes beyond baseline parity by returning field provenance, sharing one resolver between preview and published output, and keeping operational data out of content Git history.
+1. `FileSeoRepository` reads and writes site/section defaults; entry and term overrides remain part of content records.
+2. `SeoRuntime` obtains published content, configured sites and routes, then resolves the cascade. Authenticated preview can evaluate draft content through its preview path.
+3. The resolver returns values, provenance and explanation steps. Output adapters derive Next metadata, JSON-LD and sitemap entries.
+4. `SeoApplication` coordinates preview, reports, redirect promotion and invalidation. `getMadori()` supplies the shared services used by routes and GraphQL.
+5. Public route adapters in `src/lib/seo/next/` share request-local results between metadata and rendered content. Mutation events and filesystem watchers invalidate application content/SEO caches.
 
-## Versioned storage
+SEO metadata caching is in memory. It is distinct from optional static HTML caching and from separately configured Next SDK tag caches.
 
-Editorial configuration is Git-versioned:
+## Authored storage
+
+Paths below are relative to configured resource/content roots:
 
 | Concern | Path |
 |---|---|
 | Site defaults | `resources/seo/sites/{site}.yaml` |
 | Collection defaults | `resources/seo/sections/collection/{handle}.yaml` |
 | Taxonomy defaults | `resources/seo/sections/taxonomy/{handle}.yaml` |
-| Entry override | Nested `seo` object in entry front matter |
-| Term override | Nested `seo` object in term YAML |
+| Entry override | Nested `seo` in Markdown frontmatter |
+| Term override | Nested `seo` in term YAML |
 | Redirect definition | `content/seo/redirects/{id}.yaml` |
 
-Every SEO document contains `version: 1`. Readers reject unsupported future versions with an actionable error. Writers use atomic replacement and content mutation events, so Git sync sees complete files.
+Standalone default documents carry `version: 1`, a `kind`, their site/section identity, and `seo` values. Record overrides are an `seo` value object, without the standalone document wrapper. Redirects have their own versioned shape. Unsupported versions fail validation. Repository writes use atomic replacement; callers can supply a SHA-256 `expectedRevision` from an earlier read to detect conflicting edits. These locks target one writable process, not distributed writers.
 
-Generated or observed state is operational and is never staged by default:
+Example site defaults:
 
-| Concern | Path family |
-|---|---|
-| Resolved metadata cache | `storage/seo/cache/` |
-| 404 observations | `storage/seo/observations/` |
-| Redirect hit counters | `storage/seo/metrics/` |
-| Crawl/report snapshots | `storage/seo/reports/` |
-
-Operational records use opaque IDs. Query secrets, credentials, full referrer paths, and visitor identifiers are not retained. Authored redirect rules remain Git-versioned; their counters do not.
-
-## Cascade
-
-Resolution order, lowest to highest priority:
-
-1. Safe system fallback from subject title and URL.
-2. Site defaults.
-3. Collection or taxonomy section defaults.
-4. Entry or term override.
-
-Field behavior:
-
-- Omitted field: inherit.
-- `null`: inherit.
-- Empty string: normalize to unset, then inherit.
-- Explicit value: override lower layers.
-- `enabled: false` on site, section, or record: exclude affected scope or subject from SEO processing, reports, and sitemap output. It does not expose lower-layer metadata.
-- `enabled: false` on a channel such as `social` or `jsonLd`: suppress only that channel.
-
-Resolver returns final value and source for every field. Templates do not reproduce cascade logic.
-
-## URL rules
-
-Canonical URLs use configured site origin plus localized route. Domain-based and subdirectory-based sites share same resolver contract. Canonicals remove fragments, tracking parameters, duplicate slashes, and default ports.
-
-Localized subjects emit valid alternates for published translations plus one configured `x-default`. Page one uses clean archive URL. Page two and later preserve only normalized pagination parameter. Paginated results expose previous and next URLs where applicable and add localized page suffix to title.
-
-Canonical overrides must use `http` or `https`, contain no credentials, and belong to an allowed origin unless external canonicals are explicitly enabled.
-
-## Social metadata and JSON-LD
-
-Record social image overrides site image. Missing record image falls back to site default. Images resolve to absolute public URLs at output boundary. Open Graph and Twitter may be disabled independently of index metadata.
-
-JSON-LD is an array of valid objects. Core types initially include `WebSite`, `WebPage`, `Article`, `BreadcrumbList`, and organization/person authors. Resolver supplies canonical identifiers and dates. User-provided JSON-LD is schema-validated and cannot inject HTML.
-
-## Redirects and 404s
-
-Redirect definitions contain opaque ID, site, normalized source, destination, status (`301`, `302`, `307`, or `308`), and enabled state. Validation rejects self-loops, duplicate active sources, chains, cycles, unsafe schemes, credential-bearing destinations, and control characters. Runtime lookup must be bounded and deterministic.
-
-404 observations aggregate normalized site and path. They store first seen, last seen, count, and optional referrer origin. Query values are discarded or redacted. Robots, assets, health checks, and configured noise patterns may be excluded. Promoting an observation creates a separate versioned redirect; it never mutates observation history into content.
-
-## API contracts
-
-Success responses use `{ data, meta }`. Validation failures use `{ error: { code, message, fields }, meta: { requestId } }`.
-
-Resolved response:
-
-```json
-{
-  "data": {
-    "subject": { "type": "entry", "id": "entry-1", "site": "en" },
-    "title": "Welcome | Madori",
-    "canonical": "https://example.com/welcome",
-    "robots": ["index", "follow"],
-    "alternates": {},
-    "openGraph": null,
-    "twitter": null,
-    "jsonLd": []
-  },
-  "meta": {
-    "version": 1,
-    "sources": { "title": "record", "canonical": "computed" },
-    "warnings": []
-  }
-}
+```yaml
+version: 1
+kind: site
+site: default
+seo:
+  title:
+    kind: template
+    value: "{title} | Example"
+  description:
+    kind: literal
+    value: "News and guides from Example."
+  robots:
+    indexing: index
+    following: follow
+  sitemap:
+    enabled: true
+  jsonLd:
+    enabled: true
+    type: WebPage
 ```
 
-Settings responses include site, enabled state, defaults, version, and storage class. Report collections include page, per-page, total, and `storage: operational`. APIs never expose server paths.
+Example record override:
 
-## Permissions
+```yaml
+seo:
+  title:
+    kind: literal
+    value: "A title for search results"
+  description:
+    kind: field
+    value: summary
+```
 
-| Action | Permission |
+## Cascade and source values
+
+Precedence runs from safe system fallback to site defaults, collection/taxonomy defaults, then record overrides. Section defaults are keyed by section kind and handle; they are not separate per-site documents.
+
+Author title, description, canonical and social-image sources using these forms:
+
+| Source | Meaning |
 |---|---|
-| View SEO and 404 reports | `view seo reports` |
-| Edit site/section defaults | `edit seo defaults` |
-| Create, edit, delete redirects | `manage seo redirects` |
-| Edit entry/term SEO | Existing permission to edit that entry or term |
+| Omitted or `{ kind: inherit }` | Keep lower-priority value |
+| `{ kind: literal, value: "…" }` | Use explicit text |
+| `{ kind: field, value: summary }` | Read a subject field |
+| `{ kind: template, value: "{title} | Example" }` | Interpolate supported subject/site tokens |
+| `{ kind: disabled }` | Suppress this source value |
 
-Super users retain all access. SEO permissions never grant access to otherwise forbidden content. Preview resolution requires view access to subject. Public rendering does not expose provenance or draft values.
+Compatibility readers normalize legacy strings, nulls and blanks; new API writes use the validated source objects above. Whole-scope `seo.enabled: false` excludes that scope from SEO output. `sitemap.enabled` and `jsonLd.enabled` control those channels. Do not invent a `social.enabled` field in authored documents: it is not accepted by the current public write schema.
 
-## Backward migration
+Resolved results contain `provenance` and `explain`. Source labels include `system`, `site`, `scope`, `record`, suppressed variants, and `generated`. Public metadata uses the resolved values rather than exposing editorial explanation data.
 
-Legacy top-level fields remain readable during transition:
+## URLs, locales and publication
 
-| Legacy | Version 1 |
+`sites` in `madori.config.ts` declares site handle, URL, locale and default identity. Configure the real public origins before deployment. The URL resolver uses configured collection/taxonomy routes, trailing-slash policy, localized paths and optional pagination context.
+
+Canonical policy rejects unsafe schemes and credentials; external canonicals require explicit configuration. Localized alternates depend on supplied localized paths/publication context. This URL support does not constitute a complete translated-content editor or automatically create translations.
+
+Published SEO adapters exclude draft entries; terms are public unless explicitly marked draft. Authenticated preview uses the same resolver but permits a distinct publication context. Custom frontends must preserve that separation when choosing content adapters.
+
+## Output and feature switches
+
+Configuration flags include `enabled`, `metadata`, `structuredData`, `sitemap`, `robots`, `humans`, `reports`, `redirects`, `errorTracking`, and `socialImages`. SEO is enabled by default; generated social images are disabled by default. Site-specific social-image references and generated image endpoints are separate concerns.
+
+Outputs include Next metadata with canonical, robots, Open Graph and Twitter descriptors; JSON-LD graphs; `/sitemap.xml`; `/robots.txt`; and `/humans.txt`. JSON-LD supports configured WebPage, Article, Organization, Person and BreadcrumbList types, plus bounded custom data with an `@type`; a WebSite node is derived when site data supports it. Use the JSON-LD serializer to escape HTML-sensitive characters when embedding a graph.
+
+The current writer does not offer independent Open Graph/Twitter enable switches. Avoid treating every low-level resolver option as a persisted configuration setting.
+
+## Redirects, observations and reports
+
+Redirects use `301`, `302`, `307` or `308`. Validation rejects unsafe destinations, self-loops, duplicate active sources, chains and cycles. External redirect destinations require exact origin inclusion in `seo.allowedRedirectOrigins`; ordinary same-site path redirects do not.
+
+Operational storage defaults to `storage/seo` and is configurable through `seo.operationalStoragePath`:
+
+| State | Current storage |
 |---|---|
-| `meta_title` | `seo.title` |
-| `meta_description` | `seo.description` |
-| `og_image` | `seo.social.image` |
+| Resolved SEO cache | Process memory |
+| 404 observations | `not-found-observations.json` |
+| Report snapshots | `reports/snapshots.json` |
 
-Nested version 1 values win when both shapes exist. Migration is idempotent, lossless, dry-runnable, atomic, and creates per-file backups. It preserves unknown fields. Successful writes emit normal content mutations so Git records migration. Legacy fields are removed only after compatibility window and explicit operator confirmation.
+404 observations store opaque IDs, normalized site/path, first/last seen times, hit counts, and optional referrer origin. Query values are omitted or marked redacted; visitor identifiers are not retained. The public adapter filters common noise and throttles repeated observations, so these counts are not access-log totals. Default storage retains at most 1,000 observations, pruning by the configured retention window during writes.
 
-## Exact parity acceptance checklist
+Reports are generated on request and persisted as snapshots. Defaults retain up to 50 snapshots within 90 days; configure `reportSnapshotLimit` and `reportRetentionDays`. Redirect hit-counter persistence and a disk metadata cache are not current storage contracts.
 
-- [ ] Site defaults resolve independently per site.
-- [ ] Collection and taxonomy defaults resolve without changing their definition files.
-- [ ] Entry and term overrides inherit omitted and null fields.
-- [ ] Disabled site, section, or record is excluded from metadata, reports, and sitemap.
-- [ ] Disabled social or JSON-LD channel suppresses only that channel.
-- [ ] Canonical URLs pass domain, subdirectory, locale, and pagination fixtures.
-- [ ] Alternates include published locales and configured `x-default` only.
-- [ ] Open Graph and Twitter values use record image then site fallback.
-- [ ] JSON-LD output validates and contains no executable markup.
-- [ ] Redirect validation rejects duplicate sources, chains, cycles, loops, and unsafe destinations.
-- [ ] 404 observations aggregate operationally without entering Git.
-- [ ] Resolver, preview, public metadata, REST, and GraphQL adapters share same domain result.
-- [ ] Permission matrix passes for super user, SEO manager, editor, and viewer.
-- [ ] Legacy fields read and migrate according to version 1 fixture.
+Authored defaults and redirects participate in content Git sync. Operational storage is excluded from its default tracked roots; keep it out of source history when configuring custom roots. Promotion creates a redirect and can remove the selected observation; it does not turn an observation file into authored content.
 
-## Beyond-parity acceptance checklist
+## APIs and permissions
 
-- [ ] Every resolved field includes stable provenance.
-- [ ] Preview and published output use same resolver with explicit publication context.
-- [ ] Operational APIs expose opaque IDs and redact sensitive query data.
-- [ ] Cache invalidation follows site, section, record, asset, and domain dependencies.
-- [ ] Contract fixtures remain versioned and backward compatible.
-- [ ] Domain and subdirectory multi-site strategies pass same URL contract.
+Control Panel SEO APIs live under `/api/seo`; GraphQL exposes SEO queries/mutations when the corresponding feature ports are enabled. Both use application services and permission checks. Control Panel responses use `{ data, meta }`, with `meta.requestId` and version where appropriate; errors use `{ error: { code, message, fields? }, meta: { requestId } }`. Revisions are returned for optimistic writes; public responses omit internal filesystem paths.
 
-## Frozen safety and compatibility decisions
+The REST resolved-preview response wraps a runtime/preview result, including its `resolved` and output fields. GraphQL maps that result into its own explicit field types. It is not the same JSON shape as a Next metadata object. See [GraphQL API](/docs/graphql) for query examples.
 
-- External canonical origins are rejected by default. An operator may explicitly opt in; record content can never enable them itself.
-- Redirect chains are rejected at write time. Madori will not silently flatten editorial intent.
-- Legacy fields remain readable for at least one major release and are removed only by an explicit migration command.
-- Report retention uses both a 90-day window and a maximum of 50 snapshots by default.
-- First release supports `WebSite`, `WebPage`, `Article`, `BreadcrumbList`, `Organization`, and `Person`; custom nodes remain validated data rather than executable templates.
+| Control Panel action | Resource/action |
+|---|---|
+| Read defaults or preview | `seo` / `view` |
+| Edit/delete defaults | `seo` / `edit` |
+| Read / run reports | `seo-reports` / `view` or `edit` |
+| Read / save / delete redirects | `seo-redirects` / `view`, `edit` or `delete` |
+| Read / delete 404 observations | `seo-errors` / `view` or `delete` |
+| Promote a 404 to redirect | `seo-redirects` / `create` |
+
+Scopes and content-access checks further constrain these operations. Editing entry/term SEO follows that content's editing permissions. SEO permissions do not grant general access to otherwise forbidden records.
+
+## Legacy migration
+
+Compatibility readers recognize `meta_title`, `meta_description` and `og_image`. Migration copies them into `seo.title`, `seo.description` and `seo.social.image` without overwriting existing nested values or removing legacy keys. It preserves unknown fields and supports dry-run, per-file backups and a rollback plan. Runtime compatibility normalization accepts the migrated values; newly authored documents should use current source objects.
+
+Use the `seo:migrate` and `seo:rollback` commands documented in [CLI](/docs/cli). Keep verified operational backups before bulk edits or deployment; a migration backup is not a substitute for the [production backup/restore process](/docs/deployment).

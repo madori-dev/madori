@@ -3,7 +3,7 @@ title: Taxonomies
 slug: taxonomies
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Taxonomies
@@ -22,8 +22,9 @@ Taxonomy definitions live at `resources/taxonomies/{handle}.yaml`. The handle is
 
 | Property | Type | Required | Default | Description |
 |----------|------|----------|---------|-------------|
-| `title` | `string` | Yes | — | Display name shown in the Control Panel sidebar |
+| `title` | `string` | Yes | — | Display name shown in the Control Panel |
 | `blueprint` | `string` | No | — | Handle of a blueprint for term fields (optional) |
+| `route` | `string` | No | — | Public URL pattern for terms; must include `{slug}` when provided |
 
 **Example definition:**
 
@@ -49,7 +50,7 @@ description: Posts about the JavaScript language
 | Property | Type | Required | Description |
 |----------|------|----------|-------------|
 | `title` | `string` | Yes | Display name for the term |
-| `slug` | `string` | Yes | URL-safe identifier (matches filename) |
+| `slug` | `string` | No in YAML files | URL-safe identifier; falls back to the filename when omitted |
 | Additional fields | varies | No | Defined by the taxonomy's blueprint |
 
 ### Blueprint Fields for Terms
@@ -90,6 +91,8 @@ taxonomies:
 ```
 
 ### API Endpoints
+
+These Control Panel endpoints require an authenticated `madori_session` cookie and the relevant taxonomy permission.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -213,12 +216,14 @@ Editors select terms from the associated taxonomy when creating or editing entri
 
 ### Querying Terms via REST API
 
+These Control Panel endpoints require an authenticated `madori_session` cookie. Set `MADORI_SESSION` to a session token from a Control Panel login before running the examples.
+
 ```bash
 # List all terms
-curl http://localhost:3000/api/taxonomies/tags/terms
+curl -H "Cookie: madori_session=$MADORI_SESSION" http://localhost:3000/api/taxonomies/tags/terms
 
 # Get single term
-curl http://localhost:3000/api/taxonomies/tags/terms/javascript
+curl -H "Cookie: madori_session=$MADORI_SESSION" http://localhost:3000/api/taxonomies/tags/terms/javascript
 ```
 
 ---
@@ -233,7 +238,9 @@ Use two taxonomies for different grouping strategies:
 # resources/taxonomies/categories.yaml
 title: Categories
 # Broad, exclusive grouping (an entry typically has one category)
+```
 
+```yaml
 # resources/taxonomies/tags.yaml
 title: Tags
 # Narrow, inclusive labelling (an entry can have many tags)
@@ -243,7 +250,7 @@ title: Tags
 
 While Madori taxonomies are flat (terms don't nest), you can simulate hierarchy with naming conventions:
 
-```yaml
+```text
 # content/taxonomies/categories/
 frontend.yaml          # title: Frontend
 frontend-react.yaml    # title: Frontend > React

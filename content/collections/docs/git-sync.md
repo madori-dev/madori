@@ -3,7 +3,7 @@ title: Git Content Sync
 slug: git-sync
 status: published
 createdAt: 2026-08-19T00:00:00.000Z
-updatedAt: 2026-08-19T00:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Git Content Sync
@@ -108,8 +108,12 @@ From a Madori source checkout, use:
 ```bash
 pnpm madori git:status
 pnpm madori git:sync
-pnpm madori git:retry
+pnpm madori git:retry --repository <id-from-git-status>
 ```
+
+`git:sync` accepts optional `--repository <id>` when targeting one
+repository. `git:retry` always requires the opaque ID returned by
+`git:status`.
 
 Manual sync and retry do not broaden tracked paths. They stage only configured roots and exclusions.
 

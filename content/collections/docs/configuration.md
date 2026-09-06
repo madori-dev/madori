@@ -3,7 +3,7 @@ title: Configuration
 slug: configuration
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-06-07T09:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Configuration
@@ -44,6 +44,15 @@ const config: MadoriConfigInput = {
     enabled: true,
     path: '/api/graphql',
     introspection: process.env.NODE_ENV !== 'production',
+  },
+
+  staticCache: {
+    enabled: false,
+    driver: 'application',
+    storagePath: './storage/static-cache',
+    exclude: [],
+    queryStrings: 'ignore',
+    warmOnInvalidate: false,
   },
 
   sites: [
@@ -127,6 +136,24 @@ For setup, GitHub authentication, separate repositories, recovery, and troublesh
 | `graphql.path` | `string` | `/api/graphql` | URL path for the GraphQL endpoint |
 | `graphql.introspection` | `boolean` | `true` in dev, `false` in prod | Allow schema introspection queries |
 
+When introspection is disabled, `__schema` and `__type` fields are rejected during GraphQL validation; ordinary fields, including `__typename`, remain available. GraphiQL is unavailable, but normal GET and POST queries still work subject to authentication and permissions.
+
+The bundled Next.js routes and Control Panel links use `/cp` and `/api/graphql`. Changing `cp.path` or `graphql.path` alone does not relocate those routes; keep the defaults unless you also adapt application routing, links, and route protection.
+
+### Static HTML Cache
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `staticCache.enabled` | `boolean` | `false` | Enable bounded caching for eligible anonymous HTML responses |
+| `staticCache.driver` | `application \| file` | `application` | Cache storage implementation |
+| `staticCache.storagePath` | `string` | `storage/static-cache/` | Cache storage location |
+| `staticCache.exclude` | `string[]` | `[]` | Glob patterns excluded from caching |
+| `staticCache.queryStrings` | `ignore \| separate` | `ignore` | Query-string cache-key policy |
+| `staticCache.warmOnInvalidate` | `boolean` | `false` | Warm invalidated URLs when configured |
+| `staticCache.invalidationRules` | `array` | `[]` | Content trigger to URL/glob mappings |
+
+Cache applies only to eligible public HTML on the configured site origin. Requests with cookies, authorization, RSC/prefetch variants, or private/no-store/no-cache responses pass through. Use one writable application process per storage location; the cache coordination is not a distributed lock across independent deployments.
+
 ### Sites and SEO Options
 
 `sites` defines public site contexts used by URL resolution, metadata, alternate links, sitemaps, and redirects. Exactly one site must be marked `default`; each URL must be an HTTP(S) origin without credentials, query parameters, or fragments. Use separate handles for domain-based sites or locales served from a shared host.
@@ -145,7 +172,7 @@ For setup, GitHub authentication, separate repositories, recovery, and troublesh
 | `seo.humans` | `boolean` | `true` | Enable `/humans.txt` generation |
 | `seo.reports` | `boolean` | `true` | Enable SEO audit report APIs and snapshots |
 | `seo.redirects` | `boolean` | `true` | Enable authored redirect management and runtime redirects |
-| `seo.errorTracking` | `boolean` | `false` | Record normalized public 404 observations |
+| `seo.errorTracking` | `boolean` | `true` | Record bounded, normalized public 404 observations |
 | `seo.socialImages` | `boolean` | `false` | Emit resolved social-image overrides |
 | `seo.allowExternalCanonicals` | `boolean` | `false` | Permit explicitly authored external canonical URLs |
 | `seo.allowedRedirectOrigins` | `string[]` | `[]` | Exact external origins permitted as redirect destinations; redirects stay local by default |
@@ -154,7 +181,7 @@ For setup, GitHub authentication, separate repositories, recovery, and troublesh
 | `seo.reportSnapshotLimit` | `number` | `50` | Maximum retained report snapshots |
 | `seo.operationalStoragePath` | `string` | `./storage/seo` | Runtime SEO storage; keep outside content Git paths |
 
-SEO defaults are authored in versioned files under `resources/seo/`; redirects are versioned under `content/seo/redirects/`. Caches, 404 observations, hit counters, and audit snapshots remain operational data under `seo.operationalStoragePath` and should not be committed to content Git. See [SEO Architecture](/docs/seo-architecture) for the full storage contract.
+SEO defaults are authored in versioned files under `resources/seo/`; redirects are versioned under `content/seo/redirects/`. 404 observations are persisted in `not-found-observations.json` and audit snapshots under the configured operational storage path; do not commit that operational directory to content Git. Runtime caches and counters are process/runtime concerns rather than a documented persistent storage contract. See [SEO Architecture](/docs/seo-architecture) for the storage contract.
 
 ### Authentication Options
 
@@ -364,7 +391,7 @@ export default config
 
 ### Managing Settings in the Control Panel
 
-The Control Panel includes a **Settings** page at `/cp/settings` where you can view and modify configuration values without editing `madori.config.ts` directly. Changes are validated before being written and take effect on the next request.
+The Control Panel includes a **Settings** page at `/cp/settings`. Runtime settings (`site_name`, `locale`, and `timezone`) are stored separately from application configuration. The configuration editor writes supported fields to `madori.config.ts`, including paths, sites, SEO, Git, and cache options. Changes are validated before writing; configuration changes require a rebuild and process restart in production. Authored content and SEO documents have separate runtime write paths.
 
 ### Git-Ignored Sessions Directory
 

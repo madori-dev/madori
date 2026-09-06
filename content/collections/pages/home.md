@@ -3,7 +3,7 @@ title: Home
 slug: home
 status: published
 createdAt: 2026-06-03T08:15:33.462Z
-updatedAt: 2026-06-07T12:37:33.359Z
+updatedAt: 2026-09-06T00:00:00.000Z
 template: home
 order: 1
 meta_title: MADORI — The flat-file CMS for React
@@ -80,14 +80,14 @@ blocks:
     content: |
       Madori was born from a simple idea: take the best parts of flat-file CMS systems like Statamic and bring them to the React/Next.js ecosystem.
 
-      No database to manage. No complex hosting requirements. Just content as files — Markdown, YAML, and JSON — versioned alongside your code.
+      No database to manage. Content stays in Markdown and YAML files alongside your code. Run the writable CMS as one Node.js process with persistent storage and verified backups.
 
       **Key principles:**
 
       - Content lives in your repository
       - Blueprints define your schema
       - The control panel is optional
-      - Everything is extensible
+      - Schemas and frontend code can be customised
     _id: block-1780576792691-qqq7mmx
   - _type: about_the_creator
     _id: block-1780786352880-gncd85l

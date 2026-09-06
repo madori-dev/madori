@@ -3,14 +3,14 @@ title: Assets
 slug: assets
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Assets
 
-Madori includes a full asset management system for uploading, organising, and browsing files. Assets are stored on the filesystem and served directly by Next.js — no external storage service required. The Asset Manager provides a visual interface in the Control Panel and a REST API for programmatic access.
+Madori includes a filesystem asset manager for uploading, organising, and browsing files. The public asset route reads the configured `assetsPath`; the `/assets/...` rewrite and `/api/public/assets/...` route work for custom roots as well as the default path. The Asset Manager provides a Control Panel interface and REST API.
 
-The system supports any file type: images, documents, videos, audio, fonts, and archives. Images get thumbnail previews; other files display type-appropriate icons.
+The system supports images, documents, videos, audio, fonts, and archives, subject to upload safety checks. Active HTML and script extensions are rejected. Images get thumbnail previews; other files display type-appropriate icons.
 
 ---
 
@@ -31,7 +31,7 @@ const config: MadoriConfigInput = {
 }
 ```
 
-Since assets live in the `public/` directory, they're served directly by Next.js at `/assets/...` URLs.
+Assets are served through Madori's safe file route at `/assets/...` (and `/api/public/assets/...`), including files uploaded after startup. Requests are containment-checked; metadata sidecars are hidden. Active file types and SVG downloads use attachment disposition and a sandbox CSP.
 
 ### Asset Field Configuration
 
@@ -39,7 +39,8 @@ Use the `asset` field type in blueprints to let editors pick files:
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `max_files` | `number` | `0` (unlimited) | Maximum number of files. `1` = single file mode |
+| `max_files` | `number` | `1` | Maximum number of files. `1` = single file mode; `0` = unlimited |
+| `min_files` | `number` | `0` | Minimum number of selected files |
 
 ```yaml
 - handle: hero_image
@@ -57,13 +58,11 @@ Metadata is stored alongside files as `.meta.yaml`:
 ```yaml
 # public/assets/images/hero.jpg.meta.yaml
 alt: "Homepage hero banner"
-uploaded_at: "2026-01-15T10:30:00.000Z"
 ```
 
 | Property | Type | Description |
 |----------|------|-------------|
 | `alt` | `string` | Alt text for accessibility |
-| `uploaded_at` | `string` | ISO 8601 upload timestamp |
 
 ### API Endpoints
 
@@ -165,7 +164,7 @@ const response = await fetch('/api/assets/upload', {
 })
 
 const { data } = await response.json()
-// data.path = "/assets/photo.jpg"
+// data.path contains the asset reference returned by the API
 ```
 
 ### Updating Metadata via API
@@ -293,7 +292,7 @@ For large sites with many assets, consider excluding them from Git and using a s
 
 ### Referencing Assets in Templates
 
-Assets are served at their filesystem path relative to `public/`:
+Assets are referenced by their public `/assets/` URL (the configured root may be outside `public/`):
 
 ```tsx
 // File at public/assets/logo.svg → accessible at /assets/logo.svg
@@ -302,4 +301,3 @@ Assets are served at their filesystem path relative to `public/`:
 // File at public/assets/blog/post-image.jpg → accessible at /assets/blog/post-image.jpg
 <img src="/assets/blog/post-image.jpg" alt="Blog illustration" />
 ```
-

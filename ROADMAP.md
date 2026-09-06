@@ -1,14 +1,14 @@
 # Madori Roadmap
 
-This roadmap outlines the planned development of Madori — a flat-file CMS for React/Next.js. Each phase builds on the last, moving from a solid foundation toward features that make Madori a compelling choice for agencies and teams.
+Status reviewed 6 September 2026. This roadmap separates implemented foundations from remaining work and future plans. Madori remains pre-1.0; phase labels are not production support guarantees. See [README.md](README.md) for current capabilities and the [production runbook](docs/operations/production.md) for supported deployment limits.
 
 ---
 
-## Phase 0 — Core CMS Completion - COMPLETE ✅
+## Phase 0 — Core CMS Completion - Baseline implemented; hardening continues
 
 **Goal:** Complete the feature set required to confidently call Madori a production-ready CMS.
 
-Before hardening begins, the core platform needs to fully deliver on the content-management experience promised by the project vision.
+Core editorial workflows exist. The areas below continue to need maintenance and edge-case coverage alongside production hardening.
 
 | Area | What it means |
 |------|---------------|
@@ -22,13 +22,16 @@ Before hardening begins, the core platform needs to fully deliver on the content
 
 **Why this comes first:** Stabilising incomplete systems often hardens bugs and design flaws. The platform should first reach feature completeness for its intended scope.
 
+Current status is baseline coverage across these areas; production hardening and
+edge-case verification remain tracked in Phase 1.
+
 ---
 
-## Phase 1 — Stabilisation - COMPLETE ✅
+## Phase 1 — Stabilisation - In progress
 
 **Goal:** Make the core reliable enough for production use.
 
-Before adding new capabilities, the existing feature set needs to be bulletproof. Bugs at the content layer erode trust fast, and a CMS that occasionally loses or corrupts content won't survive real-world use.
+Prioritise data integrity, access control, and regression coverage before expanding capabilities. Existing atomic writes and process-local coordination support one writable application process, not concurrent independent instances.
 
 | Area | What it means |
 |------|---------------|
@@ -41,9 +44,12 @@ Before adding new capabilities, the existing feature set needs to be bulletproof
 
 **Why this comes first:** Everything else on the roadmap assumes a stable content layer. Shipping new features on shaky foundations means shipping new bugs.
 
+Open work includes deeper GraphQL/blueprint edge cases, cache invalidation,
+and continued permission and content-integrity regression coverage.
+
 ---
 
-## Phase 2 — Agency Usability - COMPLETE ✅
+## Phase 2 — Agency Usability - Baseline implemented; starter packages deferred
 
 **Goal:** Reduce the time from "new project" to "first content entry" for agencies managing multiple client sites.
 
@@ -60,9 +66,13 @@ Agencies are the primary audience for a Statamic-inspired flat-file CMS in the R
 
 **Why this comes second:** Once the core is stable, the biggest friction point is setup time. Agencies evaluate tools by how quickly a new developer can ship a first site.
 
+CLI scaffolding, migration, registry, and preset paths are implemented. Starter
+site packages remain deferred until distributable packages and release support
+are available.
+
 ---
 
-## Phase 3 — Developer Experience & Type Safety - COMPLETE ✅
+## Phase 3 — Developer Experience & Type Safety - Baseline implemented; contract hardening continues
 
 **Goal:** Make Madori the most developer-friendly CMS in the React ecosystem.
 
@@ -86,9 +96,12 @@ This is the major differentiator. Madori should feel native to TypeScript develo
 - Keeps content and application code synchronised.
 - Creates a compelling reason to choose Madori over traditional headless CMS platforms.
 
+Generation and SDK foundations exist, while cross-boundary schema and client
+contracts still require ongoing compatibility testing.
+
 ---
 
-## Phase 4 — Performance & Scale - COMPLETE ✅
+## Phase 4 — Performance & Scale - Partial; follow-up work required
 
 **Goal:** Support larger projects without compromising the flat-file philosophy.
 
@@ -105,13 +118,16 @@ Most projects will remain perfectly suited to flat-file storage, but larger cont
 
 **Why this comes before database drivers:** Most scaling concerns can be solved without abandoning the flat-file architecture.
 
+Indexing, search, background jobs, and cache/incremental rebuild guarantees
+remain follow-up work; this phase is not a production-scale completion claim.
+
 ---
 
-## Phase 5 — Optional Storage Drivers
+## Phase 5 — Optional Storage Drivers — Planned
 
 **Goal:** Let teams opt into alternative storage engines without changing their content model.
 
-Flat-file remains the default and recommended approach.
+Flat-file remains the implemented storage approach. The drivers below are planned, not available integrations.
 
 | Driver | Use case |
 |--------|----------|
@@ -126,7 +142,7 @@ Flat-file remains the default and recommended approach.
 - Migration paths remain straightforward.
 - Drivers remain optional.
 
-**Why this comes last:** The vast majority of Madori sites should never need a database. Database support exists to remove scale objections, not to redefine the product.
+These proposed drivers would offer alternative query and concurrency options while preserving the content model.
 
 ---
 
@@ -137,7 +153,7 @@ These areas may be explored after the core roadmap is complete:
 - Collaborative editing
 - WebSocket-powered live updates
 - Content revisions
-- Localisation
+- Full content localisation (site origins/locales and SEO alternate URLs already have configuration support)
 - Visual previewing
 - Extension system
 - Marketplace

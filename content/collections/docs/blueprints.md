@@ -3,7 +3,7 @@ title: Blueprints
 slug: blueprints
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-06-07T09:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Blueprints
@@ -249,7 +249,7 @@ Madori supports these built-in field types:
 | `entries` | `string[]` | Cross-references to entries |
 | `taxonomy` | `string[]` | Term assignments |
 | `replicator` | `object[]` | Flexible page blocks (explicit sets) |
-| `blocks` | `object[]` | Page blocks (auto-discovers `is_block` fieldsets) |
+| `blocks` | `object[]` | Page blocks (`is_block` fieldsets with registered public renderers) |
 | `grid` | `object[]` | Tabular repeatable data |
 | `yaml` | `string` | Arbitrary structured data |
 | `code` | `string` | Code snippets, embeds |
@@ -947,11 +947,13 @@ Navigate to **Blueprints** in the CP sidebar to manage blueprints visually:
 
 ### API
 
+These Control Panel definition endpoints require an authenticated `madori_session` cookie and the relevant blueprint permission.
+
 ```
-GET    /api/blueprints/{type}           # List all blueprints of a type
-GET    /api/blueprints/{type}/{handle}  # Get a specific blueprint
-PUT    /api/blueprints/{type}/{handle}  # Create or update a blueprint
-DELETE /api/blueprints/{type}/{handle}  # Delete a blueprint
+GET    /api/definitions/blueprints/{type}           # List all blueprints of a type
+GET    /api/definitions/blueprints/{type}/{handle}  # Get a specific blueprint
+PUT    /api/definitions/blueprints/{type}/{handle}  # Create or update a blueprint
+DELETE /api/definitions/blueprints/{type}/{handle}  # Delete a blueprint
 ```
 
 ### File-Based Management

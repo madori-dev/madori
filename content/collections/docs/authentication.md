@@ -3,7 +3,7 @@ title: Authentication
 slug: authentication
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-06-05T10:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Authentication
@@ -50,7 +50,7 @@ Users are stored as YAML files in the directory specified by `usersPath` (defaul
 id: admin
 email: admin@example.com
 name: Admin
-password_hash: $2b$10$...
+password_hash: scrypt:<salt hex>:<hash hex>
 roles:
   - admin
 created_at: 2026-01-01T00:00:00.000Z
@@ -61,7 +61,7 @@ created_at: 2026-01-01T00:00:00.000Z
 | `id` | `string` | Yes | Unique user identifier (matches filename) |
 | `email` | `string` | Yes | Login email address (must be unique) |
 | `name` | `string` | Yes | Display name |
-| `password_hash` | `string` | Yes | bcrypt-hashed password |
+| `password_hash` | `string` | Yes | scrypt hash in `scrypt:<salt>:<hash>` format |
 | `roles` | `string[]` | No | Array of role handles assigned to this user |
 | `created_at` | `string` | No | ISO 8601 creation timestamp |
 
@@ -77,6 +77,8 @@ Sessions use cryptographically random tokens stored as JSON files (SHA-256 hashe
 For Control Panel page requests, the Next.js Proxy performs an optimistic cookie-presence check. It does not call an internal HTTP endpoint or session store. Protected API handlers validate the session token and permissions before reading or changing data. An expired or invalid cookie therefore cannot authorize API access; a `401` response sends the browser back to `/cp/login`.
 
 This split keeps route checks fast and avoids loopback HTTP requests when Madori runs behind Nginx, Cloudflare, or another SSL-terminating reverse proxy.
+
+Password changes, account deletion, and other credential lifecycle changes revoke the user's existing sessions. Logout removes the current session. File-backed sessions and lifecycle locks assume one writable application process sharing the configured users and sessions directories; independent processes need a shared adapter and coordination layer.
 
 ### Roles and Permissions
 
@@ -175,6 +177,7 @@ await fetch('/api/users', {
     'Authorization': 'Bearer <admin-token>',
   },
   body: JSON.stringify({
+    id: 'editor-jane',
     email: 'editor@example.com',
     name: 'Jane Editor',
     password: 'secure-password',
@@ -210,8 +213,8 @@ const response = await fetch('/api/auth/validate', {
 })
 
 if (response.ok) {
-  const { user } = await response.json()
-  // Session is valid, user object contains id, email, name, roles
+const { valid, userId } = await response.json()
+// A successful response is { valid: true, userId }
 }
 ```
 
@@ -317,7 +320,7 @@ auth: {
 
 The auth system uses an adapter pattern with three pluggable contracts:
 
-- **AuthDriver** — validates credentials (default: bcrypt password comparison)
+- **AuthDriver** — validates credentials (default: scrypt password verification)
 - **SessionStore** — manages session tokens (default: file-based JSON)
 - **UserProvider** — reads/writes user data (default: YAML files)
 

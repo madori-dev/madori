@@ -3,14 +3,14 @@ title: Deployment
 slug: deployment
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-06-05T10:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Deployment
 
-Madori runs anywhere Node.js runs. All content is stored as flat files — no database required. This makes deployment straightforward: build the Next.js application and serve it from any hosting environment that provides a persistent filesystem.
+Madori's writable CMS runs on a Node.js server with persistent storage. Content is stored as flat files; no database is required. Build the Next.js application and preserve writable data across application releases.
 
-For full Control Panel functionality (content editing, asset uploads, user management), you need a hosting environment with a writable filesystem. Serverless platforms work for read-only frontends where content is committed to Git.
+For Control Panel functionality (content editing, asset uploads, user management), run one application process per writable project storage location. File locks and cache generations are local to that process; multiple writers are not supported by the bundled storage implementation. A separate read-only frontend can use bundled content or a remote content API, with the integration described below.
 
 ---
 
@@ -22,8 +22,8 @@ For full Control Panel functionality (content editing, asset uploads, user manag
 |----------|----------|---------|-------------|
 | `NODE_ENV` | No | `development` | Set to `production` for secure cookies, disabled introspection, and optimised builds |
 | `PORT` | No | `3000` | Port for the Node.js server |
-| `HOSTNAME` | No | `0.0.0.0` | Bind address for the server |
-| `DISABLE_CP` | No | — | Set to `true` to disable the Control Panel in production |
+
+Use `cp.enabled: false` in `madori.config.ts` for a frontend-only deployment. Pass an explicit bind address to Next with `pnpm start -H 0.0.0.0` when required.
 
 ### Build Commands
 
@@ -41,19 +41,20 @@ For full Control Panel functionality (content editing, asset uploads, user manag
 | `cp.enabled` | `boolean` | `true` | Disable the CP if deploying frontend-only |
 | `auth.storeConfig.sessionDurationMs` | `number` | `86400000` | Session expiry — consider shortening for production |
 | `sites` | `SiteDefinitionConfig[]` | one local default | Public origins/locales used for canonical URLs and host routing |
-| `seo.operationalStoragePath` | `string` | `./storage/seo` | Writable runtime storage for SEO cache, 404 observations, metrics, and reports |
-| `seo.errorTracking` | `boolean` | `false` | Enable bounded, normalized public 404 observation recording |
+| `seo.operationalStoragePath` | `string` | `./storage/seo` | Writable operational storage for 404 observations and report snapshots |
+| `seo.errorTracking` | `boolean` | `true` | Enable bounded, normalized public 404 observation recording |
 | `seo.redirects` | `boolean` | `true` | Enable authored redirects and public redirect execution |
 | `seo.reports` | `boolean` | `true` | Enable audit report generation and report API |
+| `staticCache.enabled` | `boolean` | `false` | Enable bounded public HTML caching; requires writable cache storage and matching configured site origin |
 
 ### System Requirements
 
 | Requirement | Minimum | Recommended |
 |-------------|---------|-------------|
-| Node.js | 18+ | 20 LTS |
-| RAM | 256 MB | 512 MB+ |
+| Node.js | 22+ | Current supported LTS |
+| RAM | Depends on workload | Size for content, build, and asset workload |
 | Disk | Project size + assets | SSD for responsive CP |
-| pnpm | 8+ | Latest |
+| pnpm | Project package-manager version | Latest compatible version |
 
 ---
 
@@ -155,7 +156,7 @@ Good for: marketing sites, documentation, and blogs where content is committed t
 
 ### Railway / Render
 
-Persistent filesystem with always-on processes. Full Control Panel support without VPS management.
+Configure an always-on service with an attached persistent volume and one application instance. Map every writable data path to that volume; do not assume the service's default deployment filesystem persists. Verify the storage and restart behavior of your chosen plan before enabling editorial writes.
 
 ---
 
@@ -166,7 +167,7 @@ Persistent filesystem with always-on processes. Full Control Panel support witho
 SEO has two storage classes:
 
 - Versioned content: `resources/seo/sites`, `resources/seo/sections`, and `content/seo/redirects`. These files can live in the application repository or an explicitly tracked separate content repository.
-- Operational state: `seo.operationalStoragePath` (cache, 404 observations, redirect counters, and report snapshots). Keep this directory writable, persistent, backed up, and outside Git sync paths.
+- Operational state: `seo.operationalStoragePath` stores 404 observations and report snapshots. Keep this directory writable, persistent, backed up, and outside Git sync paths. SEO resolution caching is in memory; persistent redirect-hit counters are not implemented.
 
 Do not deploy a shared writable operational directory across unrelated sites. Give each site or deployment its own storage scope. Never expose this directory through static hosting.
 
@@ -178,16 +179,16 @@ Public SEO routes are generated dynamically: `/sitemap.xml`, `/robots.txt`, and 
 
 ### SEO in Serverless Deployments
 
-Read-only metadata and sitemap rendering can run on serverless infrastructure when content is bundled or fetched from a stable source. 404 tracking, report snapshots, redirect counters, and CP writes require a persistent writable filesystem or an equivalent adapter. Disable `seo.errorTracking` and `seo.reports` when no durable operational store is available; do not rely on ephemeral local storage for those features.
+Read-only metadata and sitemap rendering can run on serverless infrastructure when content is bundled or fetched from a stable source. 404 tracking, report snapshots, and CP writes require a persistent writable filesystem. Disable `cp.enabled`, `seo.errorTracking`, `seo.reports`, `git.enabled`, and `staticCache.enabled` when no durable writable storage is available. A custom frontend must supply its own remote data integration; the bundled file engine does not switch to remote storage automatically.
 
 ### Content in Git
 
 For automatic commits and GitHub pushes from the Control Panel, see [Git Content Sync](/docs/git-sync). Automatic sync needs persistent writable storage for content, each `.git` directory, and `git.statePath`; ephemeral serverless filesystems are not suitable.
 
-Since all content is flat files, commit content to your repository:
+Commit authored content to your repository, excluding private submissions and operational data. For example:
 
 ```bash
-git add content/
+git add content/collections/blog/example-post.md
 git commit -m "Update blog posts"
 git push
 ```
@@ -225,11 +226,16 @@ Deploy the frontend to a CDN/serverless platform and the CP to a VPS:
 // madori.config.ts on the frontend deployment
 const config = {
   cp: { enabled: false },
-  graphql: { enabled: true, introspection: false },
+  graphql: { enabled: false },
+  seo: { errorTracking: false, reports: false },
+  git: { enabled: false },
+  staticCache: { enabled: false },
 }
+
+export default config
 ```
 
-The frontend reads content from the GraphQL API while the CP runs on a separate server with filesystem access.
+This disables the local Control Panel and write-dependent options; it does not connect the frontend to the CMS. Adapt frontend reads to the public published-entry API or use authenticated GraphQL from server-side code against the separate CMS origin. Keep GraphQL credentials server-side. If content is bundled instead, arrange a rebuild after publishing. See [SDK and content access](/docs/sdk) for transport and authentication choices.
 
 ### SSL with Let's Encrypt
 
@@ -281,13 +287,14 @@ If the marketing site works but `/cp` returns `502 Bad Gateway`:
 
 ### Health Check Endpoint
 
-Use the GraphQL endpoint as a health check:
+Use the dedicated liveness or readiness endpoint:
 
 ```bash
-curl -f http://localhost:3000/api/graphql?query={__typename}
+curl -f http://localhost:3000/api/health/live
+curl -f http://localhost:3000/api/health/ready
 ```
 
-Returns `200` if the server is healthy.
+These endpoints return `200` when their corresponding health check succeeds.
 
 ### Asset Backup
 

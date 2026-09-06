@@ -3,14 +3,14 @@ title: Collections
 slug: collections
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Collections
 
 Collections are groups of content entries that share a structure. A blog, a set of pages, a product catalog — each is a collection. Every collection is backed by a blueprint that defines its fields, and entries are stored as flat Markdown files with YAML frontmatter.
 
-Collections are the primary way content is organised in Madori. Each collection appears in the Control Panel sidebar and generates REST and GraphQL API endpoints automatically.
+Collections are the primary way content is organised in Madori. Collections are managed from the Control Panel Collections area and expose REST and GraphQL endpoints when configured.
 
 ---
 
@@ -22,14 +22,13 @@ Collection definitions live at `resources/collections/{handle}.yaml`. The handle
 
 | Option | Type | Required | Default | Description |
 |--------|------|----------|---------|-------------|
-| `title` | `string` | Yes | — | Display name shown in the Control Panel sidebar |
+| `title` | `string` | Yes | — | Display name shown in the Control Panel |
 | `blueprint` | `string` | Yes | — | Handle of the blueprint that defines the field schema |
-| `blueprints` | `string[]` | No | — | Array of blueprint handles (for multi-type collections) |
 | `route` | `string` | No | — | Frontend URL pattern for entries (e.g. `/blog/{slug}`) |
 | `sortable` | `boolean` | No | `false` | Allow manual drag-and-drop ordering of entries |
 | `dated` | `boolean` | No | `false` | Use date-based file organisation |
 | `defaultStatus` | `string` | No | `draft` | Default status for new entries: `published` or `draft` |
-| `icon` | `string` | No | — | Lucide icon name for the Control Panel sidebar |
+| `icon` | `string` | No | — | Lucide icon name used by Control Panel collection navigation |
 | `sortDirection` | `string` | No | `desc` | Default sort direction: `asc` or `desc` |
 | `taxonomies` | `string[]` | No | `[]` | Array of taxonomy handles to associate with this collection |
 
@@ -130,6 +129,8 @@ Your markdown content here.
 
 ### Querying via REST API
 
+These Control Panel entry endpoints require an authenticated `madori_session` cookie and the relevant collection permission.
+
 ```
 GET /api/entries/{collection}           # List entries
 GET /api/entries/{collection}/{slug}    # Get single entry
@@ -167,21 +168,9 @@ GraphQL list queries accept these arguments:
 
 ## Common Patterns
 
-### Multi-Blueprint Collections
+### One Blueprint per Collection
 
-A collection can support multiple entry types by referencing multiple blueprints:
-
-```yaml
-# resources/collections/pages.yaml
-title: Pages
-blueprints:
-  - page
-  - landing-page
-  - documentation
-route: /{slug}
-```
-
-When creating a new entry, the editor chooses which blueprint to use.
+Each collection definition references one blueprint with `blueprint`. If entries need different shapes, create separate collections and blueprints; the current definition schema does not support a `blueprints` array or per-entry blueprint selection.
 
 ### Date-Based Organisation
 
@@ -250,4 +239,3 @@ Since entries are flat Markdown files, commit them to Git for:
 git add content/collections/blog/new-post.md
 git commit -m "Add blog post: Getting Started with Madori"
 ```
-

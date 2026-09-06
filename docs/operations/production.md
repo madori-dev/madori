@@ -9,7 +9,7 @@ Madori's flat-file storage requires an explicit deployment contract. Treat conte
 - Do not let multiple application instances write the same flat-file paths. Use one writer behind a reverse proxy; scale read-only frontend workloads separately.
 - Terminate TLS at the platform or reverse proxy. Forward the original HTTPS scheme and client address only from trusted proxies.
 - Set HSTS and request-body limits at TLS proxy. Application supplies frame, MIME-sniffing, referrer, and browser-permission headers.
-- Run Node.js 22 and repository-pinned pnpm version.
+- Use Node.js 22 or newer as required by `package.json`; CI tests Node.js 22. Use the repository-pinned pnpm version (currently 11.22.0).
 - Keep `users/`, `.sessions/`, backup archives, rollback copies, and deployment credentials out of source control.
 
 ## Release gate
@@ -19,9 +19,13 @@ Release core repository only from clean commit that passes `Required CI`. Locall
 ```bash
 pnpm install --frozen-lockfile
 pnpm lint
-pnpm exec tsc --noEmit
+pnpm exec tsc --noEmit --incremental false
+pnpm exec tsc --noEmit -p packages/madori-sdk/tsconfig.json
+pnpm exec tsc --noEmit -p packages/madori-cli/tsconfig.json
+pnpm exec tsc --noEmit -p packages/create-madori-app/tsconfig.json
 pnpm test
 pnpm build
+pnpm exec playwright install chromium
 pnpm e2e
 pnpm audit --prod --audit-level high
 ```
@@ -34,6 +38,16 @@ pnpm verify
 
 Record deployed commit SHA, Node version, lockfile hash, backup identifier, and deployment time.
 
+The generated application's gate does not include the core repository's unit/browser suites. Record which gate ran. Browser coverage currently targets Chromium, including a forced fallback for browsers without the Navigation API; it is not full cross-browser certification.
+
+## Configuration and caches
+
+Set `sites` to the deployment's public URLs and keep exactly one default site. Defaults point to localhost. `madori.config.ts` is statically imported, so rebuild and restart after changing it in production, including changes written by the Control Panel project-configuration editor. Runtime values in `content/settings.yaml` are separate from project configuration.
+
+Static HTML caching is disabled by default. When enabled, it needs a matching configured site origin and writable `staticCache.storagePath` for generation coordination. Cookies, authorization, RSC/prefetch traffic and private/no-store/no-cache responses bypass it. Enabling caching does not make every dynamic Next.js route cacheable. Application content/SEO caches and optional SDK tag caches are separate; custom SDK tag-cache integrations need their own invalidation.
+
+The application serves configured assets through `/assets/...`, including files uploaded after startup. Keep the application's serving route in front of physical files: serving the entire asset directory directly at the proxy can expose `.meta.yaml` sidecars and bypass SVG download/sandbox headers. Configure any separate CDN/origin to preserve these restrictions.
+
 ## Pre-deploy backup
 
 Write backups outside application checkout and persistent data mounts when possible:
@@ -43,7 +57,7 @@ pnpm madori backup /secure-backups/madori/pre-deploy-$(date +%Y%m%dT%H%M%S)
 pnpm madori backup:verify /secure-backups/madori/pre-deploy-YYYYMMDDTHHMMSS.tar.gz
 ```
 
-Backup contains SHA-256 manifest covering configured content, resources, users, assets, SEO operational storage, sessions, configuration, and schema manifest. Encrypt backup storage, restrict access, copy off-host, and apply retention policy.
+Backup contains a SHA-256 manifest covering configured content, resources, users, assets, SEO operational storage, sessions, configuration, and schema manifest. Custom user/session paths are taken from authentication configuration. Regenerable static caches and Git-sync operational state are not included as dedicated backup roots. Encrypt backup storage, restrict access, copy off-host, and apply retention policy.
 
 Set site-specific recovery objectives before launch. Recommended starting point: hourly backup for active editorial sites, daily off-host copy, 30-day retention, quarterly restore drill.
 

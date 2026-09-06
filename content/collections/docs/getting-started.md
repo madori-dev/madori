@@ -3,7 +3,7 @@ title: Getting Started
 slug: getting-started
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-06-07T09:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Getting Started
@@ -37,8 +37,9 @@ You don't need to change any configuration to get started — defaults work out 
 
 Before you begin, make sure you have:
 
-- **Node.js 18+** — [download from nodejs.org](https://nodejs.org)
-- **pnpm** — install with `npm install -g pnpm`
+- **Node.js 22+** — [download from nodejs.org](https://nodejs.org)
+- **pnpm 11.22.0** — enable with `corepack enable pnpm`
+- **`curl` and `tar`** — required by the scaffolder
 
 ### 1. Create a new project
 
@@ -48,7 +49,9 @@ Scaffold a complete MADORI project:
 pnpm dlx create-madori-app@latest my-site
 ```
 
-Choose whether to include boilerplate site content during scaffolding. Starter-template packages are not currently distributed.
+Choose whether to include boilerplate site content during scaffolding. The
+published package currently provides the scaffold; separately distributed
+starter-template packages are not part of this release.
 
 This creates a `my-site` directory with all CMS files, blueprints, and configuration ready to go.
 
@@ -171,7 +174,7 @@ Add tags or categories to group entries. See [Taxonomies](/docs/taxonomies) for 
 
 ### Build page layouts
 
-Use Replicator fields with [Fieldsets](/docs/fieldsets) to let editors compose flexible page layouts from reusable blocks. Or use the simpler `blocks` field type which auto-discovers all fieldsets marked with `is_block: true`.
+Use Replicator fields with [Fieldsets](/docs/fieldsets) to let editors compose flexible page layouts from reusable blocks. The `blocks` field type discovers fieldsets marked with `is_block: true` whose handles have registered public renderers.
 
 ### Generate a typed SDK
 

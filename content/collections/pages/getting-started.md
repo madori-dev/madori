@@ -3,7 +3,7 @@ title: Getting Started
 slug: getting-started
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 meta_title: "Getting Started — MADORI"
 meta_description: "Create a new MADORI project in under two minutes. Install, configure, and start building content immediately."
 ---
@@ -14,19 +14,14 @@ Get a new MADORI project running in under two minutes.
 
 ## Prerequisites
 
-- **Node.js 18+**
-- **pnpm** (recommended) — install with `npm install -g pnpm`
+- **Node.js 22+**
+- **pnpm 11.22.0** — enable with `corepack enable pnpm`
+- **`curl` and `tar`** — required by the scaffolder
 
 ## Create a new project
 
 ```bash
 pnpm dlx create-madori-app@latest my-site
-```
-
-Or with npx:
-
-```bash
-npx create-madori-app@latest my-site
 ```
 
 This scaffolds a complete MADORI project into `./my-site`.
@@ -89,7 +84,7 @@ Example query:
 
 ```graphql
 {
-  entries(collection: "blog") {
+  blogs {
     title
     slug
     content
@@ -99,13 +94,13 @@ Example query:
 
 ## Deploy
 
-MADORI runs anywhere Node.js runs. No database required.
+MADORI requires one writable Node.js process with persistent storage. No database is required; ephemeral serverless filesystems do not support the writable CMS.
 
-- **Vercel** — connect your repo, auto-deploys on push (read-only CP)
+- **Read-only frontend** — bundle published content or integrate a remote content API; disable the local CP and write-dependent features
 - **VPS** — `pnpm build && pnpm start` behind nginx (full CP support)
-- **Railway / Render** — persistent filesystem, full CP support
+- **Managed Node.js service** — configure a persistent volume and one writable instance
 
-For full CP functionality (content editing, asset uploads), use a host with a persistent filesystem.
+For CP functionality (content editing, asset uploads), preserve all writable data paths across deploys. Follow the [deployment guide](/docs/deployment) for configuration and storage requirements.
 
 ## Next steps
 

@@ -10,12 +10,6 @@ MADORI is a flat-file CMS for React/Next.js applications — inspired by Statami
 pnpm dlx create-madori-app@latest my-site
 ```
 
-or
-
-```bash
-npx create-madori-app@latest my-site
-```
-
 Then:
 
 ```bash
@@ -23,6 +17,8 @@ cd my-site
 pnpm install
 pnpm dev
 ```
+
+The scaffolder downloads the repository's current `main` branch, not a pinned application release. Record and test the generated application's revision and lockfile before deployment. Starter-template packages are not currently distributed.
 
 ## What you get
 
@@ -37,7 +33,8 @@ pnpm dev
 ## Requirements
 
 - Node.js 22+
-- pnpm 11.22+
+- pnpm 11.22.0
+- `curl` and `tar` available on your system
 
 ## Default credentials
 

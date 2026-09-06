@@ -3,7 +3,7 @@ title: Forms
 slug: forms
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Forms
@@ -61,7 +61,9 @@ tabs:
             - max:5000
 ```
 
-All [field types](/docs/field-types) and [validation rules](/docs/blueprints#validation-rules) available in collection blueprints work in form blueprints.
+Form blueprints support public-rendered field types: `text`, `number`, `date`, `toggle`, `select`, `multiselect`, `markdown`, `tiptap`, `code`, `yaml`, and `hidden`. Collection-only types such as `asset`, `entries`, `taxonomy`, `replicator`, `grid`, and `blocks` may be optional but cannot be required because the public form renderer cannot supply them. Shared [validation rules](/docs/blueprints#validation-rules) apply to supported fields.
+
+The public submission endpoint does not require a session. Submission listing, deletion, and export endpoints are Control Panel operations and require an authenticated `madori_session` cookie plus the relevant form permission.
 
 ### Form Definition
 
@@ -227,7 +229,7 @@ export function ContactForm() {
           </FormField>
 
           {/* Honeypot */}
-          <input type="text" name="_honeypot" style={{ display: 'none' }} tabIndex={-1} />
+          <input type="text" name="_honeypot" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }} tabIndex={-1} />
 
           <button type="submit" disabled={submitting}>
             {submitting ? 'Sending...' : 'Send Message'}
@@ -312,7 +314,7 @@ export function ContactForm() {
       </div>
 
       {/* Honeypot */}
-      <input type="text" name="_honeypot" style={{ display: 'none' }} tabIndex={-1} />
+      <input type="text" name="_honeypot" style={{ position: 'absolute', left: '-10000px', width: 1, height: 1, overflow: 'hidden' }} tabIndex={-1} />
 
       <button type="submit">Send Message</button>
     </form>
@@ -747,15 +749,19 @@ textarea:invalid {
 
 ### Automated Export Backups
 
+Submission export endpoints require an authenticated `madori_session` cookie. Set `MADORI_SESSION` to a session token from a Control Panel login before running these commands.
+
 Use the export API endpoints in a scheduled task to create regular backups:
 
 ```bash
 # Download CSV backup of contact form submissions
 curl -o "backups/contact-$(date +%Y%m%d).csv" \
+  -H "Cookie: madori_session=$MADORI_SESSION" \
   https://yoursite.com/api/forms/contact/export/csv
 
 # Download JSON backup
 curl -o "backups/contact-$(date +%Y%m%d).json" \
+  -H "Cookie: madori_session=$MADORI_SESSION" \
   https://yoursite.com/api/forms/contact/export/json
 ```
 

@@ -3,7 +3,7 @@ title: Field Types
 slug: field-types
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-06-07T09:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Field Types
@@ -408,7 +408,8 @@ A file picker that integrates with the Asset Manager. Supports single or multipl
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `max_files` | `number` | `0` | Maximum number of files. `1` = single file, `0` = unlimited |
+| `min_files` | `number` | — | Minimum files for a multi-file asset field |
+| `max_files` | `number` | `1` | Maximum number of files. `1` = scalar asset, `0` = unlimited |
 
 ### Behaviour by `max_files` Value
 
@@ -416,7 +417,8 @@ A file picker that integrates with the Asset Manager. Supports single or multipl
 |-------|-----------|---------------|
 | `1` | Single file selection with replace button | `string` (file path) |
 | `> 1` | Multiple files up to limit, shows counter | `string[]` (array of paths) |
-| `0` (or omitted) | Unlimited file selection | `string[]` (array of paths) |
+| `0` | Unlimited file selection | `string[]` (array of paths) |
+| omitted | Single file selection | `string` (file path) |
 
 ### Supported Validation
 
@@ -452,6 +454,8 @@ Multiple: stored as a `string[]` array of paths.
   field:
     type: asset
     display: Attachments
+    options:
+      max_files: 0
 ```
 
 ---
@@ -539,7 +543,7 @@ Fieldsets are defined at `resources/fieldsets/{handle}.yaml`. See the [Fieldsets
 - Reorder blocks via up/down buttons (keyboard-accessible)
 - Drag handle for mouse-based reordering
 - Duplicate and delete individual blocks
-- Supports nesting (replicator within replicator) up to 3 levels
+- Supports nested Replicator fields when configured in fieldsets
 - Default values from fieldset field definitions are pre-populated
 
 ### Supported Validation
@@ -583,7 +587,11 @@ A structured repeatable field where every row shares the same field structure. U
 
 ### Configuration Options
 
-The Grid field currently accepts JSON array data directly. A visual row editor with drag-and-drop reordering is planned.
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `fields` | `FieldDefinition[]` | `[]` | Column field definitions used by the row editor |
+
+The Control Panel provides add, edit, delete, and drag-and-drop row reordering when `options.fields` is configured. Without columns, it shows a configuration hint.
 
 ### Supported Validation
 
@@ -676,18 +684,18 @@ Stored as a `string` containing the raw code content.
 
 ## Blocks
 
-A page-building field that automatically includes all fieldsets marked with `is_block: true`. Unlike Replicator, which requires you to specify available sets explicitly, Blocks auto-discovers all block fieldsets — no configuration needed.
+A page-building field that discovers fieldsets marked with `is_block: true` whose handles also have a registered public block renderer. Replicator can additionally load explicitly configured sets.
 
 ### Configuration Options
 
-No type-specific options. Simply add a `blocks` field to a blueprint and all fieldsets with `is_block: true` become available as block types.
+Add a `blocks` field to a blueprint to use eligible block fieldsets. New public block types need both a fieldset with `is_block: true` and renderer registration in `src/components/blocks/BlockRenderer.tsx`.
 
 ### Features
 
-- Auto-discovers all fieldsets with `is_block: true`
+- Discovers `is_block: true` fieldsets with registered public renderers
 - Same editing experience as Replicator (add, reorder, collapse, delete blocks)
 - No explicit `sets` configuration required
-- Adding a new fieldset with `is_block: true` makes it immediately available
+- A new fieldset becomes available after its public renderer is registered
 
 ### Supported Validation
 
@@ -716,7 +724,7 @@ blocks:
     display: Page Blocks
 ```
 
-No `options.sets` needed — all `is_block: true` fieldsets are included automatically.
+No `options.sets` is needed for eligible `is_block: true` fieldsets with registered public renderers.
 
 ---
 

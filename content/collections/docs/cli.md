@@ -3,12 +3,12 @@ title: CLI
 slug: cli
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-06-07T09:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # CLI
 
-Madori source checkout includes command-line tools for scaffolding, content migration, code generation, and administration. Generated `create-madori-app` projects do not bundle this CLI; manage those projects through control panel instead.
+Madori source checkout includes command-line tools for scaffolding, content migration, code generation, and administration. Generated `create-madori-app` projects do not bundle this CLI; manage those projects through control panel instead. `@madori/cli` is currently source-checkout tooling rather than a published registry package.
 
 ---
 
@@ -39,10 +39,14 @@ pnpm madori <command>
 | `registry:push <repository-url>` | Push local resources to a shared Git registry |
 | `git:status` | Show Git sync status for configured repositories |
 | `git:sync` | Commit and optionally push pending tracked changes |
-| `git:retry` | Retry pending Git pushes |
+| `git:retry --repository <id>` | Retry a pending Git push for repository ID from `git:status` |
 | `seo:migrate` | Migrate legacy SEO frontmatter fields into nested `seo` values |
+| `seo:rollback --plan <path>` | Roll back an SEO migration plan |
+| `backup <path>` | Create a checksummed operational backup |
+| `backup:verify <archive-path>` | Verify backup structure and checksums |
+| `restore <archive-path> --yes` | Restore a verified backup and retain rollback copies |
 | `generate` | Generate TypeScript types, schemas, and SDK from blueprints |
-| `check` | Validate project structure and configuration |
+| `check` | Check manifest schema-version compatibility |
 
 ---
 
@@ -154,7 +158,7 @@ Files created:
   - content/navigation/main.yaml
 
 Next steps:
-  Run `madori check` to validate your project.
+  Run `pnpm madori check` to check manifest schema compatibility.
 ```
 
 ---
@@ -203,7 +207,7 @@ The migration:
 
 ### migrate:markdown
 
-Migrate a directory of Markdown files into a Madori collection. Preserves existing frontmatter and generates slugs from filenames.
+Migrate a directory of Markdown files into a Madori collection. Extra frontmatter fields are preserved, but migration sets `title`, `slug`, `status`, `createdAt`, and `updatedAt`; imported entries become drafts. Review generated entries before publishing.
 
 ```bash
 pnpm madori migrate:markdown <source-directory> [options]
@@ -303,6 +307,20 @@ pnpm madori import ./backup.zip
 
 Existing files are skipped by default to prevent accidental overwrites.
 
+### Operational backup and restore
+
+Back up configured content, resources, assets, users, configuration, SEO state,
+sessions, and the schema manifest. Restore requires an explicit `--yes` and
+keeps pre-restore rollback copies.
+
+```bash
+pnpm madori backup ./storage/madori-backup.tar.gz
+pnpm madori backup:verify ./storage/madori-backup.tar.gz
+pnpm madori restore ./storage/madori-backup.tar.gz --yes
+```
+
+Use `--rollback-dir <path>` with `restore` to choose the rollback directory.
+
 ### registry:pull
 
 Pull shared resources from a Git repository into your local project.
@@ -359,7 +377,7 @@ pnpm madori generate
 ```
 
 ```
-✓ Generate complete: 3 blueprint(s) processed, 4 file(s) generated in 42ms
+✓ Generate complete: 3 blueprint(s) processed in 42ms
 ```
 
 **Watch mode:**
@@ -368,14 +386,20 @@ pnpm madori generate
 pnpm madori generate --watch
 ```
 
-Regenerates automatically when blueprint files change. Uses a 300ms debounce to batch rapid edits.
+Watches YAML files under `resources/blueprints/**/*.yaml` and regenerates with
+a 300ms debounce. It does not watch collection definitions or fieldsets, so run
+`pnpm madori generate` explicitly after changing those resources.
 
-The generated output includes:
+The generator reads `resources/blueprints/**/*.yaml` from the project root and
+does not derive this input directory from a custom `resourcesPath`. The generated
+output includes:
 - TypeScript interfaces for each collection's entries
 - Zod schemas for runtime validation
 - A typed GraphQL SDK with operations for each collection
 - A barrel `index.ts` for convenient imports
 - A `tsconfig.paths.json` for path alias configuration
+
+Generated consumers import `@madori/sdk`, which is currently a source workspace package. Build and link the SDK before using those imports; see [SDK and content access](/docs/sdk) for setup. Path aliases alone do not install the package.
 
 ---
 
@@ -396,15 +420,17 @@ pnpm madori make:user
 | Password | `string` | Required, minimum 8 characters |
 | Roles | `string[]` | Comma-separated list of role handles |
 
-Output: Creates a YAML file at `users/{id}.yaml` with a bcrypt-hashed password.
+Output: Creates a YAML file at `users/{id}.yaml` with a scrypt password hash.
 
 ### check
 
-Validate your project structure, blueprints, and configuration.
+Check whether the manifest's schema version matches the version expected by the running code. This command does not validate all blueprints, content, or application configuration.
 
 ```bash
 pnpm madori check
 ```
+
+Use `--manifest <path>` to override the default `.madori/manifest.json` location.
 
 ---
 
@@ -424,7 +450,7 @@ Interactive prompts:
 ? Password: ********
 ? Roles (comma-separated): editor
 
-✓ Created user at users/editor.yaml
+✓ User created: users/<generated-id>.yaml
 ```
 
 ### Full Agency Workflow
@@ -466,15 +492,17 @@ pnpm madori registry:push https://github.com/my-agency/shared-resources.git --re
 pnpm madori registry:pull https://github.com/my-agency/shared-resources.git
 ```
 
-### Backup and Restore
+### Resource Portability
 
 ```bash
-# Export everything
+# Export supported resources and content
 pnpm madori export ./project-backup.zip
 
-# Restore on another machine
+# Import on another machine; existing files are skipped
 pnpm madori import ./project-backup.zip
 ```
+
+This portable export is not an operational backup of users, sessions, assets, or all configured storage roots. Use `backup`, `backup:verify`, and `restore` for disaster recovery.
 
 ---
 
@@ -482,23 +510,19 @@ pnpm madori import ./project-backup.zip
 
 ### Scripting User Creation
 
-For CI/CD or staging environment setup, create users non-interactively by writing the YAML file directly:
+For CI/CD or staging setup, prefer `make:user` or your configured auth provider.
+If you write provider files directly, use the provider's documented hash format;
+Madori's built-in file provider uses `scrypt:<salt>:<hash>` values.
 
 ```yaml
 # users/staging-admin.yaml
 id: staging-admin
 email: staging@example.com
 name: Staging Admin
-password_hash: <bcrypt hash>
+password_hash: scrypt:<salt hex>:<hash hex>
 roles:
   - admin
 created_at: 2026-01-01T00:00:00.000Z
-```
-
-Generate the password hash with:
-
-```bash
-pnpm dlx bcryptjs-cli hash "your-password"
 ```
 
 ### Code Generation in CI
@@ -514,11 +538,9 @@ Add generation to your build pipeline to ensure types stay fresh:
 }
 ```
 
-### Legacy Definitions Migration
-
 ### SEO Frontmatter Migration
 
-Move legacy `meta_title`, `meta_description`, and `og_image` fields into the versioned nested `seo` object. The command is idempotent, preserves unknown fields, writes per-file backups, and refuses rollback if a target changed after migration.
+Move legacy `meta_title`, `meta_description`, and `og_image` fields into a nested `seo` object. The command is idempotent, preserves unknown fields, writes per-file backups, and refuses rollback if a target changed after migration. Records do not carry the standalone SEO document's `version` wrapper.
 
 ```bash
 # Preview changes
@@ -536,6 +558,8 @@ pnpm madori seo:rollback --plan ./storage/seo-migration-plan.json
 ```
 
 Review the JSON output and `rollbackPlan` before committing. Commit migrated content and SEO defaults through the repository that owns those paths; operational SEO state under `storage/seo` is not part of this migration and should remain outside content Git.
+
+### Legacy Definitions Migration
 
 When upgrading from an older Madori version that stored definitions inline:
 

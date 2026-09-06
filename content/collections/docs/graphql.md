@@ -3,16 +3,16 @@ title: GraphQL API
 slug: graphql
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-06-07T09:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # GraphQL API
 
-Madori auto-generates a GraphQL schema from your blueprints and definitions. Every collection, global, taxonomy, and navigation becomes queryable without writing any schema code. The API updates automatically whenever you add or modify blueprints.
+Madori builds GraphQL schema from current collection definitions, blueprints, fieldsets, and resolver ports. Collection, global, taxonomy, and navigation fields are exposed when corresponding definitions exist. Schema is rebuilt when endpoint is composed, so definition changes are picked up by subsequent requests.
 
 In development, a GraphiQL interface is available at the endpoint URL for exploring and testing queries interactively.
 
-GraphQL requires authentication. Control panel sessions authenticate with the `madori_session` cookie; external callers must send a valid session token as `Authorization: Bearer <token>`. For anonymous browser rendering, use `@madori/sdk/hooks/client`, which reads published entries through the public content endpoint and never exposes drafts.
+Collection and auxiliary resolvers are permission-guarded: unauthenticated GraphQL requests are denied. Control Panel sessions authenticate with the `madori_session` cookie; external callers can send a valid session token as `Authorization: Bearer <token>`. For anonymous browser rendering, use `@madori/sdk/hooks/client`, which reads published entries through the public content endpoint.
 
 ---
 
@@ -46,7 +46,7 @@ For each collection with a blueprint, Madori generates:
 | Type | PascalCase of handle | Type with all entry + blueprint fields |
 | Singular query | camelCase of handle | Returns a single entry by slug |
 | Plural query | camelCase plural of handle | Returns a filtered list |
-| Filter input | `{Type}Filter` | Filter fields for list queries |
+| Filter input | `{BlueprintType}FilterInput` | Optional filter fields for list queries; name follows referenced blueprint |
 
 ### Standard Entry Fields
 
@@ -70,13 +70,13 @@ Every collection type includes these built-in fields:
 | `number` | `Float` (or `Int` with `options.integer: true`) |
 | `toggle` | `Boolean` |
 | `multiselect`, `entries`, `taxonomy`, `asset` (multiple) | `[String]` |
-| `replicator`, `blocks`, `grid` | `String` (serialized JSON) |
+| `replicator`, `blocks`, `grid` | Structured list when configured sets resolve; otherwise `JSON` |
 
 ### List Query Arguments
 
 | Argument | Type | Default | Description |
 |----------|------|---------|-------------|
-| `filter` | `{Type}Filter` | — | Key-value object matching field values |
+| `filter` | `{BlueprintType}FilterInput` | — | Key-value object matching field values; type name follows referenced blueprint |
 | `limit` | `Int` | all | Maximum entries to return |
 | `offset` | `Int` | `0` | Skip N entries (for pagination) |
 | `sort` | `String` | — | Format: `"fieldName:direction"` (e.g. `"createdAt:desc"`) |
@@ -95,7 +95,7 @@ Every collection type includes these built-in fields:
 
 ### SEO Queries and Mutations
 
-When `seo.enabled` is true, the schema adds permission-guarded SEO operations. SEO reads require `view seo`; previews expose provenance only to authorized callers. Redirect writes require `edit seo redirects` and deletes require `delete seo redirects`; report reads require `view seo reports`.
+When `seo.enabled` is true, the schema adds permission-guarded SEO operations. SEO reads require `view` on `seo`; previews expose provenance only to authorized callers. Redirect writes require `edit` on `seo-redirects` and deletes require `delete` on `seo-redirects`; report reads require `view` on `seo-reports`.
 
 | Operation | Arguments | Purpose |
 |-----------|-----------|---------|
@@ -155,6 +155,8 @@ Custom JSON-LD is available through the `jsonLd.custom` `SeoJSON` scalar. Supply
 ```
 
 ### List with Filtering and Pagination
+
+List field is normally pluralised (`blog` → `blogs`). A handle already ending in `s` uses a `List` suffix for its list field (`pages` → `pagesList`) so singular and list operations remain distinct.
 
 ```graphql
 {
@@ -228,7 +230,9 @@ Custom JSON-LD is available through the `jsonLd.custom` `SeoJSON` scalar. Supply
 }
 ```
 
-### Using with graphql-request
+### Using with graphql-request (optional)
+
+The following is an illustration for projects that install `graphql-request`; it is not a Madori dependency.
 
 ```ts
 import { gql, GraphQLClient } from 'graphql-request'
@@ -260,7 +264,9 @@ const data = await client.request(POSTS_QUERY, {
 })
 ```
 
-### Using with Apollo Client
+### Using with Apollo Client (optional)
+
+The following is an illustration for projects that install `@apollo/client`; it is not a Madori dependency.
 
 ```ts
 import { ApolloClient, InMemoryCache, gql } from '@apollo/client'

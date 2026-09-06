@@ -3,7 +3,7 @@ title: Navigation
 slug: navigation
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Navigation
@@ -18,18 +18,18 @@ Each navigation is identified by a handle (e.g. `main`, `footer`, `docs`) and co
 
 ### Navigation Definition
 
-Navigation definitions live at `resources/definitions/navigations/{handle}.yaml` (or `.json`). They configure the behaviour of a navigation in the Control Panel editor.
+Navigation definitions live at `resources/navigations/{handle}.yaml`. They configure the behaviour of a navigation in the Control Panel editor.
 
 | Property | Type | Required | Default | Description |
 |----------|------|----------|---------|-------------|
-| `title` | `string` | Yes | — | Display name shown in the CP sidebar and editor |
+| `title` | `string` | Yes | — | Display name shown in Control Panel navigation and editor |
 | `max_depth` | `number` | No | unlimited | Maximum nesting depth allowed. A flat list has depth 0; each level of nesting adds 1 |
 | `collections` | `string[]` | No | all | Which collections are available when adding entry reference items |
 
 **Example definition:**
 
 ```yaml
-# resources/definitions/navigations/main.yaml
+# resources/navigations/main.yaml
 title: Main Navigation
 max_depth: 3
 collections:
@@ -78,7 +78,7 @@ The editor interface appears immediately, ready for you to add items.
 Create both the definition and data files:
 
 ```yaml
-# resources/definitions/navigations/footer.yaml
+# resources/navigations/footer.yaml
 title: Footer Navigation
 max_depth: 2
 collections:
@@ -195,6 +195,8 @@ Text items are typically used as parent groups in dropdown menus or sidebar sect
 ## Frontend Rendering
 
 ### REST API
+
+These Control Panel API requests require an authenticated `madori_session` cookie and the relevant navigation permission.
 
 Fetch navigation data from the REST API:
 
@@ -524,7 +526,7 @@ Your frontend template renders top-level items as column headings and children a
 A flat navigation for ordered documentation pages:
 
 ```yaml
-# resources/definitions/navigations/docs.yaml
+# resources/navigations/docs.yaml
 title: Documentation Sidebar
 max_depth: 1
 collections:
@@ -582,8 +584,9 @@ Update navigation trees from build scripts or external integrations:
 
 ```ts
 async function addNavItem(handle: string, item: { label: string; url: string }) {
+  const headers = { Cookie: `madori_session=${process.env.MADORI_SESSION}` }
   // Fetch current tree
-  const res = await fetch(`http://localhost:3000/api/navigation/${handle}`)
+  const res = await fetch(`http://localhost:3000/api/navigation/${handle}`, { headers })
   const { data } = await res.json()
 
   // Append new item
@@ -592,7 +595,7 @@ async function addNavItem(handle: string, item: { label: string; url: string }) 
   // Save updated tree
   await fetch(`http://localhost:3000/api/navigation/${handle}`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify({ items: data.items }),
   })
 }
@@ -613,6 +616,8 @@ Navigate to **Navigation** in the CP sidebar to:
 
 ### API
 
+These Control Panel endpoints require an authenticated `madori_session` cookie and the relevant navigation permission.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/navigation` | List all navigations |
@@ -629,7 +634,7 @@ content/navigation/
 ├── footer.yaml
 └── docs.yaml
 
-resources/definitions/navigations/
+resources/navigations/
 ├── main.yaml
 ├── footer.yaml
 └── docs.yaml

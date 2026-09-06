@@ -3,14 +3,14 @@ title: Fieldsets
 slug: fieldsets
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-06-07T09:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Fieldsets
 
 Fieldsets are reusable groups of fields that can be shared across blueprints. They serve two purposes: defining block types for Replicator fields and providing importable field groups to avoid duplicating field definitions across multiple blueprints.
 
-When you define a fieldset, it becomes available as a Replicator block type and can be imported into any blueprint's tab or section.
+Reference a fieldset in a Replicator's `options.sets` to expose it as a block type, or import its fields into a blueprint's tab or section. Fieldsets with `is_block: true` and a registered public renderer are also discovered automatically.
 
 ---
 
@@ -26,7 +26,7 @@ Fieldsets live at `resources/fieldsets/{handle}.yaml`. The handle is used to ref
 |----------|------|----------|-------------|
 | `fields` | `FieldConfig[]` | Yes | Array of field definitions (same format as blueprint fields) |
 | `display` | `string` | No | Display name shown in the Replicator block picker. Auto-generated from handle if omitted |
-| `is_block` | `boolean` | No | When `true`, the fieldset is automatically available in `blocks` fields without explicit configuration |
+| `is_block` | `boolean` | No | Enables automatic discovery when the handle also has a registered public block renderer |
 
 ### Field Configuration
 
@@ -49,11 +49,13 @@ All [field types](/docs/field-types) and [validation rules](/docs/blueprints#val
 
 ### API Endpoints
 
+These Control Panel endpoints require an authenticated `madori_session` cookie and the relevant fieldset permission.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/fieldsets` | List all fieldsets |
 | GET | `/api/fieldsets/{handle}` | Get a single fieldset |
-| PUT | `/api/fieldsets/{handle}` | Create or update a fieldset |
+| PUT | `/api/fieldsets/{handle}` | Update a fieldset |
 | DELETE | `/api/fieldsets/{handle}` | Delete a fieldset |
 
 ---
@@ -102,7 +104,7 @@ fields:
 
 ### Using Fieldsets as Blocks
 
-Fieldsets with `is_block: true` are automatically available when using the `blocks` field type:
+Fieldsets with `is_block: true` and a registered public renderer are automatically available when using the `blocks` field type:
 
 ```yaml
 # In a blueprint — no sets configuration needed
@@ -112,7 +114,7 @@ Fieldsets with `is_block: true` are automatically available when using the `bloc
     display: Page Content
 ```
 
-All fieldsets marked `is_block: true` become available block types. This is the simplest way to build page builders — just add a `blocks` field and create block fieldsets.
+Register new public block renderers in `src/components/blocks/BlockRenderer.tsx` and create matching fieldsets. Marking a fieldset `is_block: true` alone does not make an unregistered block available.
 
 ### Using Fieldsets in Replicators
 
@@ -315,4 +317,3 @@ Use a consistent naming convention for fieldset handles:
 - Use snake_case for multi-word handles: `features_grid`, `image_gallery`
 - Group related blocks with prefixes: `card_basic`, `card_featured`, `card_pricing`
 - Keep handles short but descriptive — they appear in content YAML as `_type` values
-

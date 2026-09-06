@@ -3,7 +3,7 @@ title: Editor Guide
 slug: editor-guide
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Editor Guide
@@ -20,14 +20,14 @@ As an editor, you don't need to configure files — but here's what you'll encou
 
 | Section | Location | Purpose |
 |---------|----------|---------|
-| Collections | Sidebar → collection name | Create, edit, and manage content entries |
-| Assets | Sidebar → Assets | Upload and organise files and images |
-| Navigation | Sidebar → Navigation | Manage site menus and link trees |
-| Forms | Sidebar → Forms | View submissions and export data |
-| Globals | Sidebar → Globals | Edit site-wide settings |
-| Taxonomies | Sidebar → Taxonomies | Manage tags and categories |
-| SEO | Sidebar → SEO | Manage site/section defaults, redirects, 404 observations, and audit reports |
-| Users | Sidebar → Users | Manage user accounts (admin only) |
+| Collections | Control Panel → Collections | Create, edit, and manage content entries |
+| Assets | Control Panel → Assets | Upload and organise files and images |
+| Navigation | Control Panel → Navigation | Manage site menus and link trees |
+| Forms | Control Panel → Forms | View submissions and export data |
+| Globals | Control Panel → Globals | Edit site-wide settings |
+| Taxonomies | Control Panel → Taxonomies | Manage tags and categories |
+| SEO | Control Panel → SEO | Manage site/section defaults, redirects, 404 observations, and audit reports |
+| Users | Control Panel → Users | Manage user accounts (admin only) |
 
 ### Field Types You'll Encounter
 
@@ -56,7 +56,7 @@ As an editor, you don't need to configure files — but here's what you'll encou
 
 Open the Control Panel by visiting your site's URL followed by `/cp` (for example, `https://yoursite.com/cp`). Enter your email and password to sign in.
 
-Once logged in, you'll see the sidebar on the left with links to each section: Collections, Assets, Navigation, Forms, and more.
+Once logged in, use Control Panel navigation to open Collections, Assets, Navigation, Forms, and other enabled sections.
 
 ---
 
@@ -66,12 +66,12 @@ Content in MADORI lives in **collections**. A collection is a group of similar i
 
 ### Creating a new entry
 
-1. In the sidebar, click the collection you want to add to (e.g. **Blog**)
+1. Open **Collections**, then select the collection you want to add to (e.g. **Blog**)
 2. Click the **Create Entry** button at the top of the list
 3. Fill in the fields — the available fields depend on how the collection was set up
 4. Click **Save** when you're done
 
-Your new entry is live immediately.
+New entries use the collection's default status. A published entry is live after save only when your role has publish permission; otherwise save it as a draft and ask a publisher to approve it.
 
 ### SEO workspace
 
@@ -81,7 +81,7 @@ SEO preview is permission-guarded and may show draft values; public pages never 
 
 ### Editing an existing entry
 
-1. Navigate to the collection in the sidebar
+1. Open **Collections**, then select the collection
 2. Click on the entry you want to edit
 3. Make your changes in the form fields
 4. Click **Save**
@@ -126,7 +126,7 @@ The **Assets** section is your file library. You can upload images, documents, v
 
 ### Uploading files
 
-1. Go to **Assets** in the sidebar
+1. Open **Assets** in Control Panel navigation
 2. Either drag and drop files onto the page, or click the **Upload** button and select files from your computer
 3. You can upload multiple files at once — each file shows a progress indicator while uploading
 
@@ -148,7 +148,7 @@ Click on any file to see its details:
 
 - **Filename** — you can rename the file
 - **Alt text** — add a description for accessibility (important for images)
-- **File size** and **dimensions** — displayed automatically for images
+- **File size** — displayed automatically. Image dimensions are not shown in the current asset details view.
 - **File type** — shown as an icon or thumbnail preview
 
 Changes to alt text and filename save immediately.
@@ -194,7 +194,7 @@ Blog
 
 ### Adding a navigation item
 
-1. Go to **Navigation** in the sidebar and select the navigation you want to edit (e.g. "Main" or "Footer")
+1. Open **Navigation** in Control Panel navigation and select the navigation you want to edit (e.g. "Main" or "Footer")
 2. Click **Add Item**
 3. Choose the item type:
    - **URL** — enter any web address
@@ -232,7 +232,7 @@ The **Forms** section shows you all the forms on your site (like contact forms, 
 
 ### Viewing submissions
 
-1. Go to **Forms** in the sidebar
+1. Open **Forms** in Control Panel navigation
 2. Click on a form (e.g. "Contact Form")
 3. You'll see a list of all submissions, showing the date and a summary of each one
 4. Click any submission to see the full details
@@ -258,7 +258,7 @@ Deleted submissions are permanently removed and cannot be recovered.
 
 ### Spam protection
 
-Forms can include honeypot protection, which automatically filters out spam submissions. These are discarded silently — you'll only see real submissions in your list.
+Forms can include honeypot protection, which silently discards submissions when `_honeypot` is non-empty. This is a simple bot signal; it does not prove that every retained submission is from a real person.
 
 ### Tips for form management
 

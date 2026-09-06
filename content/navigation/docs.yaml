@@ -25,6 +25,8 @@ items:
     url: /docs/assets
   - label: GraphQL API
     url: /docs/graphql
+  - label: SDK and Content Access
+    url: /docs/sdk
   - label: Authentication
     url: /docs/authentication
   - label: Forms

@@ -3,14 +3,14 @@ title: Globals
 slug: globals
 status: published
 createdAt: 2026-05-31T20:00:00.000Z
-updatedAt: 2026-05-31T20:00:00.000Z
+updatedAt: 2026-09-06T00:00:00.000Z
 ---
 
 # Globals
 
 Globals are site-wide data sets that exist outside of collections. Use them for content that applies across the entire site — site settings, footer content, social media links, company information, or any data that isn't tied to a specific collection entry.
 
-Unlike collection entries (which have multiple instances), each global has exactly one instance. Editors access globals directly from the Control Panel sidebar.
+Unlike collection entries (which have multiple instances), each global has exactly one instance. Editors access globals from the Control Panel Globals area.
 
 ---
 
@@ -22,8 +22,8 @@ Global definitions live at `resources/globals/{handle}.yaml`. The definition tel
 
 | Property | Type | Required | Default | Description |
 |----------|------|----------|---------|-------------|
-| `title` | `string` | Yes | — | Display name shown in the Control Panel sidebar |
-| `blueprint` | `string` | Yes | — | Handle of the blueprint that defines the field schema |
+| `title` | `string` | Yes | — | Display name shown in the Control Panel |
+| `blueprint` | `string` | No | — | Handle of the blueprint that defines the field schema. When omitted, the global handle is used as the blueprint handle. |
 
 **Example definition:**
 
@@ -76,6 +76,8 @@ logo: /assets/logo.svg
 ```
 
 ### API Endpoints
+
+These endpoints require a valid `madori_session` cookie and the corresponding global permissions. They are Control Panel APIs, not anonymous public reads.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -178,15 +180,18 @@ The `data` field returns the raw YAML content as a JSON object.
 
 ### Querying via REST API
 
+These Control Panel endpoints require an authenticated `madori_session` cookie. Set `MADORI_SESSION` to a session token from a Control Panel login before running the examples.
+
 ```bash
 # Get all globals
-curl http://localhost:3000/api/globals
+curl -H "Cookie: madori_session=$MADORI_SESSION" http://localhost:3000/api/globals
 
 # Get specific global
-curl http://localhost:3000/api/globals/site-settings
+curl -H "Cookie: madori_session=$MADORI_SESSION" http://localhost:3000/api/globals/site-settings
 
 # Update a global
 curl -X PUT http://localhost:3000/api/globals/site-settings \
+  -H "Cookie: madori_session=$MADORI_SESSION" \
   -H "Content-Type: application/json" \
   -d '{"site_name": "Updated Name", "tagline": "New tagline"}'
 ```
@@ -344,5 +349,4 @@ resources/globals/
 └── analytics.yaml       # Tracking configuration
 ```
 
-Each appears as a separate item in the Control Panel sidebar, making it easy for editors to find what they need.
-
+Each appears as a separate item in the Control Panel Globals area, making it easy for editors to find what they need.
