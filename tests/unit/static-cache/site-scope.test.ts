@@ -1,3 +1,8 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { afterAll } from 'vitest'
+const cacheDirectory = mkdtempSync(`${tmpdir()}/madori-cache-test-`)
+afterAll(() => rmSync(cacheDirectory, { recursive: true, force: true }))
 import { afterEach, describe, expect, it } from 'vitest'
 import { NextRequest } from 'next/server'
 import { getDriver, handleStaticCache } from '@/lib/static-cache/middleware'
@@ -6,7 +11,7 @@ import type { StaticCacheConfig } from '@/lib/config/schema'
 const config: StaticCacheConfig = {
   enabled: true,
   driver: 'application',
-  storagePath: 'storage/static-cache/',
+  storagePath: cacheDirectory,
   exclude: [],
   queryStrings: 'ignore',
   warmOnInvalidate: false,

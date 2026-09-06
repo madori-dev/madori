@@ -300,8 +300,8 @@ describe('SchemaGenerator', () => {
       const result = generator.generate(blueprints)
       const barrel = result.find((f) => f.filename === 'schemas/index.ts')
       expect(barrel).toBeDefined()
-      expect(barrel!.content).toContain("export * from './blog.js'")
-      expect(barrel!.content).toContain("export * from './pages.js'")
+      expect(barrel!.content).toContain("export * as blog from './blog.js'")
+      expect(barrel!.content).toContain("export * as pages from './pages.js'")
     })
 
     it('barrel ends with a newline', () => {

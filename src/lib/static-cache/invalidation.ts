@@ -27,8 +27,12 @@ export class InvalidationEngine {
     for (const url of urlsToInvalidate) {
       if (url.includes('*')) {
         await this.driver.deletePattern(url)
+        await this.driver.deletePattern(`/_sites/*${url === '*' ? '' : url}`)
       } else {
         await this.driver.delete(url)
+        // Public-site cache keys are scoped by site in middleware. Keep the
+        // unscoped key for legacy callers and clear every site-scoped variant.
+        await this.driver.deletePattern(`/_sites/*${url === '/' ? '' : url}`)
       }
     }
 

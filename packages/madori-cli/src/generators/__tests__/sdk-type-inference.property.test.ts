@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
+import ts from 'typescript'
 import { SDKClientGenerator } from '../sdk-client-generator.js'
 import { toPascalCaseEntry } from '../type-generator.js'
 import type { Blueprint } from '@madori/lib/blueprints/types.js'
@@ -58,27 +59,18 @@ describe('SDKClientGenerator — Property 6: SDK type inference per collection',
           const blueprints = handles.map(blueprintFromHandle)
           const result = generator.generate(blueprints)
 
-          // Extract CollectionTypeMap body
-          const typeMapMatch = result.content.match(
-            /export interface CollectionTypeMap \{([^}]*)\}/
-          )
-          expect(typeMapMatch).not.toBeNull()
-
-          const typeMapBody = typeMapMatch![1]
-          const entries = typeMapBody
-            .split('\n')
-            .map((line) => line.trim())
-            .filter((line) => line.length > 0)
-
-          // Exactly N entries in the map
-          expect(entries).toHaveLength(handles.length)
-
-          // Each handle maps to the correct PascalCaseEntry type
+          const source = ts.createSourceFile('client.ts', result.content, ts.ScriptTarget.Latest, true)
+          const typeMap = source.statements.find(statement => ts.isInterfaceDeclaration(statement) && statement.name.text === 'CollectionTypeMap')
+          expect(typeMap && ts.isInterfaceDeclaration(typeMap)).toBe(true)
+          if (!typeMap || !ts.isInterfaceDeclaration(typeMap)) throw new Error('Missing CollectionTypeMap')
+          expect(typeMap.members).toHaveLength(handles.length)
           for (const handle of handles) {
-            const expectedType = toPascalCaseEntry(handle)
-            const entryLine = entries.find((line) => line.startsWith(`${handle}:`))
-            expect(entryLine).toBeDefined()
-            expect(entryLine).toBe(`${handle}: ${expectedType}`)
+            const property = typeMap.members.find(member => ts.isPropertySignature(member)
+              && member.name && (ts.isIdentifier(member.name) || ts.isStringLiteral(member.name))
+              && member.name.text === handle)
+            expect(property).toBeDefined()
+            if (!property || !ts.isPropertySignature(property)) throw new Error('Missing collection property')
+            expect(property.type?.getText(source)).toBe(toPascalCaseEntry(handle))
           }
         }
       ),

@@ -90,6 +90,27 @@ const articleBlueprint: Blueprint = {
 }
 
 describe('DefinitionRepository interface', () => {
+  it('uses shared field rules for server validation and skips hidden required fields', () => {
+    const { repository } = createRepository()
+    const blueprint: Blueprint = {
+      handle: 'rules',
+      tabs: { main: { fields: [
+        { handle: 'email', field: { type: 'text', validate: ['email'] } },
+        { handle: 'code', field: { type: 'text', validate: ['regex:^A-[0-9]+$'] } },
+        { handle: 'amount', field: { type: 'number', validate: ['numeric_range:1,5'] } },
+        { handle: 'choice', field: { type: 'select', options: { one: 'one', two: 'two' } } },
+        { handle: 'enabled', field: { type: 'toggle' } },
+        { handle: 'hidden_required', field: { type: 'text', required: true, visibility: { field: 'enabled', operator: 'equals', value: true } } },
+      ] } },
+    }
+    const invalid = repository.validateData(blueprint, { email: 'bad', code: 'B-x', amount: 9, choice: 'three', enabled: false })
+    expect(invalid.success).toBe(false)
+    expect(invalid.errors).toHaveProperty('email')
+    expect(invalid.errors).toHaveProperty('code')
+    expect(invalid.errors).toHaveProperty('amount')
+    expect(invalid.errors).toHaveProperty('choice')
+    expect(invalid.errors).not.toHaveProperty('hidden_required')
+  })
   it('owns Blueprint and Fieldset persistence, serialization, and resolution', async () => {
     const { repository, mutations } = createRepository()
 

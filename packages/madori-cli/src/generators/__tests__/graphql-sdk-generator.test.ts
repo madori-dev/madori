@@ -105,7 +105,7 @@ describe('GraphQLSDKGenerator', () => {
 
     it('exports ListOptions interface', () => {
       const result = generator.generateOperations(blogBlueprint)
-      expect(result.content).toContain('export interface ListOptions')
+      expect(result.content).toContain('interface ListOptions')
       expect(result.content).toContain('limit?: number')
       expect(result.content).toContain('offset?: number')
       expect(result.content).toContain('sort?: string')
@@ -115,31 +115,31 @@ describe('GraphQLSDKGenerator', () => {
     it('exports Get{PascalCase}EntryDocument with correct typing', () => {
       const result = generator.generateOperations(blogBlueprint)
       expect(result.content).toContain('export const GetBlogEntryDocument')
-      expect(result.content).toContain('TypedDocumentNode<{ blogEntry: BlogEntry | null }, { slug: string }>')
+      expect(result.content).toContain('TypedDocumentNode<{ blog: BlogEntryQueryResult | null }, { slug: string }>')
     })
 
     it('exports List{PascalCase}EntriesDocument with correct typing', () => {
       const result = generator.generateOperations(blogBlueprint)
       expect(result.content).toContain('export const ListBlogEntriesDocument')
-      expect(result.content).toContain('TypedDocumentNode<{ blogEntries: BlogEntry[] }, { options?: ListOptions }>')
+      expect(result.content).toContain('TypedDocumentNode<{ blogs: BlogEntryQueryResult[] }')
     })
 
     it('exports get{PascalCase}Entry function that takes slug and returns entry or null', () => {
       const result = generator.generateOperations(blogBlueprint)
       expect(result.content).toContain('export async function getBlogEntry(slug: string): Promise<BlogEntry | null>')
-      expect(result.content).toContain('return result.blogEntry')
+      expect(result.content).toContain('return normalizeBlog(result.blog)')
     })
 
     it('exports list{PascalCase}Entries function that takes options and returns array', () => {
       const result = generator.generateOperations(blogBlueprint)
       expect(result.content).toContain('export async function listBlogEntries(options?: ListOptions): Promise<BlogEntry[]>')
-      expect(result.content).toContain('return result.blogEntries')
+      expect(result.content).toContain('return result.blogs')
     })
 
     it('uses request function with document nodes in operation functions', () => {
       const result = generator.generateOperations(blogBlueprint)
       expect(result.content).toContain('await request(GetBlogEntryDocument, { slug })')
-      expect(result.content).toContain('await request(ListBlogEntriesDocument, { options })')
+      expect(result.content).toContain('await request(ListBlogEntriesDocument, variables)')
     })
 
     it('handles kebab-case handles with PascalCase conversion', () => {
@@ -158,9 +158,8 @@ describe('GraphQLSDKGenerator', () => {
 
     it('generates valid document node structure with kind Document', () => {
       const result = generator.generateOperations(blogBlueprint)
-      expect(result.content).toContain("kind: 'Document'")
-      expect(result.content).toContain("kind: 'OperationDefinition'")
-      expect(result.content).toContain("operation: 'query'")
+      expect(result.content).toContain("parse(`query")
+      expect(result.content).toContain('query getBlogEntry')
     })
 
     it('sets correct filename for operation file', () => {

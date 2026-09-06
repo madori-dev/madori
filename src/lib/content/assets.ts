@@ -1,5 +1,6 @@
 import * as path from 'path'
 import * as fs from 'fs/promises'
+import { randomUUID } from 'crypto'
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type { FileSystemAdapter } from '@/lib/fs/adapter'
 import { ConflictError, NotFoundError } from '@/lib/errors'
@@ -7,6 +8,7 @@ import type { Asset } from '@/lib/types'
 import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
 import type { ContentMutationReporter } from '@/lib/mutations'
 import { noOpContentMutationReporter } from '@/lib/mutations'
+import { withFileLocks } from './concurrency'
 
 /**
  * MIME type mapping from file extension to MIME type string.
@@ -61,6 +63,11 @@ const MIME_TYPES: Record<string, string> = {
   txt: 'text/plain',
   csv: 'text/csv',
   md: 'text/markdown',
+}
+
+const ACTIVE_UPLOAD_EXTENSIONS = new Set(['html', 'htm', 'js', 'mjs', 'cjs'])
+export function isActiveAssetPath(relativePath: string): boolean {
+  return ACTIVE_UPLOAD_EXTENSIONS.has(path.extname(relativePath).slice(1).toLowerCase())
 }
 
 /**
@@ -194,22 +201,23 @@ export class AssetOperations {
       ? path.join(directory, file.name)
       : file.name
     const fullPath = this.resolveAssetPath(relativePath)
-
-    // Ensure the target directory exists
-    const targetDir = path.dirname(fullPath)
-    await this.fsAdapter.mkdir(targetDir)
-
-    // Write file contents atomically so interrupted uploads cannot leave a
-    // partially-written asset at the final path.
-    const content = typeof file.content === 'string' ? Buffer.from(file.content) : file.content
-    const result = await this.atomicWriter.writeBinaryFileAtomic(fullPath, content)
-    if (!result.success) throw result.error ?? new Error(`Could not upload asset: ${file.name}`)
-
-    // Read back the stat to build the asset metadata
-    const stat = await fs.stat(fullPath)
-    const asset = this.buildAssetFromStat(relativePath, stat)
-    this.report('create', [fullPath], 'asset', relativePath, `Uploaded asset ${relativePath}`)
-    return asset
+    if (isActiveAssetPath(relativePath)) {
+      throw new Error(`Active asset type is not allowed: ${file.name}`)
+    }
+    return withFileLocks([fullPath], async () => {
+      if (await this.fsAdapter.exists(fullPath)) {
+        throw new ConflictError(`Asset already exists at "${relativePath}"`)
+      }
+      const targetDir = path.dirname(fullPath)
+      await this.fsAdapter.mkdir(targetDir)
+      const content = typeof file.content === 'string' ? Buffer.from(file.content) : file.content
+      const result = await this.atomicWriter.writeBinaryFileAtomic(fullPath, content)
+      if (!result.success) throw result.error ?? new Error(`Could not upload asset: ${file.name}`)
+      const stat = await fs.stat(fullPath)
+      const asset = this.buildAssetFromStat(relativePath, stat)
+      this.report('create', [fullPath], 'asset', relativePath, `Uploaded asset ${relativePath}`)
+      return asset
+    })
   }
 
   /**
@@ -218,14 +226,24 @@ export class AssetOperations {
    */
   async deleteAsset(relativePath: string): Promise<void> {
     const fullPath = this.resolveAssetPath(relativePath)
-
-    const exists = await this.fsAdapter.exists(fullPath)
-    if (!exists) {
-      throw new NotFoundError('Asset', relativePath)
-    }
-
-    await this.fsAdapter.deleteFile(fullPath)
-    this.report('delete', [fullPath], 'asset', relativePath, `Deleted asset ${relativePath}`)
+    await withFileLocks([fullPath, `${fullPath}.meta.yaml`], async () => {
+      if (!(await this.fsAdapter.exists(fullPath))) throw new NotFoundError('Asset', relativePath)
+      const metaPath = `${fullPath}.meta.yaml`
+      const tempPath = `${fullPath}.delete-${randomUUID()}`
+      const tempMetaPath = `${metaPath}.delete-${randomUUID()}`
+      const hasMeta = await this.fsAdapter.exists(metaPath)
+      try {
+        await this.fsAdapter.moveFile(fullPath, tempPath)
+        if (hasMeta) await this.fsAdapter.moveFile(metaPath, tempMetaPath)
+        await this.fsAdapter.deleteFile(tempPath)
+        if (hasMeta) await this.fsAdapter.deleteFile(tempMetaPath)
+      } catch (error) {
+        if (await this.fsAdapter.exists(tempPath)) await this.fsAdapter.moveFile(tempPath, fullPath)
+        if (hasMeta && await this.fsAdapter.exists(tempMetaPath)) await this.fsAdapter.moveFile(tempMetaPath, metaPath)
+        throw error
+      }
+      this.report('delete', [fullPath, metaPath], 'asset', relativePath, `Deleted asset ${relativePath}`)
+    })
   }
 
   /**
@@ -235,6 +253,10 @@ export class AssetOperations {
   async moveAsset(fromPath: string, toPath: string): Promise<Asset> {
     const fullFrom = this.resolveAssetPath(fromPath)
     const fullTo = this.resolveAssetPath(toPath)
+    return withFileLocks([fullFrom, fullTo, `${fullFrom}.meta.yaml`, `${fullTo}.meta.yaml`], () => this.moveAssetUnlocked(fromPath, toPath, fullFrom, fullTo))
+  }
+
+  private async moveAssetUnlocked(fromPath: string, toPath: string, fullFrom: string, fullTo: string): Promise<Asset> {
 
     const exists = await this.fsAdapter.exists(fullFrom)
     if (!exists) {
@@ -249,7 +271,17 @@ export class AssetOperations {
       throw new ConflictError(`Asset already exists at "${toPath}"`)
     }
 
-    await this.fsAdapter.moveFile(fullFrom, fullTo)
+    const oldMeta = `${fullFrom}.meta.yaml`
+    const newMeta = `${fullTo}.meta.yaml`
+    const hasMeta = await this.fsAdapter.exists(oldMeta)
+    try {
+      await this.fsAdapter.moveFile(fullFrom, fullTo)
+      if (hasMeta) await this.fsAdapter.moveFile(oldMeta, newMeta)
+    } catch (error) {
+      if (await this.fsAdapter.exists(fullTo)) await this.fsAdapter.moveFile(fullTo, fullFrom)
+      if (hasMeta && await this.fsAdapter.exists(newMeta)) await this.fsAdapter.moveFile(newMeta, oldMeta)
+      throw error
+    }
 
     const stat = await fs.stat(fullTo)
     const asset = this.buildAssetFromStat(toPath, stat)
@@ -270,32 +302,38 @@ export class AssetOperations {
     for (const { from, to } of plan) {
       const fullFrom = this.resolveAssetPath(from)
       const fullTo = this.resolveAssetPath(to)
-      if (!sources.add(fullFrom)) throw new ConflictError(`Asset "${from}" was included more than once`)
-      if (!destinations.add(fullTo)) throw new ConflictError(`Multiple assets would be moved to "${to}"`)
+      if (sources.has(fullFrom)) throw new ConflictError(`Asset "${from}" was included more than once`)
+      sources.add(fullFrom)
+      if (destinations.has(fullTo)) throw new ConflictError(`Multiple assets would be moved to "${to}"`)
+      destinations.add(fullTo)
       if (!await this.fsAdapter.exists(fullFrom)) throw new NotFoundError('Asset', from)
       if (fullFrom !== fullTo && await this.fsAdapter.exists(fullTo)) {
         throw new ConflictError(`Asset already exists at "${to}"`)
       }
     }
 
-    const completed: Array<{ from: string; to: string }> = []
-    try {
-      const results: Asset[] = []
-      for (const step of plan) {
-        results.push(await this.moveAsset(step.from, step.to))
-        if (step.from !== step.to) completed.push(step)
-      }
-      return results
-    } catch (error) {
-      for (const step of completed.reverse()) {
-        try {
-          await this.fsAdapter.moveFile(this.resolveAssetPath(step.to), this.resolveAssetPath(step.from))
-        } catch {
-          // Best effort rollback; preserve original failure for caller.
+    const lockPaths = plan.flatMap(({ from, to }) => [this.resolveAssetPath(from), this.resolveAssetPath(to), `${this.resolveAssetPath(from)}.meta.yaml`, `${this.resolveAssetPath(to)}.meta.yaml`])
+    return withFileLocks(lockPaths, async () => {
+      const completed: Array<{ from: string; to: string }> = []
+      try {
+        const results: Asset[] = []
+        for (const step of plan) {
+          results.push(await this.moveAssetUnlocked(step.from, step.to, this.resolveAssetPath(step.from), this.resolveAssetPath(step.to)))
+          if (step.from !== step.to) completed.push(step)
         }
+        return results
+      } catch (error) {
+        for (const step of completed.reverse()) {
+          try {
+            await this.fsAdapter.moveFile(this.resolveAssetPath(step.to), this.resolveAssetPath(step.from))
+            const newMeta = `${this.resolveAssetPath(step.to)}.meta.yaml`
+            const oldMeta = `${this.resolveAssetPath(step.from)}.meta.yaml`
+            if (await this.fsAdapter.exists(newMeta)) await this.fsAdapter.moveFile(newMeta, oldMeta)
+          } catch { /* preserve original failure */ }
+        }
+        throw error
       }
-      throw error
-    }
+    })
   }
 
   /**
@@ -378,10 +416,12 @@ export class AssetOperations {
   async updateMetadata(assetPath: string, update: AssetMetadataUpdate): Promise<Asset> {
     const fullPath = this.resolveAssetPath(assetPath)
 
+    return withFileLocks([fullPath, `${fullPath}.meta.yaml`], async () => this.updateMetadataUnlocked(assetPath, update, fullPath))
+  }
+
+  private async updateMetadataUnlocked(assetPath: string, update: AssetMetadataUpdate, fullPath: string): Promise<Asset> {
     const exists = await this.fsAdapter.exists(fullPath)
-    if (!exists) {
-      throw new NotFoundError('Asset', assetPath)
-    }
+    if (!exists) throw new NotFoundError('Asset', assetPath)
 
     // Read existing metadata if present
     const metaPath = `${fullPath}.meta.yaml`
@@ -414,17 +454,19 @@ export class AssetOperations {
       }
 
       await this.fsAdapter.moveFile(fullPath, newFullPath)
-
-      // Move old meta file if it existed
-      if (metaExists) {
-        await this.fsAdapter.deleteFile(metaPath)
-      }
-
-      finalAssetPath = newRelativePath
-
-      // Write meta to the new location
       const newMetaPath = `${newFullPath}.meta.yaml`
-      await this.writeMetadataAtomic(newMetaPath, merged)
+      try {
+        if (metaExists) await this.fsAdapter.moveFile(metaPath, newMetaPath)
+        await this.writeMetadataAtomic(newMetaPath, merged)
+      } catch (error) {
+        if (await this.fsAdapter.exists(newMetaPath)) {
+          if (metaExists) await this.fsAdapter.moveFile(newMetaPath, metaPath)
+          else await this.fsAdapter.deleteFile(newMetaPath)
+        }
+        await this.fsAdapter.moveFile(newFullPath, fullPath)
+        throw error
+      }
+      finalAssetPath = newRelativePath
     } else {
       // Write metadata sidecar
       await this.writeMetadataAtomic(metaPath, merged)

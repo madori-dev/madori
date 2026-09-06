@@ -69,7 +69,7 @@ export interface Term {
 }
 
 /** Typed client interface for querying Madori content */
-export interface TypedMadoriClient<TCollections extends Record<string, unknown>> {
+export interface TypedMadoriClient<TCollections extends object> {
   getEntry<K extends keyof TCollections & string>(
     collection: K,
     slug: string
@@ -205,7 +205,7 @@ function applyListOptions<T extends Record<string, unknown>>(
  * Reads content from the file system using the provided config paths.
  * Parses markdown files with frontmatter for entries, YAML for globals and taxonomies.
  */
-export function createClient<TCollections extends Record<string, unknown>>(
+export function createClient<TCollections extends object>(
   config: MadoriClientConfig
 ): TypedMadoriClient<TCollections> {
   const { contentPath, resourcesPath } = config

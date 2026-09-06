@@ -48,7 +48,6 @@ export class GlobalOperations {
     }
 
     this.cache.set(this.cacheKey(handle), global, [filePath])
-    this.mutations.report({ action: 'update', paths: [filePath], resource: { type: 'global', id: handle }, message: `Updated global ${handle}`, source: 'system', timestamp: Date.now() })
     return global
   }
 
@@ -91,6 +90,7 @@ export class GlobalOperations {
     }
 
     this.cache.set(this.cacheKey(handle), global, [filePath])
+    this.mutations.report({ action: 'update', paths: [filePath], resource: { type: 'global', id: handle }, message: `Updated global ${handle}`, source: 'system', timestamp: Date.now() })
     return global
   }
 }

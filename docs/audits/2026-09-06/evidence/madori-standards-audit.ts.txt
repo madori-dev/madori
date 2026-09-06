@@ -1,0 +1,72 @@
+import { mkdtemp, rm, readFile, readdir } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { NodeFileSystemAdapter } from '/Volumes/Personal/madori/src/lib/fs/adapter.ts'
+import { MarkdownYamlParser } from '/Volumes/Personal/madori/src/lib/fs/parser.ts'
+import { InMemoryContentCache } from '/Volumes/Personal/madori/src/lib/cache/store.ts'
+import { MadoriContentEngine } from '/Volumes/Personal/madori/src/lib/content/engine.ts'
+import { AssetOperations } from '/Volumes/Personal/madori/src/lib/content/assets.ts'
+import { YamlUserProvider } from '/Volumes/Personal/madori/src/lib/auth/providers/yaml.ts'
+import { MadoriConfigSchema } from '/Volumes/Personal/madori/src/lib/config/schema.ts'
+import { GlobalOperations } from '/Volumes/Personal/madori/src/lib/content/globals.ts'
+import { FileSessionStore } from '/Volumes/Personal/madori/src/lib/auth/stores/file.ts'
+import { MadoriConfigService } from '/Volumes/Personal/madori/src/lib/settings/config.ts'
+import { computeContentHash } from '/Volumes/Personal/madori/src/lib/content/concurrency.ts'
+
+async function main() {
+ const root=await mkdtemp(path.join(tmpdir(),'madori-standards-'))
+ const fs=new NodeFileSystemAdapter(), parser=new MarkdownYamlParser()
+ try {
+  const config=MadoriConfigSchema.parse({contentPath:path.join(root,'content'),resourcesPath:path.join(root,'resources'),assetsPath:path.join(root,'assets'),usersPath:path.join(root,'users')})
+  await fs.writeFile(path.join(config.resourcesPath,'collections','blog.yaml'),'title: Blog\nblueprint: blog\n')
+  const engine=new MadoriContentEngine(config,fs,parser,new InMemoryContentCache(),{getBlueprint:async()=>null} as any)
+  await engine.createEntry('blog',{title:'Original',slug:'post',data:{left:'original',right:'original'}})
+  const file=path.join(config.contentPath,'collections/blog/post.md')
+  const hash=computeContentHash(await fs.readFile(file))
+  const read=fs.readFile.bind(fs)
+  let count=0, release!:()=>void
+  const gate=new Promise<void>(resolve=>release=resolve)
+  fs.readFile=async(p:string)=>{const value=await read(p);if(p===file){count++;if(count===2)release();await gate;}return value}
+  const edits=await Promise.allSettled([engine.updateEntry('blog','post',{data:{left:'edited'}},hash),engine.updateEntry('blog','post',{data:{right:'edited'}},hash)])
+  fs.readFile=read
+  console.log('Concurrent edits',edits.map(x=>x.status),parser.parseMarkdown(await read(file)).frontmatter)
+  const crafted=await engine.createEntry('blog',{title:'Draft',slug:'hidden',status:'draft',data:{status:'published',title:'Shadow title',slug:'different'}})
+  console.log('Reserved keys', {responseStatus:crafted.status,responseSlug:crafted.slug,disk:parser.parseMarkdown(await fs.readFile(path.join(config.contentPath,'collections/blog/hidden.md'))).frontmatter})
+  const assets=new AssetOperations(config.assetsPath,fs)
+  await assets.uploadAsset({name:'photo.txt',content:'original'})
+  await assets.updateMetadata('photo.txt',{alt:'Important description'})
+  await assets.moveAsset('photo.txt','folder/photo.txt')
+  console.log('Moved alt',(await assets.getAsset('folder/photo.txt'))?.alt,'orphan',await fs.exists(path.join(config.assetsPath,'photo.txt.meta.yaml')))
+  await assets.uploadAsset({name:'photo.txt',content:'replacement'},'folder')
+  console.log('Upload collision',await fs.readFile(path.join(config.assetsPath,'folder/photo.txt')))
+  const configFile=path.join(root,'madori.config.ts')
+  process.env.MADORI_AUDIT_SECRET='dummy-secret-for-audit'
+  await fs.writeFile(configFile,"export default {auth:{driverConfig:{apiKey:process.env.MADORI_AUDIT_SECRET}}}\n")
+  const settings=new MadoriConfigService(configFile)
+  await settings.write({ cp: {enabled:true,path:'/cp'} })
+  console.log('Secret persisted',(await fs.readFile(configFile)).includes('dummy-secret-for-audit'))
+  delete process.env.MADORI_AUDIT_SECRET
+  const reports:any[]=[]
+  const globals=new GlobalOperations(fs,parser,new InMemoryContentCache(),config.contentPath,{report:(e:any)=>reports.push(e)})
+  await fs.writeFile(path.join(config.contentPath,'globals/site.yaml'),'title: Old\n')
+  await globals.getGlobal('site')
+  console.log('Global read reports',reports.length)
+  reports.length=0
+  await globals.updateGlobal('site',{title:'New'})
+  console.log('Global write reports',reports.length)
+  const users=new YamlUserProvider(config.usersPath,fs,parser)
+  await users.create({id:'a-editor',email:'editor@example.com',name:'Editor',password:'Long-password-1234',roles:[]})
+  await users.create({id:'z-admin',email:'admin@example.com',name:'Admin',password:'Long-password-1234',roles:['admin']})
+  await users.update('a-editor',{email:'admin@example.com'})
+  console.log('Duplicate email lookup',(await users.getByEmail('admin@example.com'))?.id)
+  const sessions=new FileSessionStore(path.join(root,'.sessions'),fs)
+  const session=await sessions.createSession('a-editor')
+  await users.update('a-editor',{password:'Another-password-1234'})
+  console.log('Session after password reset',Boolean(await sessions.validateSession(session.token)))
+  await users.delete('a-editor')
+  await users.create({id:'a-editor',email:'replacement@example.com',name:'Replacement',password:'Long-password-1234',roles:['admin']})
+  const reused=await sessions.validateSession(session.token)
+  console.log('Old session after id reuse',reused? (await users.getById(reused.userId)).roles:null)
+ } finally { await rm(root,{recursive:true,force:true}) }
+}
+main().catch(error=>{console.error(error);process.exit(1)})

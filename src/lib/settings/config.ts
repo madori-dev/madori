@@ -1,5 +1,8 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import ts from 'typescript'
+import { isDeepStrictEqual } from 'node:util'
+import { withFileLocks } from '@/lib/content/concurrency'
 import { MadoriConfigSchema, type MadoriConfig, type MadoriConfigInput } from '@/lib/config/schema'
 import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
 import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
@@ -50,27 +53,29 @@ export class MadoriConfigService {
   async write(config: unknown): Promise<void> {
     const absolutePath = path.resolve(this.configPath)
 
-    // Read the current file content
-    const content = await fs.readFile(absolutePath, 'utf-8')
+    return withFileLocks([absolutePath], async () => {
+      // Read the current file content
+      const content = await fs.readFile(absolutePath, 'utf-8')
 
-    // Read the existing config to merge with updates
-    const existing = await this.read()
-    const edit = parseSettingsConfigEdit(config)
-    const merged = deepMerge(existing, edit)
+      // Read the existing config to merge with updates
+      const existing = await this.read()
+      const edit = parseSettingsConfigEdit(config)
+      const merged = deepMerge(existing, edit)
 
-    // Validate merged configuration, not only submitted fields. This keeps
-    // partial writes from producing a config that cannot be loaded at runtime.
-    const validation = validateConfig(merged)
-    if (!validation.valid) {
-      throw new Error(
-        `Config validation failed: ${validation.errors.map((e) => `${e.field}: ${e.message}`).join(', ')}`
-      )
-    }
+      // Validate merged configuration, not only submitted fields. This keeps
+      // partial writes from producing a config that cannot be loaded at runtime.
+      const validation = validateConfig(merged)
+      if (!validation.valid) {
+        throw new Error(
+          `Config validation failed: ${validation.errors.map((e) => `${e.field}: ${e.message}`).join(', ')}`
+        )
+      }
 
-    // Re-serialise the config preserving file structure
-    const updated = rewriteConfigFile(content, merged as MadoriConfig)
-    const result = await new AtomicFileWriter(new NodeFileSystemAdapter()).writeFileAtomic(absolutePath, updated)
-    if (!result.success) throw result.error ?? new Error(`Could not write config: ${absolutePath}`)
+      // Re-serialise the config preserving file structure
+      const updated = rewriteConfigFile(content, changedSettings(edit, projectSettingsConfig(existing)))
+      const result = await new AtomicFileWriter(new NodeFileSystemAdapter()).writeFileAtomic(absolutePath, updated)
+      if (!result.success) throw result.error ?? new Error(`Could not write config: ${absolutePath}`)
+    })
   }
 
   /**
@@ -102,6 +107,23 @@ export class MadoriConfigService {
   }
 }
 
+/** Browser forms may submit every setting; leave unchanged source expressions intact. */
+function changedSettings(edit: Record<string, unknown>, current: Record<string, unknown>): Record<string, unknown> {
+  const changed: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(edit)) {
+    if (value === undefined || isDeepStrictEqual(value, current[key])) continue
+    const previous = current[key]
+    if (value && typeof value === 'object' && !Array.isArray(value)
+      && previous && typeof previous === 'object' && !Array.isArray(previous)) {
+      const nested = changedSettings(value as Record<string, unknown>, previous as Record<string, unknown>)
+      if (Object.keys(nested).length) changed[key] = nested
+    } else {
+      changed[key] = value
+    }
+  }
+  return changed
+}
+
 function validateConfig(config: Record<string, unknown>): ValidationResult {
   const errors = [...validateSettingsPaths(config).errors]
 
@@ -130,100 +152,57 @@ function validateConfig(config: Record<string, unknown>): ValidationResult {
  * Rewrites the config file content, preserving the import statement line(s)
  * and the `export default` wrapper while replacing the config object body.
  */
-function rewriteConfigFile(originalContent: string, config: MadoriConfig): string {
-  // Extract everything before the config object assignment
-  // Pattern: find lines up to and including the opening `{` of the config const
-  const importLines: string[] = []
-  const lines = originalContent.split('\n')
-
-  let configStartLine = -1
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    // Look for the config variable declaration with opening brace
-    if (/^\s*(?:const|let|var)\s+\w+\s*(?::[^=]+=|=)\s*\{/.test(line)) {
-      configStartLine = i
-      break
+function rewriteConfigFile(originalContent: string, edit: Record<string, unknown>): string {
+  const source = ts.createSourceFile('madori.config.ts', originalContent, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  const exported = source.statements.find(ts.isExportAssignment)
+  let expression = exported?.expression
+  if (expression && ts.isIdentifier(expression)) {
+    const name = expression.text
+    expression = source.statements.filter(ts.isVariableStatement)
+      .flatMap(statement => [...statement.declarationList.declarations])
+      .find(declaration => ts.isIdentifier(declaration.name) && declaration.name.text === name)?.initializer
+  }
+  const unwrap = (value: ts.Expression): ts.Expression => {
+    while (ts.isParenthesizedExpression(value) || ts.isAsExpression(value) || ts.isSatisfiesExpression(value)) value = value.expression
+    return value
+  }
+  const object = expression && unwrap(expression)
+  if (!object || !ts.isObjectLiteralExpression(object)) {
+    throw new Error('Settings edits require an exported object literal; edit computed configuration in source.')
+  }
+  const changes: { start: number; end: number; value: string }[] = []
+  const visit = (node: ts.ObjectLiteralExpression, patch: Record<string, unknown>) => {
+    const additions: string[] = []
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined) continue
+      const matches = node.properties.filter(property => property.name
+        && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) && property.name.text === key)
+      const property = matches.at(-1)
+      if (property) {
+        if (node.properties.some(candidate => ts.isSpreadAssignment(candidate) && candidate.pos > property.pos)) throw new Error(`Settings property "${key}" may be overridden by a spread; edit it in source.`)
+        if (!ts.isPropertyAssignment(property)) throw new Error(`Settings property "${key}" must use an explicit value.`)
+        const initializer = unwrap(property.initializer)
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          if (!ts.isObjectLiteralExpression(initializer)) throw new Error(`Settings property "${key}" must use an object literal for partial edits.`)
+          visit(initializer, value as Record<string, unknown>)
+        } else {
+          changes.push({ start: property.initializer.getStart(source), end: property.initializer.end, value: serializeValue(value, '  ') })
+        }
+      } else {
+        if (node.properties.some(ts.isSpreadAssignment)) throw new Error(`Settings property "${key}" is inherited from a spread; edit it in source.`)
+        additions.push(`${JSON.stringify(key)}: ${serializeValue(value, '  ')}`)
+      }
     }
-    // Also check for bare `export default {`
-    if (/^\s*export\s+default\s+\{/.test(line)) {
-      configStartLine = i
-      break
-    }
-  }
-
-  if (configStartLine === -1) {
-    // Fallback: rebuild from scratch
-    return buildConfigFile(config)
-  }
-
-  // Collect import/type lines before the config object
-  for (let i = 0; i < configStartLine; i++) {
-    importLines.push(lines[i])
-  }
-
-  // Determine if the file uses `export default config` at the end or inline export
-  const hasExportDefault = originalContent.includes('export default config')
-  const hasInlineExport = /export\s+default\s+\{/.test(originalContent)
-
-  // Serialize the config object
-  const serialized = serializeConfigObject(config, '  ')
-
-  // Rebuild file
-  const parts: string[] = []
-
-  // Preserve import lines
-  if (importLines.length > 0) {
-    parts.push(importLines.join('\n'))
-    parts.push('')
-  }
-
-  if (hasInlineExport) {
-    parts.push(`export default ${serialized}`)
-  } else {
-    // Preserve the type annotation pattern from the original
-    const configDecl = lines[configStartLine]
-    const typeAnnotation = extractTypeAnnotation(configDecl)
-    if (typeAnnotation) {
-      parts.push(`const config: ${typeAnnotation} = ${serialized}`)
-    } else {
-      parts.push(`const config = ${serialized}`)
-    }
-
-    if (hasExportDefault) {
-      parts.push('')
-      parts.push('export default config')
+    if (additions.length) {
+      const last = node.properties.at(-1)
+      // Insert after the final property, before trailing comments and closing brace.
+      const position = last?.end ?? node.getStart(source) + 1
+      changes.push({ start: position, end: position, value: `${last ? ',' : ''}\n  ${additions.join(',\n  ')}` })
     }
   }
-
-  parts.push('')
-  return parts.join('\n')
-}
-
-/**
- * Extracts the type annotation from a config declaration line.
- * e.g. "const config: MadoriConfigInput & { collections?: ... } = {" → "MadoriConfigInput & { collections?: Record<string, unknown> }"
- */
-function extractTypeAnnotation(line: string): string | null {
-  const match = line.match(/const\s+\w+\s*:\s*(.+?)\s*=\s*\{?\s*$/)
-  if (match) {
-    return match[1].trim()
-  }
-  return null
-}
-
-/**
- * Builds a config file from scratch with standard structure.
- */
-function buildConfigFile(config: MadoriConfig): string {
-  const serialized = serializeConfigObject(config, '  ')
-  return [
-    "import type { MadoriConfigInput } from './src/lib/config/schema'",
-    '',
-    `const config: MadoriConfigInput = ${serialized}`,
-    '',
-    'export default config',
-    '',
-  ].join('\n')
+  visit(object, edit)
+  return changes.sort((left, right) => right.start - left.start)
+    .reduce((text, change) => text.slice(0, change.start) + change.value + text.slice(change.end), originalContent)
 }
 
 /**
@@ -238,7 +217,7 @@ function serializeConfigObject(obj: Record<string, unknown>, indent: string): st
     const serializedValue = serializeValue(value, indent + '  ')
     const formattedKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key)
       ? key
-      : `'${key}'`
+      : `'${escapeString(key)}'`
     entries.push(`${indent}${formattedKey}: ${serializedValue},`)
   }
 
@@ -278,7 +257,7 @@ function serializeValue(value: unknown, indent: string): string {
       const serializedVal = serializeValue(val, indent + '  ')
       const formattedKey = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(key)
         ? key
-        : `'${key}'`
+        : `'${escapeString(key)}'`
       entries.push(`${indent}  ${formattedKey}: ${serializedVal},`)
     }
     if (entries.length === 0) return '{}'
@@ -289,7 +268,7 @@ function serializeValue(value: unknown, indent: string): string {
 }
 
 function escapeString(str: string): string {
-  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')
+  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r')
 }
 
 /**

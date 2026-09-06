@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist_Mono, BIZ_UDPGothic, Josefin_Sans } from "next/font/google";
 import "./globals.css";
+import { HistoryPosition } from '@/hooks/history-position';
 
 const bizUDPGothic = BIZ_UDPGothic({
   variable: "--font-biz-udp-gothic",
@@ -50,6 +51,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-svh bg-background text-foreground">
+        <HistoryPosition />
         {children}
       </body>
     </html>

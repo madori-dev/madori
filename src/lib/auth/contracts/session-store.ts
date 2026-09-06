@@ -20,6 +20,9 @@ export interface SessionStore {
    */
   destroySession(token: string): Promise<void>
 
+  /** Revoke every active session belonging to a user, when supported. */
+  revokeUserSessions?(userId: string): Promise<void>
+
   /**
    * Remove all expired sessions from storage.
    * @returns The number of expired sessions removed.

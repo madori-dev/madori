@@ -85,10 +85,10 @@ export class TypeGenerator implements TypeGeneratorInterface {
         return this.buildMultiselectType(field)
 
       case 'asset':
-        return 'MadoriAsset'
+        return 'string | string[]'
 
       case 'entries':
-        return 'MadoriEntryRef[]'
+        return 'string[]'
 
       case 'taxonomy':
         return 'string[]'
@@ -118,7 +118,7 @@ export class TypeGenerator implements TypeGeneratorInterface {
   generateBarrel(_files: GeneratedFile[]): string {
     const lines = [
       "export * from './types/index.js'",
-      "export * from './schemas/index.js'",
+      "export * as schemas from './schemas/index.js'",
       "export * from './graphql/index.js'",
       "export * from './client.js'",
     ]
@@ -241,7 +241,8 @@ export class TypeGenerator implements TypeGeneratorInterface {
     const optional = field.required === true ? '' : '?'
     const jsdoc = this.buildFieldJSDoc(field)
 
-    return `${jsdoc}  ${handle}${optional}: ${tsType}`
+    const property = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(handle) ? handle : JSON.stringify(handle)
+    return `${jsdoc}  ${property}${optional}: ${tsType}`
   }
 
   /**
@@ -310,6 +311,8 @@ export class TypeGenerator implements TypeGeneratorInterface {
       fields?: FieldDefinition[]
     }> | undefined
 
+    if (Array.isArray(sets)) return 'Array<Record<string, unknown>>'
+
     if (!sets || Object.keys(sets).length === 0) {
       return 'Record<string, unknown>'
     }
@@ -321,14 +324,15 @@ export class TypeGenerator implements TypeGeneratorInterface {
         for (const fd of setDef.fields) {
           const tsType = this.mapFieldToType(fd.field)
           const optional = fd.field.required === true ? '' : '?'
-          fields.push(`${fd.handle}${optional}: ${tsType}`)
+          const property = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(fd.handle) ? fd.handle : JSON.stringify(fd.handle)
+          fields.push(`${property}${optional}: ${tsType}`)
         }
       }
 
       return `{ ${fields.join('; ')} }`
     })
 
-    return variants.join(' | ')
+    return `Array<${variants.join(' | ')}>`
   }
 
   /**
@@ -348,7 +352,8 @@ export class TypeGenerator implements TypeGeneratorInterface {
     const fields = columns.map((col) => {
       const tsType = this.mapFieldToType(col.field)
       const optional = col.field.required === true ? '' : '?'
-      return `${col.handle}${optional}: ${tsType}`
+      const property = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(col.handle) ? col.handle : JSON.stringify(col.handle)
+      return `${property}${optional}: ${tsType}`
     })
 
     return `Array<{ ${fields.join('; ')} }>`

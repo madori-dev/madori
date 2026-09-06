@@ -4,6 +4,7 @@ import { getMadori } from '@/lib/madori'
 import type { SeoRuntimeResult } from '@/lib/seo/runtime'
 import { matchPublicContentRoutes } from '@/lib/routing'
 import type { Entry, Term } from '@/lib/types'
+import { isContentIdentifier } from '@/lib/content/identifiers'
 
 const observedRecently = new Map<string, number>()
 const OBSERVATION_WINDOW_MS = 60_000
@@ -67,6 +68,7 @@ export const resolvePublishedContentRoute = cache(async (publicPath: string): Pr
   const candidates = matchPublicContentRoutes(publicPath, collections, taxonomies)
 
   for (const candidate of candidates) {
+    if (!isContentIdentifier(candidate.handle) || !isContentIdentifier(candidate.slug)) continue
     if (candidate.kind === 'collection') {
       const entry = await getPublishedEntry(candidate.handle, candidate.slug)
       if (entry) return { kind: 'collection', path: publicPath, collection: candidate.handle, slug: candidate.slug, entry }

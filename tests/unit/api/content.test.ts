@@ -233,6 +233,14 @@ describe('Content API Handler', () => {
       expect(body.data.title).toBe('React.js')
     })
 
+    it('returns 404 instead of creating an absent taxonomy term', async () => {
+      const req = makeRequest('PUT', { title: 'Missing' })
+      const res = await handlers.handleUpdateContent(req, 'taxonomies', 'tags', 'missing')
+      expect(res.status).toBe(404)
+      const body = await res.json()
+      expect(body.error.code).toBe('NOT_FOUND')
+    })
+
     it('updates a global and returns 200', async () => {
       const req = makeRequest('PUT', { site_name: 'Updated Site' })
       const res = await handlers.handleUpdateContent(req, 'globals', 'seo', 'any')

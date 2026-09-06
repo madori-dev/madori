@@ -43,7 +43,12 @@ jobs:
       - name: Lint
         run: pnpm lint
       - name: Check types
-        run: pnpm exec tsc --noEmit
+        run: pnpm exec tsc --noEmit --incremental false
+      - name: Check package types
+        run: |
+          pnpm exec tsc --noEmit -p packages/madori-sdk/tsconfig.json
+          pnpm exec tsc --noEmit -p packages/madori-cli/tsconfig.json
+          pnpm exec tsc --noEmit -p packages/create-madori-app/tsconfig.json
 
   tests:
     name: Unit and integration tests

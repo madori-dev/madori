@@ -1,0 +1,9 @@
+$ vitest --run
+
+ RUN  v4.1.11 /Volumes/Personal/madori
+
+
+ Test Files  248 passed (248)
+      Tests  1973 passed (1973)
+   Start at  15:00:46
+   Duration  18.94s (transform 8.65s, setup 0ms, import 41.88s, tests 128.50s, environment 14ms)

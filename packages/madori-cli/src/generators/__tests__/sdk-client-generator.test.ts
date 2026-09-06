@@ -42,7 +42,7 @@ describe('SDKClientGenerator', () => {
         { handle: 'pages', tabs: { main: { fields: [] } } },
       ]
       const result = generator.generate(blueprints)
-      expect(result.content).toContain('export interface CollectionTypeMap {')
+      expect(result.content).toContain('interface CollectionTypeMap {')
       expect(result.content).toContain('  blog: BlogEntry')
       expect(result.content).toContain('  pages: PagesEntry')
     })
@@ -71,14 +71,14 @@ describe('SDKClientGenerator', () => {
       ]
       const result = generator.generate(blueprints)
       expect(result.content).toContain("import type { GettingStartedEntry } from './types/getting-started.js'")
-      expect(result.content).toContain('  getting-started: GettingStartedEntry')
+      expect(result.content).toContain('  "getting-started": GettingStartedEntry')
     })
 
     it('handles empty blueprints array', () => {
       const result = generator.generate([])
       expect(result.filename).toBe('client.ts')
       expect(result.content).toContain("import { createClient } from '@madori/sdk'")
-      expect(result.content).toContain('export interface CollectionTypeMap {')
+      expect(result.content).toContain('interface CollectionTypeMap {')
       expect(result.content).toContain('}')
       expect(result.content).toContain('export const madoriClient = createClient<CollectionTypeMap>({')
     })
@@ -95,7 +95,7 @@ describe('SDKClientGenerator', () => {
         "import type { BlogEntry } from './types/blog.js'",
         "import type { PagesEntry } from './types/pages.js'",
         '',
-        'export interface CollectionTypeMap {',
+        'interface CollectionTypeMap {',
         '  blog: BlogEntry',
         '  pages: PagesEntry',
         '}',
@@ -106,7 +106,6 @@ describe('SDKClientGenerator', () => {
         '})',
         '',
         'export type { CollectionTypeMap }',
-        '',
       ].join('\n')
 
       expect(result.content).toBe(expected)

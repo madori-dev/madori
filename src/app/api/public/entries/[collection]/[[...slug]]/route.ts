@@ -28,6 +28,16 @@ function parseSort(value: string | null): ListOptions['sort'] {
   return { field, direction }
 }
 
+function parseFilter(value: string | null): ListOptions['filter'] {
+  if (!value) return undefined
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : undefined
+  } catch {
+    return undefined
+  }
+}
+
 export async function handlePublicEntries(
   request: Request,
   contentEngine: ContentEngine,
@@ -56,6 +66,7 @@ export async function handlePublicEntries(
       limit: parseNonNegativeInteger(url.searchParams.get('limit'), 100),
       offset: parseNonNegativeInteger(url.searchParams.get('offset'), 10_000),
       sort: parseSort(url.searchParams.get('sort')),
+      filter: parseFilter(url.searchParams.get('filter')),
     })
     return NextResponse.json(
       { data: entries.map(publicEntry) },

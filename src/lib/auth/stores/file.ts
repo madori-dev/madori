@@ -94,6 +94,27 @@ export class FileSessionStore implements SessionStore {
     }
   }
 
+  async revokeUserSessions(userId: string): Promise<void> {
+    if (!(await this.fs.exists(this.sessionsDir))) return
+    const files = await this.fs.listFiles(this.sessionsDir, '*.json')
+    for (const file of files) {
+      const filePath = path.join(this.sessionsDir, file)
+      // A read failure must abort revocation: unread sessions may still be valid.
+      const raw = await this.fs.readFile(filePath)
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(raw)
+      } catch {
+        // Malformed session documents cannot be validated.
+        continue
+      }
+      if (isSessionFileData(parsed) && parsed.userId === userId) {
+        // Deletion failures must abort credential or identity lifecycle changes.
+        await this.fs.deleteFile(filePath)
+      }
+    }
+  }
+
   async cleanExpired(): Promise<number> {
     const dirExists = await this.fs.exists(this.sessionsDir)
     if (!dirExists) return 0

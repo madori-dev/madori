@@ -1,0 +1,117 @@
+$ playwright test
+[WebServer] (node:53974) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ tsx tests/e2e/setup.ts
+[WebServer] (node:54009) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:54016) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:54268) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ next build
+[WebServer] (node:54662) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:54662) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:56637) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:57968) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:57974) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:57969) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:57967) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:57970) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:57964) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:57971) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:57973) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:57965) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:57966) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:57972) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] Turbopack build encountered 1 warning:
+[WebServer] ./src/lib/madori.ts:191:33
+[WebServer] Warning: Dynamic filesystem access causes tracing of the whole project
+[WebServer]   189 | ...eStaticCache = () => {
+[WebServer]   190 | ...taticCache.enabled) return
+[WebServer] > 191 | ...acheGeneration(path.resolve(projectRoot, config.staticCache.storagePath))
+[WebServer]       |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[WebServer]   192 | ...r => console.error('[madori:cache] Could not invalidate static responses', error))
+[WebServer]   193 | ...
+[WebServer]   194 | ...utation((mutation) => {
+[WebServer]
+[WebServer] Static analysis determined that this filesystem access causes the whole project to be traced and included in the output.
+[WebServer] This is usually unintentional and leads to all source files (including the public folder) to be deployed as part of the server code.
+[WebServer] This can slow down deployments or lead to failures when size limits are exceeded.
+[WebServer] To resolve this, you can
+[WebServer] - make sure the path is statically scoped to some subfolder, for example path.join(process.cwd(), 'data', bar), or
+[WebServer] - only use them in development, or
+[WebServer] - opt out by adding an ignore comment to the highlighted call: path.resolve(/*turbopackIgnore: true*/ ...), or
+[WebServer] - remove them.
+[WebServer]
+[WebServer] Import traces:
+[WebServer]   #1 [App Route]:
+[WebServer]     ./src/lib/madori.ts
+[WebServer]     ./src/app/robots.txt/route.ts
+[WebServer]
+[WebServer]   #2 [App Route]:
+[WebServer]     ./src/lib/madori.ts
+[WebServer]     ./src/lib/madori.ts
+[WebServer]     ./src/app/api/graphql/route.ts
+[WebServer]
+[WebServer]   #3 [Server Component]:
+[WebServer]     ./src/lib/madori.ts
+[WebServer]     ./src/components/site/DocsLayout.tsx
+[WebServer]     ./src/app/[...slug]/page.tsx
+[WebServer]
+[WebServer]
+[WebServer] (node:58035) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ next start --port 3100
+[WebServer] (node:58074) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 27 tests using 1 worker
+
+(node:58156) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [chromium] › tests/e2e/asset-security-regressions.spec.ts:3:5 › new uploads and renames are served immediately from the configured root (828ms)
+  ✓   2 [chromium] › tests/e2e/asset-security-regressions.spec.ts:35:5 › configured-root SVG overrides physical public file and stays sandboxed (321ms)
+  ✓   3 [chromium] › tests/e2e/asset-security-regressions.spec.ts:67:5 › missing file-like public paths return 404 and GraphQL clients may request typename (52ms)
+  ✓   4 [chromium] › tests/e2e/audit-regressions.spec.ts:14:7 › audit regressions › loaded entry is clean, internal links confirm changes, and save clears confirmation (1.1s)
+  ✓   5 [chromium] › tests/e2e/audit-regressions.spec.ts:53:7 › audit regressions › back navigation is recoverable after unsaved edit (704ms)
+  ✓   6 [chromium] › tests/e2e/audit-regressions.spec.ts:76:7 › audit regressions › required fields and cleared number fields use accessible labels and server validation (216ms)
+  ✓   7 [chromium] › tests/e2e/cms.spec.ts:16:5 › public site renders and control panel redirects unauthenticated visitors (153ms)
+  ✓   8 [chromium] › tests/e2e/cms.spec.ts:25:5 › public SEO redirects, sitemap, and 404 observations work end to end (628ms)
+  ✓   9 [chromium] › tests/e2e/cms.spec.ts:57:5 › authenticated editor creates, edits, and detects stale entry changes (584ms)
+[WebServer] (node:58074) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Volumes/Personal/madori/tests/e2e/.madori/madori.config.ts?revision=1 is not specified and it doesn't parse as CommonJS.
+[WebServer] Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+[WebServer] To eliminate this warning, add "type": "module" to /Volumes/Personal/madori/package.json.
+  ✓  10 [chromium] › tests/e2e/cms.spec.ts:93:5 › runtime settings save, anonymous form submission, and logout invalidate session (752ms)
+  ✓  11 [chromium] › tests/e2e/cp-parity.spec.ts:24:5 › admin login loads one authenticated capability contract and shows full navigation (292ms)
+  ✓  12 [chromium] › tests/e2e/cp-parity.spec.ts:38:5 › capability contract retries a transient server failure (435ms)
+  ✓  13 [chromium] › tests/e2e/cp-parity.spec.ts:55:5 › public navigation resolves entry references to configured collection routes (157ms)
+  ✓  14 [chromium] › tests/e2e/cp-parity.spec.ts:63:5 › public form renders from CP blueprint and submits (186ms)
+  ✓  15 [chromium] › tests/e2e/cp-parity.spec.ts:76:5 › asset manager edits filename and alt metadata (656ms)
+  ✓  16 [chromium] › tests/e2e/cp-parity.spec.ts:90:5 › entry editor uses assigned blueprint and renders section fields (433ms)
+  ✓  17 [chromium] › tests/e2e/cp-parity.spec.ts:100:5 › entry SEO overrides live in the SEO tab and persist (567ms)
+  ✓  18 [chromium] › tests/e2e/cp-parity.spec.ts:118:5 › optional asset selection can be cleared before create and after edit (805ms)
+  ✓  19 [chromium] › tests/e2e/cp-parity.spec.ts:154:5 › blueprint sections persist configured fields (540ms)
+  ✓  20 [chromium] › tests/e2e/cp-parity.spec.ts:175:5 › asset blueprint authoring keeps blank max_files single and permits an explicit gallery (535ms)
+  ✓  21 [chromium] › tests/e2e/cp-parity.spec.ts:198:5 › Tiptap entry content survives create, edit, and reload (670ms)
+  ✓  22 [chromium] › tests/e2e/cp-parity.spec.ts:222:5 › settings structured rows remain editable after reload (684ms)
+  ✓  23 [chromium] › tests/e2e/cp-parity.spec.ts:244:5 › SEO defaults save and reload full-value document (469ms)
+  ✓  24 [chromium] › tests/e2e/cp-parity.spec.ts:257:5 › role editor creates, edits, and protects assigned role deletion (524ms)
+  ✓  25 [chromium] › tests/e2e/cp-parity.spec.ts:276:5 › scoped editor sees only permitted content and cannot mutate other resources (559ms)
+  ✓  26 [chromium] › tests/e2e/graphql-policy.spec.ts:3:5 › production GraphQL permits GET queries while disabling introspection and its UI (19ms)
+  ✓  27 [chromium] › tests/e2e/unsaved-navigation.spec.ts:3:5 › fallback unsaved guard cancels and accepts back and forward without losing edits (608ms)
+
+  27 passed (32.2s)

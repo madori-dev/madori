@@ -45,7 +45,7 @@ export function initInvalidationEngine(
   if (config.driver === 'file') {
     driver = new FileCacheDriver(config.storagePath)
   } else {
-    driver = new ApplicationCacheDriver()
+    driver = new ApplicationCacheDriver(config.storagePath)
   }
 
   invalidationEngineInstance = new InvalidationEngine(

@@ -21,6 +21,7 @@ import { CodeField } from './CodeField'
 import { HiddenField } from './HiddenField'
 import { FieldError } from './FieldError'
 import { evaluateCondition } from '@/lib/blueprints/visibility'
+import { useId } from 'react'
 
 export interface FieldComponentProps {
   value: unknown
@@ -61,6 +62,8 @@ interface FieldRendererProps {
 }
 
 export function FieldRenderer({ fieldDefinition, value, onChange, error, values }: FieldRendererProps) {
+  const reactId = useId()
+  const fieldId = `field-${fieldDefinition.handle}-${reactId.replace(/:/g, '')}`
   if (fieldDefinition.field.visibility && values && !evaluateCondition(fieldDefinition.field.visibility, values)) {
     return null
   }
@@ -86,8 +89,9 @@ export function FieldRenderer({ fieldDefinition, value, onChange, error, values 
   const helpText = field.instructions ?? (field.options?.instructions as string | undefined)
 
   const describedByParts: string[] = []
-  if (helpText) describedByParts.push(`field-help-${fieldDefinition.handle}`)
-  if (error && error.length > 0) describedByParts.push(`field-error-${fieldDefinition.handle}`)
+  if (helpText) describedByParts.push(`${fieldId}-help`)
+  if (error && error.length > 0) describedByParts.push(`${fieldId}-error`)
+  field.options = { ...field.options, __fieldId: fieldId, __ariaDescribedBy: describedByParts.join(' ') || undefined }
 
   return (
     <div
@@ -103,7 +107,7 @@ export function FieldRenderer({ fieldDefinition, value, onChange, error, values 
       />
       {helpText && (
         <p
-          id={`field-help-${fieldDefinition.handle}`}
+          id={`${fieldId}-help`}
           className="mt-1 text-xs text-muted-foreground"
         >
           {helpText}
@@ -111,7 +115,7 @@ export function FieldRenderer({ fieldDefinition, value, onChange, error, values 
       )}
       <FieldError
         errors={error}
-        fieldHandle={`field-error-${fieldDefinition.handle}`}
+        fieldHandle={`${fieldId}-error`}
       />
     </div>
   )

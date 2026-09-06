@@ -3,6 +3,7 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import * as os from 'os'
 import { ContentStore } from '@/lib/content/store'
+import { NotFoundError } from '@/lib/errors'
 
 describe('ContentStore', () => {
   let tmpDir: string
@@ -97,6 +98,11 @@ describe('ContentStore', () => {
       const result = await store.getGlobal('roundtrip')
       expect(result).toEqual(data)
     })
+  })
+
+  it('does not turn an absent term update into a create', async () => {
+    await expect(store.updateTerm('topics', 'missing', { label: 'Missing' })).rejects.toBeInstanceOf(NotFoundError)
+    await expect(fs.stat(path.join(tmpDir, 'taxonomies', 'topics', 'missing.yaml'))).rejects.toThrow()
   })
 
   describe('getNavigation', () => {

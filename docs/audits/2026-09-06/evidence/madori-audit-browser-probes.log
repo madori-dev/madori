@@ -1,0 +1,5 @@
+Dirty navigation: { url: 'http://127.0.0.1:3101/cp/collections', confirmationDialogs: 0 }
+Discarded summary: Before
+Upload result: {"status":201,"body":{"data":{"path":"audit-upload.txt","filename":"audit-upload.txt","extension":"txt","size":21,"mimeType":"text/plain","modifiedAt":"2026-09-06T11:08:28.533Z"}}}
+Public uploaded file status: 404
+Default public directory new-file status: 500

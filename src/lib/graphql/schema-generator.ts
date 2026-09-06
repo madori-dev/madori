@@ -21,6 +21,7 @@ import type { Blueprint, FieldDefinition } from '../blueprints/types'
 import { getAssetCardinality } from '../blueprints/asset-cardinality'
 import type { CollectionConfig } from '../config/schema'
 import { sanitiseFieldHandle } from './sanitise-field-handle'
+import { assertUniqueCollectionQueryNames, collectionQueryNames, toGraphQLName } from './naming'
 import { seoGraphQLMutationFields, seoGraphQLQueryFields } from '@/lib/seo/graphql/schema'
 
 /**
@@ -58,7 +59,7 @@ function fieldTypeToGraphQL(fieldDef: FieldDefinition, replicatorType?: GraphQLO
     case 'replicator':
     case 'grid':
     case 'blocks':
-      return replicatorType ?? GraphQLString
+      return replicatorType ?? GraphQLJSON
 
     case 'number': {
       const integerOnly = field.options?.integer === true
@@ -104,25 +105,12 @@ function extractAllFields(blueprint: Blueprint): FieldDefinition[] {
  * Converts a collection handle to a PascalCase type name.
  * e.g. "blog" → "Blog", "case-studies" → "CaseStudies"
  */
-function toPascalCase(handle: string): string {
-  return handle
-    .split(/[-_]/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join('')
-}
+const toPascalCase = toGraphQLName
 
 /**
  * Pluralizes a handle for list query names.
  * Simple pluralization: append 's' if not already ending in 's'.
  */
-function pluralize(handle: string): string {
-  if (handle.endsWith('s')) return handle
-  if (handle.endsWith('y') && !handle.endsWith('ey')) {
-    return handle.slice(0, -1) + 'ies'
-  }
-  return handle + 's'
-}
-
 /** Standard fields added to every collection type */
 const STANDARD_ENTRY_FIELDS: GraphQLFieldConfigMap<unknown, unknown> = {
   title: { type: GraphQLString },
@@ -215,6 +203,7 @@ export class SchemaGeneratorImpl implements SchemaGenerator {
 
   /** Cache of generated replicator set types to avoid duplicates within a schema. */
   private readonly generatedSetTypes: Map<string, GraphQLObjectType> = new Map()
+  private readonly filterTypes: WeakMap<Blueprint, GraphQLInputObjectType> = new WeakMap()
 
   constructor(fieldsetProvider?: FieldsetProvider) {
     this.fieldsetProvider = fieldsetProvider
@@ -228,6 +217,7 @@ export class SchemaGeneratorImpl implements SchemaGenerator {
   generateSchema(blueprints: Blueprint[], collections: CollectionConfig[], resolvers?: Record<string, unknown>): GraphQLSchema {
     // Clear set type cache for each schema generation
     this.generatedSetTypes.clear()
+    assertUniqueCollectionQueryNames(collections.map((collection) => collection.handle))
 
     const queryFields: GraphQLFieldConfigMap<unknown, unknown> = {}
 
@@ -237,8 +227,7 @@ export class SchemaGeneratorImpl implements SchemaGenerator {
 
       const collectionType = this.generateCollectionType(collection, blueprint)
       const filterInput = this.generateFilterInput(blueprint)
-      const handle = collection.handle
-      const pluralHandle = pluralize(handle)
+      const { singular: handle, plural: pluralHandle } = collectionQueryNames(collection.handle)
 
       // Singular query: e.g. blog(slug: String!): Blog
       queryFields[handle] = {
@@ -329,6 +318,7 @@ export class SchemaGeneratorImpl implements SchemaGenerator {
       const replicatorType = this.buildReplicatorType(typeName, fieldDef)
       fields[sanitisedHandle] = {
         type: fieldTypeToGraphQL(fieldDef, replicatorType),
+        resolve: (source: unknown) => (source as Record<string, unknown>)[fieldDef.handle],
       }
     }
 
@@ -359,10 +349,14 @@ export class SchemaGeneratorImpl implements SchemaGenerator {
       inputFields[sanitisedHandle] = { type: GraphQLString }
     }
 
-    return new GraphQLInputObjectType({
+    const cached = this.filterTypes.get(blueprint)
+    if (cached) return cached
+    const result = new GraphQLInputObjectType({
       name: `${toPascalCase(blueprint.handle)}FilterInput`,
       fields: inputFields,
     })
+    this.filterTypes.set(blueprint, result)
+    return result
   }
 
   /**
@@ -423,6 +417,11 @@ export class SchemaGeneratorImpl implements SchemaGenerator {
     const unionType = new GraphQLUnionType({
       name: unionTypeName,
       types: setObjectTypes,
+      resolveType(value: { _type?: string }) {
+        const discriminator = value?._type
+        if (!discriminator) return undefined
+        return setObjectTypes.find((type) => type.name.endsWith(`${toPascalCase(discriminator)}Set`))?.name ?? undefined
+      },
     })
 
     return new GraphQLList(unionType)
@@ -446,6 +445,9 @@ export class SchemaGeneratorImpl implements SchemaGenerator {
       const nestedReplicatorType = this.buildReplicatorType(typeName, fieldDef)
       fields[sanitisedHandle] = {
         type: fieldTypeToGraphQL(fieldDef, nestedReplicatorType),
+        // Stored set values retain authored handles (which may need GraphQL
+        // sanitisation), so default field resolution cannot be used here.
+        resolve: (source: unknown) => (source as Record<string, unknown>)[fieldDef.handle],
       }
     }
 

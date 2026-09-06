@@ -1,0 +1,118 @@
+$ next build
+▲ Next.js 16.3.2 (Turbopack)
+✓ Running next.config.ts took 14ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 7.2s
+  Running TypeScript ...
+  Finished TypeScript in 5.6s ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/5) ...
+  Generating static pages using 11 workers (1/5)
+  Generating static pages using 11 workers (2/5)
+  Generating static pages using 11 workers (3/5)
+✓ Generating static pages using 11 workers (5/5) in 188ms
+Turbopack build encountered 1 warning:
+./src/lib/madori.ts:191:33
+Warning: Dynamic filesystem access causes tracing of the whole project
+  [90m189 |[0m ...eStaticCache = () => {
+  [90m190 |[0m ...taticCache.enabled) [36mreturn[0m
+[33m[1m>[0m [90m191 |[0m ...acheGeneration(path.resolve(projectRoot, config.staticCache.storagePath))
+  [90m    |[0m                   [33m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m192 |[0m ...r => console.error([32m'[madori:cache] Could not invalidate static responses'[0m, error))
+  [90m193 |[0m ...
+  [90m194 |[0m ...utation((mutation) => {
+
+Static analysis determined that this filesystem access causes the whole project to be traced and included in the output.
+This is usually unintentional and leads to all source files (including the public folder) to be deployed as part of the server code.
+This can slow down deployments or lead to failures when size limits are exceeded.
+To resolve this, you can
+- make sure the path is statically scoped to some subfolder, for example path.join(process.cwd(), 'data', bar), or
+- only use them in development, or
+- opt out by adding an ignore comment to the highlighted call: path.resolve(/*turbopackIgnore: true*/ ...), or
+- remove them.
+
+Import traces:
+  #1 [App Route]:
+    ./src/lib/madori.ts
+    ./src/app/robots.txt/route.ts
+
+  #2 [App Route]:
+    ./src/lib/madori.ts
+    ./src/lib/madori.ts
+    ./src/app/api/graphql/route.ts
+
+  #3 [Server Component]:
+    ./src/lib/madori.ts
+    ./src/components/site/DocsLayout.tsx
+    ./src/app/[...slug]/page.tsx
+
+
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ƒ /[...slug]
+├ ƒ /api/[...path]
+├ ƒ /api/docs/[slug]/markdown
+├ ƒ /api/graphql
+├ ƒ /api/health/live
+├ ƒ /api/health/ready
+├ ƒ /api/public/assets/[...path]
+├ ƒ /api/public/entries/[collection]/[[...slug]]
+├ ƒ /api/public/forms/[handle]
+├ ƒ /cp
+├ ƒ /cp/assets
+├ ƒ /cp/blueprints
+├ ƒ /cp/blueprints/[type]/[handle]
+├ ƒ /cp/blueprints/create
+├ ƒ /cp/collections
+├ ƒ /cp/collections/[handle]
+├ ƒ /cp/collections/[handle]/[slug]
+├ ƒ /cp/collections/[handle]/configure
+├ ƒ /cp/collections/[handle]/create
+├ ƒ /cp/collections/create
+├ ƒ /cp/fieldsets
+├ ƒ /cp/fieldsets/[handle]
+├ ƒ /cp/fieldsets/create
+├ ƒ /cp/forms
+├ ƒ /cp/forms/[handle]
+├ ƒ /cp/forms/[handle]/edit
+├ ƒ /cp/forms/[handle]/submissions/[id]
+├ ƒ /cp/forms/create
+├ ƒ /cp/git
+├ ƒ /cp/globals
+├ ƒ /cp/globals/[handle]
+├ ƒ /cp/globals/[handle]/edit
+├ ƒ /cp/globals/create
+├ ƒ /cp/login
+├ ƒ /cp/navigation
+├ ƒ /cp/navigation/[handle]
+├ ƒ /cp/navigation/[handle]/edit
+├ ƒ /cp/navigation/create
+├ ƒ /cp/seo
+├ ƒ /cp/seo/defaults
+├ ƒ /cp/seo/not-found
+├ ƒ /cp/seo/redirects
+├ ƒ /cp/settings
+├ ƒ /cp/taxonomies
+├ ƒ /cp/taxonomies/[handle]
+├ ƒ /cp/taxonomies/[handle]/[termSlug]/edit
+├ ƒ /cp/taxonomies/[handle]/create
+├ ƒ /cp/taxonomies/[handle]/edit
+├ ƒ /cp/taxonomies/create
+├ ƒ /cp/users
+├ ƒ /cp/users/[id]
+├ ƒ /cp/users/create
+├ ƒ /cp/users/roles
+├ ƒ /cp/users/settings
+├ ƒ /humans.txt
+├ ƒ /robots.txt
+└ ƒ /sitemap.xml
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand

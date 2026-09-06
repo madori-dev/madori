@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { FieldConfig, FieldType } from '@/lib/blueprints/types'
 import { getAssetCardinality } from '@/lib/blueprints/asset-cardinality'
+import { evaluateCondition } from '@/lib/blueprints/visibility'
 
 export interface ValidationResult {
   valid: boolean
@@ -63,19 +64,24 @@ export function buildFieldSchema(field: FieldConfig): z.ZodType {
   }
 
   // Apply required/optional
-  if (field.required) {
+  if (field.required || rules.some((rule) => parseRule(rule)[0] === 'required')) {
     // For string types, required means non-empty
-    if (isStringFieldType(field.type) && !rules.some((r) => parseRule(r)[0] === 'min')) {
+    if (isStringFieldType(field.type)) {
       schema = (schema as z.ZodString).min(1, 'This field is required')
     }
-    if (field.type === 'tiptap') {
-      schema = schema.refine(
-        (value) => typeof value === 'string' ? value.trim().length > 0 : Boolean(value && typeof value === 'object'),
-        'This field is required'
-      )
+    if (field.type === 'tiptap') schema = schema.refine((value) => tiptapTextLength(value) > 0, 'This field is required')
+    if (['multiselect', 'entries', 'taxonomy', 'asset', 'replicator', 'grid', 'blocks'].includes(field.type)) {
+      schema = schema.refine((value) => Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null && value !== '', 'This field is required')
+    }
+    if (!isStringFieldType(field.type) && field.type !== 'tiptap') {
+      schema = schema.refine((value) => value !== undefined && value !== null && value !== '', 'This field is required')
     }
   } else {
     schema = schema.optional() as z.ZodType
+  }
+
+  if (field.default !== undefined) {
+    schema = (schema as z.ZodType & { default: (value: unknown) => z.ZodType }).default(field.default)
   }
 
   return schema
@@ -92,6 +98,7 @@ export function validateFields(
   const errors: Record<string, string[]> = {}
 
   for (const [handle, fieldConfig] of Object.entries(fields)) {
+    if (fieldConfig.visibility && !evaluateCondition(fieldConfig.visibility, values)) continue
     const value = values[handle]
     const schema = buildFieldSchema(fieldConfig)
     const result = schema.safeParse(value)
@@ -118,7 +125,7 @@ function getBaseSchema(field: FieldConfig): z.ZodType {
     case 'markdown':
     case 'code':
     case 'yaml':
-      return z.string()
+      return fieldType === 'slug' ? z.string().regex(/^[a-z0-9-]+$/, 'Must contain only lowercase letters, numbers, and hyphens') : z.string()
 
     case 'tiptap':
       return z.union([z.string(), z.record(z.string(), z.unknown())])
@@ -129,8 +136,10 @@ function getBaseSchema(field: FieldConfig): z.ZodType {
     case 'toggle':
       return z.boolean()
 
-    case 'select':
-      return z.string()
+    case 'select': {
+      const options = extractSelectOptions(field.options)
+      return options.length > 0 ? z.enum(options as [string, ...string[]]) : z.string()
+    }
 
     case 'multiselect':
     case 'entries':
@@ -151,6 +160,7 @@ function getBaseSchema(field: FieldConfig): z.ZodType {
 
     case 'replicator':
     case 'grid':
+    case 'blocks':
       return z.array(z.record(z.string(), z.unknown()))
 
     case 'hidden':
@@ -159,6 +169,15 @@ function getBaseSchema(field: FieldConfig): z.ZodType {
     default:
       return z.unknown()
   }
+}
+
+function extractSelectOptions(options?: Record<string, unknown>): string[] {
+  if (!options) return []
+  if (Array.isArray(options.options)) return options.options.filter((option): option is string => typeof option === 'string')
+  if (Array.isArray(options.choices)) return options.choices.filter((option): option is string => typeof option === 'string')
+  if (Array.isArray(options)) return options.filter((option): option is string => typeof option === 'string')
+  const values = Object.values(options)
+  return values.length > 0 && values.every((value) => typeof value === 'string') ? values as string[] : []
 }
 
 /**

@@ -203,22 +203,7 @@ Custom JSON-LD is available through the `jsonLd.custom` `SeoJSON` scalar. Supply
 {
   navigation(handle: "main") {
     handle
-    items {
-      label
-      url
-      entry
-      external
-      children {
-        label
-        url
-        entry
-        external
-        children {
-          label
-          url
-        }
-      }
-    }
+    items
   }
 }
 ```

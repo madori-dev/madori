@@ -2,7 +2,7 @@ import * as fs from 'fs/promises'
 import * as path from 'path'
 import { glob } from 'glob'
 import YAML from 'yaml'
-import type { Blueprint, BlueprintTab } from '@madori/lib/blueprints/types.js'
+import type { Blueprint, BlueprintTab, FieldDefinition } from '@madori/lib/blueprints/types.js'
 
 // --- Generator interfaces (implemented in later tasks) ---
 
@@ -24,6 +24,7 @@ export interface SchemaGeneratorInterface {
 
 export interface GraphQLSDKGeneratorInterface {
   generate(blueprints: Blueprint[]): Promise<GeneratedFile[]>
+  setFieldsets?(fieldsets: ReadonlyMap<string, FieldDefinition[]>): void
 }
 
 export interface SDKClientGeneratorInterface {
@@ -36,6 +37,8 @@ export interface GenerationPipelineOptions {
   outputDir: string
   blueprintDir: string
 }
+
+export type GeneratedBlueprint = Blueprint & { sourceBlueprintHandle?: string }
 
 // --- Result interface ---
 
@@ -59,19 +62,20 @@ export class GenerationPipeline {
   async run(): Promise<GenerationResult> {
     const startTime = performance.now()
 
-    // 1. Clear output directory
-    await this.clearOutputDir()
-
-    // 2. Load and parse all blueprints
+    // 1. Load and parse all definitions before touching existing output.
     const blueprints = await this.loadBlueprints()
+    if (this.graphqlGenerator.setFieldsets) {
+      this.graphqlGenerator.setFieldsets(await this.loadFieldsets())
+    }
 
-    // 3. Run all generators
+    // 2. Run all generators
     const typeFiles = this.typeGenerator.generate(blueprints)
     const schemaFiles = this.schemaGenerator.generate(blueprints)
     const graphqlFiles = await this.graphqlGenerator.generate(blueprints)
     const clientFile = this.sdkClientGenerator.generate(blueprints)
 
-    // 4. Write all generated files
+    // 3. Replace output only after loading and generation succeeded.
+    await this.clearOutputDir()
     const allFiles = [...typeFiles, ...schemaFiles, ...graphqlFiles, clientFile]
     await this.writeAll(allFiles)
 
@@ -87,6 +91,36 @@ export class GenerationPipeline {
       filesGenerated: allFiles.length + 3, // +3 for barrel, gitignore, tsconfig paths
       durationMs,
     }
+  }
+
+  private async loadFieldsets(): Promise<Map<string, FieldDefinition[]>> {
+    const result = new Map<string, FieldDefinition[]>()
+    const fieldsetDir = path.resolve(this.options.blueprintDir, '..', 'fieldsets')
+    const loading = new Set<string>()
+    const load = async (handle: string): Promise<FieldDefinition[]> => {
+      if (result.has(handle)) return result.get(handle)!
+      if (loading.has(handle)) throw new Error(`[generate] Circular fieldset import: ${handle}`)
+      loading.add(handle)
+      const file = path.join(fieldsetDir, `${handle}.yaml`)
+      const parsed = YAML.parse(await fs.readFile(file, 'utf-8')) as { fields?: unknown[] }
+      const fields: FieldDefinition[] = []
+      for (const entry of parsed?.fields ?? []) {
+        if (entry && typeof entry === 'object' && typeof (entry as { import?: unknown }).import === 'string') {
+          fields.push(...await load((entry as { import: string }).import))
+        } else if (entry && typeof entry === 'object' && typeof (entry as { handle?: unknown }).handle === 'string') {
+          fields.push(entry as FieldDefinition)
+        } else {
+          throw new Error(`[generate] Invalid fieldset entry in ${file}`)
+        }
+      }
+      loading.delete(handle)
+      result.set(handle, fields)
+      return fields
+    }
+    for (const file of await glob(path.join(fieldsetDir, '*.yaml'))) {
+      await load(path.basename(file, '.yaml'))
+    }
+    return result
   }
 
   /**
@@ -132,6 +166,36 @@ export class GenerationPipeline {
    */
   private async loadBlueprints(): Promise<Blueprint[]> {
     const { blueprintDir } = this.options
+    const collectionsDir = path.resolve(blueprintDir, '..', 'collections')
+    if (await fs.stat(collectionsDir).then(() => true, () => false)) {
+      const files = await glob(path.join(collectionsDir, '*.yaml'))
+      const blueprints: GeneratedBlueprint[] = []
+      for (const collectionFile of files) {
+        const collection = YAML.parse(await fs.readFile(collectionFile, 'utf-8')) as { blueprint?: string }
+        const collectionHandle = path.basename(collectionFile, '.yaml')
+        const blueprintHandle = collection?.blueprint || collectionHandle
+        const candidates = [
+          path.join(blueprintDir, 'collections', `${blueprintHandle}.yaml`),
+          path.join(blueprintDir, `${blueprintHandle}.yaml`),
+        ]
+        let source: string | undefined
+        for (const candidate of candidates) {
+          try { source = await fs.readFile(candidate, 'utf-8'); break } catch { /* try next location */ }
+        }
+        if (!source) throw new Error(`[generate] Blueprint "${blueprintHandle}" referenced by collection "${collectionHandle}" was not found`)
+        const parsed = YAML.parse(source) as { tabs?: Record<string, unknown> }
+        if (!parsed?.tabs) throw new Error(`[generate] Blueprint "${blueprintHandle}" has no tabs`)
+        const tabs = parsed.tabs as Record<string, BlueprintTab>
+        for (const tab of Object.values(tabs)) {
+          tab.fields = await this.resolveImportedFields(tab.fields, path.resolve(blueprintDir, '..', 'fieldsets'))
+          for (const section of Object.values(tab.sections ?? {})) {
+            section.fields = await this.resolveImportedFields(section.fields, path.resolve(blueprintDir, '..', 'fieldsets'))
+          }
+        }
+        blueprints.push({ handle: collectionHandle, sourceBlueprintHandle: blueprintHandle, tabs })
+      }
+      return blueprints
+    }
     const pattern = path.join(blueprintDir, '**/*.yaml')
     const files = await glob(pattern)
     const blueprints: Blueprint[] = []
@@ -164,6 +228,27 @@ export class GenerationPipeline {
     }
 
     return blueprints
+  }
+
+  private async resolveImportedFields(fields: unknown[], fieldsetDir: string, stack: string[] = []): Promise<FieldDefinition[]> {
+    const result: FieldDefinition[] = []
+    for (const entry of fields ?? []) {
+      if (entry && typeof entry === 'object' && typeof (entry as { import?: unknown }).import === 'string') {
+        const handle = (entry as { import: string }).import
+        if (stack.includes(handle)) throw new Error(`[generate] Circular fieldset import: ${[...stack, handle].join(' -> ')}`)
+        const file = path.join(fieldsetDir, `${handle}.yaml`)
+        let parsed: { fields?: unknown[] }
+        try { parsed = YAML.parse(await fs.readFile(file, 'utf-8')) as { fields?: unknown[] } } catch {
+          throw new Error(`[generate] Fieldset "${handle}" imported by blueprint was not found`)
+        }
+        result.push(...await this.resolveImportedFields(parsed.fields ?? [], fieldsetDir, [...stack, handle]))
+      } else if (entry && typeof entry === 'object' && typeof (entry as { handle?: unknown }).handle === 'string' && (entry as { field?: unknown }).field) {
+        result.push(entry as FieldDefinition)
+      } else {
+        throw new Error('[generate] Invalid field or fieldset import in blueprint')
+      }
+    }
+    return result
   }
 
   /**

@@ -29,11 +29,31 @@ interface UserYaml {
   theme?: 'light' | 'dark'
 }
 
+const userStoreLocks = new Map<string, Promise<void>>()
+
+async function withUserStoreLock<T>(key: string, operation: () => Promise<T>): Promise<T> {
+  const previous = userStoreLocks.get(key) ?? Promise.resolve()
+  let release!: () => void
+  const current = new Promise<void>((resolve) => { release = resolve })
+  userStoreLocks.set(key, current)
+  await previous
+  try {
+    return await operation()
+  } finally {
+    release()
+    if (userStoreLocks.get(key) === current) userStoreLocks.delete(key)
+  }
+}
+
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase()
+}
+
 function userFromYaml(yaml: UserYaml): User {
   assertSafeUserId(yaml.id)
   return {
     id: yaml.id,
-    email: yaml.email,
+    email: normalizeEmail(yaml.email),
     name: yaml.name,
     roles: yaml.roles ?? [],
     passwordHash: yaml.password_hash,
@@ -92,7 +112,8 @@ export class YamlUserProvider implements UserProvider {
 
   async getByEmail(email: string): Promise<User | null> {
     const users = await this.list()
-    return users.find((u) => u.email === email) ?? null
+    const normalizedEmail = normalizeEmail(email)
+    return users.find((u) => normalizeEmail(u.email) === normalizedEmail) ?? null
   }
 
   async list(): Promise<User[]> {
@@ -112,61 +133,75 @@ export class YamlUserProvider implements UserProvider {
   }
 
   async create(input: CreateUserInput): Promise<User> {
-    assertSafeUserId(input.id)
-    const filePath = this.userFilePath(input.id)
-    const exists = await this.fs.exists(filePath)
-    if (exists) {
-      throw new ConflictError(`User with id "${input.id}" already exists`)
-    }
-    assertPasswordPolicy(input.password)
+    return withUserStoreLock(path.resolve(this.usersPath), async () => {
+      assertSafeUserId(input.id)
+      const filePath = this.userFilePath(input.id)
+      if (await this.fs.exists(filePath)) {
+        throw new ConflictError(`User with id "${input.id}" already exists`)
+      }
+      const email = normalizeEmail(input.email)
+      if ((await this.list()).some((user) => normalizeEmail(user.email) === email)) {
+        throw new ConflictError(`User with email "${email}" already exists`)
+      }
+      assertPasswordPolicy(input.password)
 
-    const passwordHash = await hashPassword(input.password)
-    const user: User = {
-      id: input.id,
-      email: input.email,
-      name: input.name,
-      roles: input.roles,
-      passwordHash,
-      createdAt: new Date().toISOString(),
-    }
+      const passwordHash = await hashPassword(input.password)
+      const user: User = {
+        id: input.id,
+        email,
+        name: input.name,
+        roles: input.roles,
+        passwordHash,
+        createdAt: new Date().toISOString(),
+      }
 
-    const yaml = userToYaml(user)
-    const content = this.parser.serializeYaml(yaml)
-    await this.writeUserAtomic(filePath, content)
-    this.report('create', filePath, input.id)
-    return user
+      const yaml = userToYaml(user)
+      const content = this.parser.serializeYaml(yaml)
+      await this.writeUserAtomic(filePath, content)
+      this.report('create', filePath, input.id)
+      return user
+    })
   }
 
   async update(id: string, input: UpdateUserInput): Promise<User> {
-    assertSafeUserId(id)
-    const user = await this.getById(id)
+    return withUserStoreLock(path.resolve(this.usersPath), async () => {
+      assertSafeUserId(id)
+      const user = await this.getById(id)
 
-    if (input.email !== undefined) user.email = input.email
-    if (input.name !== undefined) user.name = input.name
-    if (input.roles !== undefined) user.roles = input.roles
-    if (input.lastLogin !== undefined) user.lastLogin = input.lastLogin
-    if (input.theme !== undefined) user.theme = input.theme
-    if (input.password !== undefined) {
-      assertPasswordPolicy(input.password)
-      user.passwordHash = await hashPassword(input.password)
-    }
+      if (input.email !== undefined) {
+        const email = normalizeEmail(input.email)
+        const duplicate = (await this.list()).some((candidate) => candidate.id !== id && normalizeEmail(candidate.email) === email)
+        if (duplicate) throw new ConflictError(`User with email "${email}" already exists`)
+        user.email = email
+      }
+      if (input.name !== undefined) user.name = input.name
+      if (input.roles !== undefined) user.roles = input.roles
+      if (input.lastLogin !== undefined) user.lastLogin = input.lastLogin
+      if (input.theme !== undefined) user.theme = input.theme
+      if (input.password !== undefined) {
+        assertPasswordPolicy(input.password)
+        user.passwordHash = await hashPassword(input.password)
+      }
 
-    const yaml = userToYaml(user)
-    const content = this.parser.serializeYaml(yaml)
-    await this.writeUserAtomic(this.userFilePath(id), content)
-    this.report('update', this.userFilePath(id), id)
-    return user
+      const yaml = userToYaml(user)
+      const content = this.parser.serializeYaml(yaml)
+      await this.writeUserAtomic(this.userFilePath(id), content)
+      this.report('update', this.userFilePath(id), id)
+      return user
+    })
   }
 
   async delete(id: string): Promise<void> {
-    assertSafeUserId(id)
-    const filePath = this.userFilePath(id)
-    const exists = await this.fs.exists(filePath)
-    if (!exists) {
-      throw new NotFoundError('User', id)
-    }
-    await this.fs.deleteFile(filePath)
-    this.report('delete', filePath, id)
+    await withUserStoreLock(path.resolve(this.usersPath), async () => {
+      assertSafeUserId(id)
+      const filePath = this.userFilePath(id)
+      const exists = await this.fs.exists(filePath)
+      if (!exists) {
+        throw new NotFoundError('User', id)
+      }
+      await this.fs.deleteFile(filePath)
+      this.report('delete', filePath, id)
+    })
   }
 
   private async writeUserAtomic(filePath: string, content: string): Promise<void> {

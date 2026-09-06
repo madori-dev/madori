@@ -1,0 +1,17 @@
+Hidden required field: {
+  visible: false,
+  validation: { valid: false, errors: { details: [Array] } }
+}
+Cleared optional number: {
+  valid: false,
+  errors: { count: [ 'Invalid input: expected number, received null' ] }
+}
+Required rule with absent value: { valid: true, errors: {} }
+Empty required select: { valid: true, errors: {} }
+Renamed config export retained: false
+Server rejects gallery: {
+  success: false,
+  errors: { value: [ 'Invalid input: expected string, received array' ] }
+}
+Server ignores max:3: { success: true }
+Client respects max:3: { valid: false, errors: { value: [ 'Must be at most 3 characters' ] } }

@@ -1,6 +1,22 @@
-import type { Blueprint } from '@madori/lib/blueprints/types.js'
+import type { Blueprint, FieldDefinition } from '@madori/lib/blueprints/types.js'
 import type { GeneratedFile, GraphQLSDKGeneratorInterface } from './generation-pipeline.js'
 import { toPascalCaseEntry } from './type-generator.js'
+
+// Keep generator output aligned with server GraphQL naming. This copy stays
+// package-local because the published CLI cannot import the application source.
+function toGraphQLFieldName(handle: string): string {
+  if (['__typename', '__type', '__schema'].includes(handle)) return `field_${handle.slice(2)}`
+  let name = handle.replace(/[^A-Za-z0-9_]/g, '_').replace(/_+/g, '_').replace(/_+$/, '')
+  if (/^[0-9]/.test(name)) name = `_${name}`
+  if (!name) name = '_field'
+  return /^[A-Za-z_]/.test(name) ? name : `_${name || 'field'}`
+}
+function collectionQueryNames(handle: string): { singular: string; plural: string } {
+  const singular = handle.split(/[-_\s]+/).filter(Boolean).map((part, index) => index === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1)).join('')
+  const base = handle.endsWith('s') ? handle : handle.endsWith('y') && !handle.endsWith('ey') ? `${handle.slice(0, -1)}ies` : `${handle}s`
+  const plural = base.split(/[-_\s]+/).filter(Boolean).map((part, index) => index === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1)).join('')
+  return { singular, plural: plural === singular ? `${singular}List` : plural }
+}
 
 /**
  * Converts a kebab-case or lowercase handle to PascalCase (without "Entry" suffix).
@@ -18,10 +34,15 @@ function toPascalCase(handle: string): string {
  * and a barrel file for each collection blueprint.
  *
  * Generated operations assume a GraphQL API following Madori conventions:
- * - `{handle}Entry(slug: String!): {Type}` for single entry lookup
- * - `{handle}Entries(options: ListOptions): [{Type}]` for listing
+ * - `{handle}(slug: String!): {Type}` for single entry lookup
+ * - `{handle}s(filter, limit, offset, sort): [{Type}]` for listing
  */
 export class GraphQLSDKGenerator implements GraphQLSDKGeneratorInterface {
+  private fieldsets: ReadonlyMap<string, FieldDefinition[]>
+
+  constructor(fieldsets: ReadonlyMap<string, FieldDefinition[]> = new Map()) { this.fieldsets = fieldsets }
+
+  setFieldsets(fieldsets: ReadonlyMap<string, FieldDefinition[]>): void { this.fieldsets = fieldsets }
   /**
    * Generate all GraphQL SDK files from blueprints.
    * Returns client.ts, per-collection operation files, and index.ts barrel.
@@ -58,9 +79,10 @@ export class GraphQLSDKGenerator implements GraphQLSDKGeneratorInterface {
 
 export type TypedDocumentNode<TResult, TVariables> = {
   __apiType?: (variables: TVariables) => TResult
-  kind: string
-  definitions: unknown[]
-}
+} & DocumentNode
+
+import { print } from 'graphql'
+import type { DocumentNode } from 'graphql'
 
 export interface GraphQLClientConfig {
   endpoint: string
@@ -84,7 +106,7 @@ export async function request<TResult, TVariables extends Record<string, unknown
   const response = await fetch(config.endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...config.headers },
-    body: JSON.stringify({ query: (document as any).loc?.source?.body ?? String(document), variables }),
+    body: JSON.stringify({ query: print(document), variables }),
   })
   const json = await response.json()
   if (json.errors) throw new Error(json.errors[0].message)
@@ -105,12 +127,22 @@ export async function request<TResult, TVariables extends Record<string, unknown
   generateOperations(blueprint: Blueprint): GeneratedFile {
     const handle = blueprint.handle
     const pascalCase = toPascalCase(handle)
+    const filterTypeHandle = (blueprint as Blueprint & { sourceBlueprintHandle?: string }).sourceBlueprintHandle ?? handle
+    const filterTypeName = `${toPascalCase(filterTypeHandle)}FilterInput`
     const typeName = toPascalCaseEntry(handle)
 
     const getDocName = `Get${pascalCase}EntryDocument`
     const listDocName = `List${pascalCase}EntriesDocument`
     const getFnName = `get${pascalCase}Entry`
     const listFnName = `list${pascalCase}Entries`
+    const names = collectionQueryNames(handle)
+    const fields = Object.values(blueprint.tabs).flatMap((tab) => [...tab.fields, ...Object.values(tab.sections ?? {}).flatMap((section) => section.fields)])
+    const schemaTypeName = toPascalCase(handle)
+    const selection = ['title', 'slug', 'status', 'author', 'content', 'createdAt', 'updatedAt', ...fields.map((field) => this.buildSelection(field, schemaTypeName)).filter(Boolean)].filter((field, index, all) => all.indexOf(field) === index).join('\n          ')
+    const standardNames = new Set(['title', 'slug', 'status', 'author', 'content', 'createdAt', 'updatedAt'])
+    const customFields = fields.filter(field => !standardNames.has(field.handle))
+    const wireFields = customFields.map(field => `  ${JSON.stringify(toGraphQLFieldName(field.handle))}: ${typeName}[${JSON.stringify(field.handle)}] | null`).join('\n')
+    const fieldNormalizers = customFields.map(field => `${JSON.stringify(field.handle)}: entry[${JSON.stringify(toGraphQLFieldName(field.handle))}] ?? undefined,`).join('\n    ')
 
     const content = `/**
  * GraphQL operations for the "${handle}" collection.
@@ -118,96 +150,59 @@ export async function request<TResult, TVariables extends Record<string, unknown
  */
 
 import type { ${typeName} } from '../types/${handle}.js'
+import { parse } from 'graphql'
 import type { TypedDocumentNode } from './client.js'
 import { request } from './client.js'
 
-export interface ListOptions {
+interface ListOptions {
+  filter?: Record<string, unknown>
   limit?: number
   offset?: number
   sort?: string
   order?: 'asc' | 'desc'
 }
 
+/** Actual GraphQL wire fields; convenience functions restore authored keys. */
+export interface ${typeName}QueryResult {
+  title: string | null
+  slug: string | null
+  status: string | null
+  author: string | null
+  content: string | null
+  createdAt: string | null
+  updatedAt: string | null
+${wireFields}
+}
+
 // --- Query document nodes ---
 
-export const ${getDocName} = {
-  kind: 'Document',
-  definitions: [
-    {
-      kind: 'OperationDefinition',
-      operation: 'query',
-      name: { kind: 'Name', value: '${getFnName}' },
-      variableDefinitions: [
-        {
-          kind: 'VariableDefinition',
-          variable: { kind: 'Variable', name: { kind: 'Name', value: 'slug' } },
-          type: { kind: 'NonNullType', type: { kind: 'NamedType', name: { kind: 'Name', value: 'String' } } },
-        },
-      ],
-      selectionSet: {
-        kind: 'SelectionSet',
-        selections: [
-          {
-            kind: 'Field',
-            name: { kind: 'Name', value: '${handle}Entry' },
-            arguments: [
-              {
-                kind: 'Argument',
-                name: { kind: 'Name', value: 'slug' },
-                value: { kind: 'Variable', name: { kind: 'Name', value: 'slug' } },
-              },
-            ],
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as TypedDocumentNode<{ ${handle}Entry: ${typeName} | null }, { slug: string }>
+export const ${getDocName} = parse(\`query ${getFnName}($slug: String!) { ${names.singular}(slug: $slug) { ${selection} } }\`) as unknown as TypedDocumentNode<{ ${names.singular}: ${typeName}QueryResult | null }, { slug: string }>
 
-export const ${listDocName} = {
-  kind: 'Document',
-  definitions: [
-    {
-      kind: 'OperationDefinition',
-      operation: 'query',
-      name: { kind: 'Name', value: '${listFnName}' },
-      variableDefinitions: [
-        {
-          kind: 'VariableDefinition',
-          variable: { kind: 'Variable', name: { kind: 'Name', value: 'options' } },
-          type: { kind: 'NamedType', name: { kind: 'Name', value: 'ListOptions' } },
-        },
-      ],
-      selectionSet: {
-        kind: 'SelectionSet',
-        selections: [
-          {
-            kind: 'Field',
-            name: { kind: 'Name', value: '${handle}Entries' },
-            arguments: [
-              {
-                kind: 'Argument',
-                name: { kind: 'Name', value: 'options' },
-                value: { kind: 'Variable', name: { kind: 'Name', value: 'options' } },
-              },
-            ],
-          },
-        ],
-      },
-    },
-  ],
-} as unknown as TypedDocumentNode<{ ${handle}Entries: ${typeName}[] }, { options?: ListOptions }>
+export const ${listDocName} = parse(\`query ${listFnName}($filter: ${filterTypeName}, $limit: Int, $offset: Int, $sort: String) { ${names.plural}(filter: $filter, limit: $limit, offset: $offset, sort: $sort) { ${selection} } }\`) as unknown as TypedDocumentNode<{ ${names.plural}: ${typeName}QueryResult[] }, { filter?: Record<string, unknown>; limit?: number; offset?: number; sort?: string }>
 
 // --- Operation functions ---
 
+function normalize${pascalCase}(entry: ${typeName}QueryResult | null): ${typeName} | null {
+  if (!entry) return null
+  return {
+    title: entry.title ?? '', slug: entry.slug ?? '',
+    status: entry.status === 'published' ? 'published' : 'draft',
+    author: entry.author ?? undefined, content: entry.content ?? '',
+    createdAt: entry.createdAt ?? '', updatedAt: entry.updatedAt ?? '',
+    collection: ${JSON.stringify(handle)},
+    ${fieldNormalizers}
+  } as ${typeName}
+}
+
 export async function ${getFnName}(slug: string): Promise<${typeName} | null> {
   const result = await request(${getDocName}, { slug })
-  return result.${handle}Entry
+  return normalize${pascalCase}(result.${names.singular})
 }
 
 export async function ${listFnName}(options?: ListOptions): Promise<${typeName}[]> {
-  const result = await request(${listDocName}, { options })
-  return result.${handle}Entries
+  const variables = options ? { ...options, sort: options.sort && options.order ? options.sort + ':' + options.order : options.sort } : undefined
+  const result = await request(${listDocName}, variables)
+  return result.${names.plural}.map((entry) => normalize${pascalCase}(entry)!)
 }
 `
 
@@ -216,6 +211,22 @@ export async function ${listFnName}(options?: ListOptions): Promise<${typeName}[
       content,
       blueprintHandle: handle,
     }
+  }
+
+  private buildSelection(field: FieldDefinition, parentType: string): string {
+    const name = toGraphQLFieldName(field.handle)
+    const type = field.field.type
+    if (type !== 'replicator' && type !== 'blocks' && type !== 'grid') return name
+    const sets = field.field.options?.sets as string[] | undefined
+    if (!Array.isArray(sets) || !sets.length) return name
+    const variants = sets.map((setHandle) => {
+      const setFields = this.fieldsets.get(setHandle)
+      if (!setFields) return ''
+      const setType = `${parentType}${toPascalCase(field.handle)}${toPascalCase(setHandle)}Set`
+      const nested = setFields.map((setField) => this.buildSelection(setField, setType)).filter(Boolean).join(' ')
+      return `... on ${setType} { _type ${nested} }`
+    }).filter(Boolean)
+    return variants.length ? `${name} { ${variants.join(' ')} }` : name
   }
 
   /**

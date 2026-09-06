@@ -130,7 +130,7 @@ describe('Pipeline Integration', () => {
 
       const barrelFile = await fs.readFile(path.join(outputDir, 'index.ts'), 'utf-8')
       expect(barrelFile).toContain("export * from './types/index.js'")
-      expect(barrelFile).toContain("export * from './schemas/index.js'")
+      expect(barrelFile).toContain("export * as schemas from './schemas/index.js'")
       expect(barrelFile).toContain("export * from './graphql/index.js'")
       expect(barrelFile).toContain("export * from './client.js'")
     })
@@ -224,5 +224,43 @@ describe('Pipeline Integration', () => {
       const schemaFile = await fs.readFile(path.join(outputDir, 'schemas', 'mystery.ts'), 'utf-8')
       expect(schemaFile).toContain('z.unknown()')
     })
+  })
+
+  it('uses collection handles and resolves imported fieldsets', async () => {
+    await fs.mkdir(path.join(blueprintDir, 'collections'), { recursive: true })
+    const collectionsDir = path.join(tmpDir, 'collections')
+    const fieldsetsDir = path.join(tmpDir, 'fieldsets')
+    await fs.mkdir(collectionsDir, { recursive: true })
+    await fs.mkdir(fieldsetsDir, { recursive: true })
+    await fs.writeFile(path.join(collectionsDir, 'case-studies.yaml'), 'blueprint: page\n', 'utf-8')
+    await fs.writeFile(path.join(blueprintDir, 'collections', 'page.yaml'), `tabs:
+  main:
+    fields:
+      - import: shared
+      - handle: blocks
+        field:
+          type: replicator
+          options:
+            sets: [hero]
+`, 'utf-8')
+    await fs.writeFile(path.join(fieldsetsDir, 'shared.yaml'), `fields:
+  - handle: featured-image
+    field:
+      type: text
+`, 'utf-8')
+    await fs.writeFile(path.join(fieldsetsDir, 'hero.yaml'), `fields:
+  - handle: heading
+    field:
+      type: text
+`, 'utf-8')
+
+    await createPipeline().run()
+
+    const operations = await fs.readFile(path.join(outputDir, 'graphql', 'case-studies-operations.ts'), 'utf-8')
+    expect(operations).toContain('caseStudies(slug: $slug)')
+    expect(operations).toContain('featured_image')
+    expect(operations).toContain('... on CaseStudiesBlocksHeroSet')
+    await expect(fs.access(path.join(outputDir, 'types', 'case-studies.ts'))).resolves.toBeUndefined()
+    await expect(fs.access(path.join(outputDir, 'types', 'page.ts'))).rejects.toThrow()
   })
 })

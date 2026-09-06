@@ -19,6 +19,7 @@ import { BlueprintRegistry } from '@/lib/blueprints/registry'
 import { MadoriContentEngine } from '@/lib/content/engine'
 import { ChokidarFileWatcher } from '@/lib/cache/watcher'
 import { ContentMutationBus } from '@/lib/mutations'
+import { advanceCacheGeneration } from '@/lib/static-cache/generation'
 import { GitSyncRuntime } from '@/lib/git'
 import { createContentEngineSeoPort, FileSeoAuditSnapshotStore, FileSeoRedirectRepository, FileSeoRepository, NotFoundObservationStore, SeoApplication, SeoAuditEngine, SeoAuditRunner, SeoRuntime } from '@/lib/seo'
 import { createSiteContexts, type SiteContext } from '@/lib/sites'
@@ -185,12 +186,28 @@ async function initialize(): Promise<MadoriInstance> {
     reportsEnabled: config.seo.reports,
     defaultSite: sites.find(site => site.isDefault)?.handle ?? sites[0]?.handle,
   })
+  const invalidateStaticCache = () => {
+    if (!config.staticCache.enabled) return
+    void advanceCacheGeneration(path.resolve(projectRoot, config.staticCache.storagePath))
+      .catch(error => console.error('[madori:cache] Could not invalidate static responses', error))
+  }
   mutationBus.onMutation((mutation) => {
     const { type, handle, id } = mutation.resource
+    if (!['user', 'role'].includes(type)) {
+      // CP write services can have separate local caches. Semantic writes must
+      // invalidate readers before the asynchronous watcher sees filesystem changes.
+      cache.clear()
+      invalidateStaticCache()
+    }
     if (type === 'entry' && handle && id) seoRuntime.invalidate({ records: [`collection:${handle}:${id}`] })
     else if (type === 'term' && handle && id) seoRuntime.invalidate({ records: [`taxonomy:${handle}:${id}`] })
     else if (type === 'asset' || type === 'asset-directory') seoRuntime.invalidate({ assets: ['*'] })
     else if (type === 'seo') seoRuntime.invalidate({ sites: ['*'], sections: ['*'] })
+    else if (type === 'definition' || type === 'blueprint' || type === 'fieldset') {
+      contentEngine.invalidateCollectionsCache()
+      cache.clear()
+      seoRuntime.invalidate()
+    }
   })
 
   // 6c. Share one mutation publisher across write services and integrations.
@@ -219,7 +236,17 @@ async function initialize(): Promise<MadoriInstance> {
       })),
     ],
   })
-  fileWatcher.onFileChange((event) => { void gitRuntime.reportFilesystemChange(event.absolutePath) })
+  fileWatcher.onFileChange((event) => {
+    if (event.root === 'resources') {
+      contentEngine.invalidateCollectionsCache()
+      cache.clear()
+    }
+    if (event.root === 'content' || event.root === 'resources' || event.root === 'assets') {
+      seoRuntime.invalidate()
+      invalidateStaticCache()
+    }
+    void gitRuntime.reportFilesystemChange(event.absolutePath)
+  })
   await fileWatcher.start()
 
   // 8. Create auth services via adapter system

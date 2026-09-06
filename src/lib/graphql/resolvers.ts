@@ -7,6 +7,8 @@ import type { AuthContext } from '@/lib/auth/guard'
 import type { PermissionGuard } from '@/lib/auth/guard'
 import { NotFoundError, AuthorizationError } from '@/lib/errors'
 import { buildSeoGraphQLResolvers, type SeoGraphQLPort } from '@/lib/seo/graphql'
+import { collectionQueryNames } from './naming'
+import { sanitiseFieldHandle } from './sanitise-field-handle'
 
 /**
  * Context object passed to all GraphQL resolvers.
@@ -145,6 +147,7 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
   // Collection resolvers
   for (const collection of collections) {
     const handle = collection.handle
+    const { singular, plural } = collectionQueryNames(handle)
 
     // Singular resolver: e.g. blog(slug: "hello-world")
     const singularResolver = withErrorHandling(async (
@@ -158,10 +161,10 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
     })
 
     // Wrap with permission guard if available (read access, scoped to collection)
-    resolvers[handle] = protect('entries', 'view', singularResolver, () => handle)
+    resolvers[singular] = protect('entries', 'view', singularResolver, () => handle)
 
     // List resolver: e.g. blogs(filter: {...}, limit: 10, offset: 0, sort: "title:asc")
-    const pluralHandle = pluralize(handle)
+    const pluralHandle = plural
     const listResolver = withErrorHandling(async (
       _parent: unknown,
       args: { filter?: Record<string, unknown>; limit?: number; offset?: number; sort?: string },
@@ -170,7 +173,15 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
       const listOpts: ListOptions = {}
 
       if (args.filter) {
-        listOpts.filter = args.filter
+        const blueprint = typeof context.blueprintRegistry?.getBlueprint === 'function'
+          ? await context.blueprintRegistry.getBlueprint('collections', collection.blueprint)
+          : null
+        const fields = blueprint ? Object.values(blueprint.tabs).flatMap((tab) => [
+          ...tab.fields,
+          ...Object.values(tab.sections ?? {}).flatMap((section) => section.fields),
+        ]) : []
+        const reverse = new Map(fields.map((field) => [sanitiseFieldHandle(field.handle), field.handle]))
+        listOpts.filter = Object.fromEntries(Object.entries(args.filter).map(([key, value]) => [reverse.get(key) ?? key, value]))
       }
       if (args.limit != null) {
         listOpts.limit = args.limit
@@ -293,18 +304,6 @@ export function buildResolvers(collections: CollectionConfig[], options?: BuildR
   }
 
   return resolvers
-}
-
-/**
- * Pluralizes a handle for list query names.
- * Simple pluralization: append 's' if not already ending in 's'.
- */
-function pluralize(handle: string): string {
-  if (handle.endsWith('s')) return handle
-  if (handle.endsWith('y') && !handle.endsWith('ey')) {
-    return handle.slice(0, -1) + 'ies'
-  }
-  return handle + 's'
 }
 
 // Re-export for testing

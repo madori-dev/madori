@@ -5,6 +5,13 @@ import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
 import { MarkdownYamlParser } from '@/lib/fs/parser'
 import { InMemoryContentCache } from '@/lib/cache/store'
 import { GlobalOperations } from '@/lib/content/globals'
+import type { ContentMutation, ContentMutationReporter } from '@/lib/mutations'
+
+class MutationRecorder implements ContentMutationReporter {
+  mutations: ContentMutation[] = []
+  report(mutation: ContentMutation): void { this.mutations.push(mutation) }
+  onMutation(): () => void { return () => undefined }
+}
 
 describe('GlobalOperations', () => {
   let globals: GlobalOperations
@@ -51,7 +58,7 @@ describe('GlobalOperations', () => {
       expect(result!.title).toBe('Site Settings')
     })
 
-    it('returns cached result on second call', async () => {
+  it('returns cached result on second call', async () => {
       const yaml = `key: value\n`
       await fs.writeFile(path.join(tmpDir, 'globals', 'cached.yaml'), yaml)
 
@@ -63,6 +70,16 @@ describe('GlobalOperations', () => {
       // Should return cached version
       expect(second).toEqual(first)
     })
+  })
+
+  it('reports writes but never reads', async () => {
+    const recorder = new MutationRecorder()
+    globals = new GlobalOperations(new NodeFileSystemAdapter(), new MarkdownYamlParser(), cache, tmpDir, recorder)
+    await globals.updateGlobal('events', { enabled: true })
+    expect(recorder.mutations).toHaveLength(1)
+    await globals.getGlobal('events')
+    await globals.listGlobals()
+    expect(recorder.mutations).toHaveLength(1)
   })
 
   describe('listGlobals', () => {

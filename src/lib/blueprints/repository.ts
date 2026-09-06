@@ -14,12 +14,12 @@ import {
   type Blueprint,
   type BlueprintTab,
   type BlueprintType,
-  type FieldConfig,
   type FieldDefinition,
   type FieldLayoutEntry,
   type Fieldset,
 } from './types'
 import { BlueprintValidator, FieldLayoutEntrySchema, type BlueprintValidationResult } from './validator'
+import { buildFieldSchema } from '@/lib/validation'
 
 const BLUEPRINT_TYPES: readonly BlueprintType[] = [
   'collections', 'taxonomies', 'globals', 'forms', 'navigations',
@@ -436,38 +436,7 @@ export class DefinitionRepository {
   }
 
   private fieldToZod(fieldDef: FieldDefinition): z.ZodType {
-    const { field } = fieldDef
-    let schema = this.fieldTypeToZod(field)
-    if (field.default !== undefined) {
-      schema = (schema as z.ZodType & { default: (value: unknown) => z.ZodType }).default(field.default)
-    }
-    if (!field.required && field.default === undefined) schema = schema.optional()
-    return schema
-  }
-
-  private fieldTypeToZod(field: FieldConfig): z.ZodType {
-    switch (field.type) {
-      case 'text': return field.required ? z.string().min(1) : z.string()
-      case 'slug': return z.string().regex(/^[a-z0-9-]+$/)
-      case 'markdown': case 'date': case 'asset': case 'yaml': case 'code': return z.string()
-      case 'tiptap': return z.union([z.string(), z.record(z.string(), z.unknown())])
-      case 'number': return z.number()
-      case 'toggle': return z.boolean()
-      case 'select': {
-        const options = this.extractSelectOptions(field.options)
-        return options?.length ? z.enum(options as [string, ...string[]]) : z.string()
-      }
-      case 'multiselect': case 'entries': case 'taxonomy': return z.array(z.string())
-      case 'replicator': case 'blocks': case 'grid': return z.array(z.record(z.string(), z.unknown()))
-      case 'hidden': default: return z.unknown()
-    }
-  }
-
-  private extractSelectOptions(options?: Record<string, unknown>): string[] | null {
-    if (!options) return null
-    if (Array.isArray(options)) return options.filter((option): option is string => typeof option === 'string')
-    const values = Object.values(options)
-    return values.length > 0 && values.every((value) => typeof value === 'string') ? values as string[] : null
+    return buildFieldSchema(fieldDef.field)
   }
 
   private definitionPath(reference: DefinitionReference): string {

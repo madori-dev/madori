@@ -4,6 +4,8 @@ import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
 import { NodeFileSystemAdapter, type FileSystemAdapter } from '@/lib/fs/adapter'
 import type { ContentMutationReporter } from '@/lib/mutations'
 import { noOpContentMutationReporter } from '@/lib/mutations'
+import { NotFoundError, ConflictError } from '@/lib/errors'
+import { withFileLocks } from './concurrency'
 
 export interface NavigationItem {
   [key: string]: unknown
@@ -171,34 +173,34 @@ export class ContentStore implements IContentStore {
     await this.fs.mkdir(dir)
 
     const filePath = `${dir}/${slug}.yaml`
-    const content = this.parser.serialize(data, 'yaml')
-    await this.writeFileAtomic(filePath, content)
-    this.report('create', [filePath], 'term', taxonomyHandle, slug, `Created term ${taxonomyHandle}/${slug}`)
+    return withFileLocks([filePath], async () => {
+      if (await this.resolveFile(`taxonomies/${taxonomyHandle}`, slug)) {
+        throw new ConflictError(`Term "${slug}" already exists in taxonomy "${taxonomyHandle}"`)
+      }
+      const content = this.parser.serialize(data, 'yaml')
+      await this.writeFileAtomic(filePath, content)
+      this.report('create', [filePath], 'term', taxonomyHandle, slug, `Created term ${taxonomyHandle}/${slug}`)
 
-    return { id: slug, data, format: 'yaml', path: filePath }
+      return { id: slug, data, format: 'yaml', path: filePath }
+    })
   }
 
   async updateTerm(taxonomyHandle: string, slug: string, data: Record<string, unknown>): Promise<ContentEntry> {
     this.assertIdentifier(taxonomyHandle, 'taxonomy handle')
     this.assertIdentifier(slug, 'term slug')
     const existingPath = await this.resolveFile(`taxonomies/${taxonomyHandle}`, slug)
-    let filePath: string
-    let format: FileFormat
-
-    if (existingPath) {
-      filePath = existingPath
-      format = this.parser.detectFormat(existingPath)
-    } else {
-      const dir = this.contentDirectory('taxonomies', taxonomyHandle)
-      await this.fs.mkdir(dir)
-      filePath = `${dir}/${slug}.yaml`
-      format = 'yaml'
+    if (!existingPath) {
+      throw new NotFoundError('Term', `${taxonomyHandle}/${slug}`)
     }
-
-    const content = this.parser.serialize(data, format)
-    await this.writeFileAtomic(filePath, content)
-    this.report(existingPath ? 'update' : 'create', [filePath], 'term', taxonomyHandle, slug, `${existingPath ? 'Updated' : 'Created'} term ${taxonomyHandle}/${slug}`)
-    return { id: slug, data, format, path: filePath }
+    return withFileLocks([existingPath], async () => {
+      const filePath = await this.resolveFile(`taxonomies/${taxonomyHandle}`, slug)
+      if (!filePath) throw new NotFoundError('Term', `${taxonomyHandle}/${slug}`)
+      const format = this.parser.detectFormat(filePath)
+      const content = this.parser.serialize(data, format)
+      await this.writeFileAtomic(filePath, content)
+      this.report('update', [filePath], 'term', taxonomyHandle, slug, `Updated term ${taxonomyHandle}/${slug}`)
+      return { id: slug, data, format, path: filePath }
+    })
   }
 
   async deleteTerm(taxonomyHandle: string, slug: string): Promise<void> {

@@ -151,6 +151,12 @@ export function createUserHandlers(
       return NextResponse.json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid user id' } }, { status: 422 })
     }
     const body = await request.json()
+    if (!body || Array.isArray(body) || typeof body !== 'object') {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'User payload must be an object' } },
+        { status: 422 }
+      )
+    }
     const { email, name, password, roles, theme } = body
 
     if (password !== undefined) {
@@ -172,9 +178,39 @@ export function createUserHandlers(
         )
       }
     }
+    if (name !== undefined && !isNonEmptyString(name)) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'Name must be a non-empty string' } },
+        { status: 422 }
+      )
+    }
+    if (theme !== undefined && theme !== 'light' && theme !== 'dark') {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'Theme must be light or dark' } },
+        { status: 422 }
+      )
+    }
+    if (roles !== undefined && (!Array.isArray(roles) || roles.some((role) => !isValidRoleHandle(role)))) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'roles must be an array of role handles' } },
+        { status: 422 }
+      )
+    }
+    if (roles !== undefined && (new Set(roles).size !== roles.length || !(await Promise.all(roles.map(roleExists))).every(Boolean))) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'roles must contain existing, unique role handles' } },
+        { status: 422 }
+      )
+    }
 
     try {
-      const user = await authService.updateUser(userId, { email, name, password, roles, theme })
+      const user = await authService.updateUser(userId, {
+        email,
+        name,
+        password,
+        roles,
+        theme,
+      })
       const { passwordHash: _ph, ...safeUser } = user as unknown as Record<string, unknown>
       return NextResponse.json({ data: safeUser })
     } catch (error) {
@@ -182,6 +218,12 @@ export function createUserHandlers(
         return NextResponse.json(
           { error: { code: 'NOT_FOUND', message: error.message } },
           { status: 404 }
+        )
+      }
+      if (error instanceof ConflictError) {
+        return NextResponse.json(
+          { error: { code: 'CONFLICT', message: error.message } },
+          { status: 409 }
         )
       }
       throw error
@@ -196,6 +238,12 @@ export function createUserHandlers(
       return NextResponse.json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid user id' } }, { status: 422 })
     }
     const body = await request.json()
+    if (!body || Array.isArray(body) || typeof body !== 'object') {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'User payload must be an object' } },
+        { status: 422 }
+      )
+    }
     const { email, name, theme } = body
     const allowedFields = ['email', 'name', 'theme']
 
@@ -213,6 +261,13 @@ export function createUserHandlers(
       )
     }
 
+    if (name !== undefined && !isNonEmptyString(name)) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'Name must be a non-empty string' } },
+        { status: 422 }
+      )
+    }
+
     if (theme !== undefined && theme !== 'light' && theme !== 'dark') {
       return NextResponse.json(
         { error: { code: 'VALIDATION_ERROR', message: 'Theme must be light or dark' } },
@@ -221,7 +276,11 @@ export function createUserHandlers(
     }
 
     try {
-      const user = await authService.updateUser(userId, { email, name, theme })
+      const user = await authService.updateUser(userId, {
+        email,
+        name,
+        theme,
+      })
       const { passwordHash: _ph, ...safeUser } = user as unknown as Record<string, unknown>
       return NextResponse.json({ data: safeUser })
     } catch (error) {
@@ -229,6 +288,12 @@ export function createUserHandlers(
         return NextResponse.json(
           { error: { code: 'NOT_FOUND', message: error.message } },
           { status: 404 }
+        )
+      }
+      if (error instanceof ConflictError) {
+        return NextResponse.json(
+          { error: { code: 'CONFLICT', message: error.message } },
+          { status: 409 }
         )
       }
       throw error

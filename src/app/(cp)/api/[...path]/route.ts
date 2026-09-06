@@ -19,6 +19,7 @@ import { BlueprintLoader } from '@/lib/blueprints/loader'
 import { BlueprintRegistry } from '@/lib/blueprints/registry'
 import { DefinitionRepository } from '@/lib/blueprints/repository'
 import { MadoriContentEngine } from '@/lib/content/engine'
+import type { ContentEngine } from '@/lib/content/engine'
 import { AssetOperations } from '@/lib/content/assets'
 import { GlobalOperations } from '@/lib/content/globals'
 import { NavigationOperations } from '@/lib/content/navigation'
@@ -143,6 +144,11 @@ export function _setEntryHandlersForTesting(handlers: ReturnType<typeof createEn
   if (handlers) {
     entryHandlers = handlers
   }
+}
+
+/** @internal Exposed for testing effective entry status permissions. */
+export function _setContentEngineForTesting(engine: ContentEngine | null): void {
+  contentEngineInstance = engine as MadoriContentEngine
 }
 
 async function initializeServices(): Promise<AuthService> {
@@ -418,6 +424,32 @@ function withPermission(resource: ResourceType, action: Action, scope?: string) 
       return handler(request, context, pathSegments)
     }
   }
+}
+
+function withEntryWritePermission(action: 'create' | 'edit', collection: string, handler: RouteHandler): UnauthenticatedRouteHandler {
+  return withAuth(withPermission('entries', action, collection)(async (request, context, pathSegments) => {
+    let body: { status?: unknown; data?: { status?: unknown } } = {}
+    try {
+      const parsed = await request.clone().json()
+      if (parsed && typeof parsed === 'object') body = parsed as typeof body
+    } catch { /* handler returns validation response */ }
+    const requestedStatus = body.status ?? body.data?.status
+    let changesPublication = requestedStatus === 'published'
+    if (action === 'create' && requestedStatus === undefined) {
+      const config = contentEngineInstance ? await contentEngineInstance.getCollection(collection) : null
+      changesPublication = config?.defaultStatus === 'published'
+    } else if (action === 'edit' && changesPublication) {
+      const existing = contentEngineInstance ? await contentEngineInstance.getEntry(collection, pathSegments[2]) : null
+      changesPublication = existing ? existing.status !== requestedStatus : true
+    } else if (action === 'edit' && requestedStatus === 'draft') {
+      const existing = contentEngineInstance ? await contentEngineInstance.getEntry(collection, pathSegments[2]) : null
+      changesPublication = existing ? existing.status === 'published' : true
+    }
+    if (changesPublication && !(await context.authService.hasPermission(context.user, 'entries', 'publish', collection))) {
+      return authorizationError('entries', 'publish')
+    }
+    return handler(request, context, pathSegments)
+  }))
 }
 
 // --- Route handlers ---
@@ -1023,9 +1055,7 @@ async function dispatch(
       return handler(request, authService, pathSegments)
     }
     if (method === 'POST') {
-      const handler = withAuth(withPermission('entries', 'create', collection)(
-        async (req) => entryHandlers.handleCreateEntry(req, collection)
-      ))
+      const handler = withEntryWritePermission('create', collection, async (req) => entryHandlers.handleCreateEntry(req, collection))
       return handler(request, authService, pathSegments)
     }
     return methodNotAllowedError()
@@ -1042,9 +1072,7 @@ async function dispatch(
       return handler(request, authService, pathSegments)
     }
     if (method === 'PUT') {
-      const handler = withAuth(withPermission('entries', 'edit', collection)(
-        async (req) => entryHandlers.handleUpdateEntry(req, collection, slug)
-      ))
+      const handler = withEntryWritePermission('edit', collection, async (req) => entryHandlers.handleUpdateEntry(req, collection, slug))
       return handler(request, authService, pathSegments)
     }
     if (method === 'DELETE') {

@@ -6,7 +6,7 @@ import type { ContentCache } from '@/lib/cache/store'
 import type { BlueprintRegistry } from '@/lib/blueprints/registry'
 import { AtomicFileWriter } from '@/lib/fs/atomic-writer'
 import { NotFoundError, ValidationError, ConflictError } from '@/lib/errors'
-import { computeContentHash, verifyContentHash } from '@/lib/content/concurrency'
+import { computeContentHash, verifyContentHash, withFileLocks } from '@/lib/content/concurrency'
 import { TaxonomyOperations } from './taxonomies'
 import { GlobalOperations } from './globals'
 import { NavigationOperations } from './navigation'
@@ -273,6 +273,11 @@ export class MadoriContentEngine implements ContentEngine {
   }
 
   async createEntry(collection: string, data: EntryInput): Promise<Entry> {
+    const filePath = this.getEntryFilePath(collection, data.slug)
+    return withFileLocks([filePath], () => this.createEntryUnlocked(collection, data))
+  }
+
+  private async createEntryUnlocked(collection: string, data: EntryInput): Promise<Entry> {
     assertContentIdentifier(collection, 'collection handle')
     assertContentIdentifier(data.slug, 'entry slug')
     const collectionConfig = await this.getCollectionConfig(collection)
@@ -305,9 +310,8 @@ export class MadoriContentEngine implements ContentEngine {
       frontmatter.author = data.author
     }
 
-    if (data.data) {
-      Object.assign(frontmatter, data.data)
-    }
+    this.assertSafeData(data.data)
+    if (data.data) Object.assign(frontmatter, data.data)
 
     const content = data.content ?? ''
     const fileContent = this.parser.serializeMarkdown(frontmatter, content)
@@ -337,6 +341,12 @@ export class MadoriContentEngine implements ContentEngine {
   }
 
   async updateEntry(collection: string, slug: string, data: Partial<EntryInput>, contentHash?: string): Promise<Entry> {
+    const paths = [this.getEntryFilePath(collection, slug)]
+    if (data.slug && data.slug !== slug) paths.push(this.getEntryFilePath(collection, data.slug))
+    return withFileLocks(paths, () => this.updateEntryUnlocked(collection, slug, data, contentHash))
+  }
+
+  private async updateEntryUnlocked(collection: string, slug: string, data: Partial<EntryInput>, contentHash?: string): Promise<Entry> {
     assertContentIdentifier(collection, 'collection handle')
     assertContentIdentifier(slug, 'entry slug')
     if (data.slug !== undefined) assertContentIdentifier(data.slug, 'entry slug')
@@ -365,6 +375,7 @@ export class MadoriContentEngine implements ContentEngine {
     // Read existing entry from the raw content
     const existing = this.parseEntry(collection, slug, raw)
 
+    this.assertSafeData(data.data)
     // Merge data
     const mergedData = { ...existing.data, ...(data.data ?? {}) }
     // CP uses null as an explicit clear marker because JSON cannot carry undefined.
@@ -461,6 +472,10 @@ export class MadoriContentEngine implements ContentEngine {
   }
 
   async deleteEntry(collection: string, slug: string): Promise<void> {
+    return withFileLocks([this.getEntryFilePath(collection, slug)], () => this.deleteEntryUnlocked(collection, slug))
+  }
+
+  private async deleteEntryUnlocked(collection: string, slug: string): Promise<void> {
     assertContentIdentifier(collection, 'collection handle')
     assertContentIdentifier(slug, 'entry slug')
     const collectionConfig = await this.getCollectionConfig(collection)
@@ -688,6 +703,15 @@ export class MadoriContentEngine implements ContentEngine {
         `Entry data validation failed for blueprint "${blueprintHandle}"`,
         result.errors ?? {}
       )
+    }
+  }
+
+  private assertSafeData(data: Record<string, unknown> | undefined): void {
+    if (!data) return
+    const reserved = ['title', 'slug', 'status', 'author', 'createdAt', 'updatedAt']
+    const keys = Object.keys(data).filter((key) => reserved.includes(key))
+    if (keys.length > 0) {
+      throw new ValidationError('Entry data contains reserved fields', Object.fromEntries(keys.map((key) => [key, [`${key} is managed by the content engine`]])))
     }
   }
 }

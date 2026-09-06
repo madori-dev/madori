@@ -22,6 +22,7 @@ function createMockStoreFactory(session: Session): SessionStoreFactory {
       createSession: vi.fn().mockResolvedValue(session),
       validateSession: vi.fn().mockResolvedValue(session),
       destroySession: vi.fn().mockResolvedValue(undefined),
+      revokeUserSessions: vi.fn().mockResolvedValue(undefined),
       cleanExpired: vi.fn().mockResolvedValue(0),
     }),
   }

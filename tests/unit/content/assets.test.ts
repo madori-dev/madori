@@ -158,12 +158,10 @@ describe('AssetOperations', () => {
       expect(exists).toBe(true)
     })
 
-    it('overwrites existing file on re-upload', async () => {
+    it('rejects an existing file on re-upload', async () => {
       await assetOps.uploadAsset({ name: 'file.txt', content: 'original' })
-      await assetOps.uploadAsset({ name: 'file.txt', content: 'updated' })
-
-      const content = await fs.readFile(path.join(tmpDir, 'file.txt'), 'utf-8')
-      expect(content).toBe('updated')
+      await expect(assetOps.uploadAsset({ name: 'file.txt', content: 'updated' })).rejects.toThrow('already exists')
+      await expect(fs.readFile(path.join(tmpDir, 'file.txt'), 'utf-8')).resolves.toBe('original')
     })
   })
 

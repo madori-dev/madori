@@ -5,4 +5,6 @@ export interface StaticCacheDriver {
   deletePattern(pattern: string): Promise<string[]>
   clear(): Promise<number>
   has(key: string): Promise<boolean>
+  markInvalidated?(): Promise<void>
+  getGeneration?(): Promise<string>
 }

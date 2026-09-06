@@ -1,0 +1,73 @@
+$ playwright test
+[WebServer] (node:14238) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ tsx tests/e2e/setup.ts
+[WebServer] (node:14255) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14261) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14263) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ next build
+[WebServer] (node:14280) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14280) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14302) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14321) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14316) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14317) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14323) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14320) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14314) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14315) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14313) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14319) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14318) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14322) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:14324) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ next start --port 3100
+[WebServer] (node:14341) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 19 tests using 1 worker
+
+(node:14347) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✓   1 [chromium] › tests/e2e/cms.spec.ts:16:5 › public site renders and control panel redirects unauthenticated visitors (241ms)
+  ✓   2 [chromium] › tests/e2e/cms.spec.ts:25:5 › public SEO redirects, sitemap, and 404 observations work end to end (734ms)
+  ✓   3 [chromium] › tests/e2e/cms.spec.ts:57:5 › authenticated editor creates, edits, and detects stale entry changes (591ms)
+[WebServer] (node:14341) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///Volumes/Personal/madori/tests/e2e/.madori/madori.config.ts?revision=1 is not specified and it doesn't parse as CommonJS.
+[WebServer] Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+[WebServer] To eliminate this warning, add "type": "module" to /Volumes/Personal/madori/package.json.
+  ✓   4 [chromium] › tests/e2e/cms.spec.ts:93:5 › runtime settings save, anonymous form submission, and logout invalidate session (746ms)
+  ✓   5 [chromium] › tests/e2e/cp-parity.spec.ts:24:5 › admin login loads one authenticated capability contract and shows full navigation (274ms)
+  ✓   6 [chromium] › tests/e2e/cp-parity.spec.ts:38:5 › capability contract retries a transient server failure (407ms)
+  ✓   7 [chromium] › tests/e2e/cp-parity.spec.ts:55:5 › public navigation resolves entry references to configured collection routes (156ms)
+  ✓   8 [chromium] › tests/e2e/cp-parity.spec.ts:63:5 › public form renders from CP blueprint and submits (202ms)
+  ✓   9 [chromium] › tests/e2e/cp-parity.spec.ts:76:5 › asset manager edits filename and alt metadata (802ms)
+  ✓  10 [chromium] › tests/e2e/cp-parity.spec.ts:90:5 › entry editor uses assigned blueprint and renders section fields (421ms)
+  ✓  11 [chromium] › tests/e2e/cp-parity.spec.ts:100:5 › entry SEO overrides live in the SEO tab and persist (548ms)
+  ✓  12 [chromium] › tests/e2e/cp-parity.spec.ts:118:5 › optional asset selection can be cleared before create and after edit (773ms)
+  ✓  13 [chromium] › tests/e2e/cp-parity.spec.ts:154:5 › blueprint sections persist configured fields (532ms)
+  ✓  14 [chromium] › tests/e2e/cp-parity.spec.ts:175:5 › asset blueprint authoring keeps blank max_files single and permits an explicit gallery (498ms)
+  ✓  15 [chromium] › tests/e2e/cp-parity.spec.ts:198:5 › Tiptap entry content survives create, edit, and reload (635ms)
+  ✓  16 [chromium] › tests/e2e/cp-parity.spec.ts:222:5 › settings structured rows remain editable after reload (657ms)
+  ✓  17 [chromium] › tests/e2e/cp-parity.spec.ts:244:5 › SEO defaults save and reload full-value document (407ms)
+  ✓  18 [chromium] › tests/e2e/cp-parity.spec.ts:257:5 › role editor creates, edits, and protects assigned role deletion (518ms)
+  ✓  19 [chromium] › tests/e2e/cp-parity.spec.ts:276:5 › scoped editor sees only permitted content and cannot mutate other resources (558ms)
+
+  19 passed (21.4s)

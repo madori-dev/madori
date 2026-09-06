@@ -202,21 +202,21 @@ describe('Property 1: Field type mapping correctness', () => {
     )
   })
 
-  it('asset → MadoriAsset', () => {
+  it('asset → raw reference', () => {
     fc.assert(
       fc.property(fc.constant({ type: 'asset' as FieldType } as FieldConfig), (field) => {
         const result = generator.mapFieldToType(field)
-        expect(result).toBe('MadoriAsset')
+        expect(result).toBe('string | string[]')
       }),
       { numRuns: 100 }
     )
   })
 
-  it('entries → MadoriEntryRef[]', () => {
+  it('entries → raw references', () => {
     fc.assert(
       fc.property(fc.constant({ type: 'entries' as FieldType } as FieldConfig), (field) => {
         const result = generator.mapFieldToType(field)
-        expect(result).toBe('MadoriEntryRef[]')
+        expect(result).toBe('string[]')
       }),
       { numRuns: 100 }
     )

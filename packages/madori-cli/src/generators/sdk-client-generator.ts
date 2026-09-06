@@ -24,7 +24,6 @@ export class SDKClientGenerator implements SDKClientGeneratorInterface {
     const importStatements = this.buildImportStatements(handles, typeNames)
     const typeMapInterface = this.buildCollectionTypeMap(handles, typeNames)
     const clientExport = this.buildClientExport()
-    const typeExport = `export type { CollectionTypeMap }`
 
     const content = [
       importStatements,
@@ -33,8 +32,7 @@ export class SDKClientGenerator implements SDKClientGeneratorInterface {
       '',
       clientExport,
       '',
-      typeExport,
-      '',
+      'export type { CollectionTypeMap }',
     ].join('\n')
 
     return {
@@ -62,10 +60,10 @@ export class SDKClientGenerator implements SDKClientGeneratorInterface {
    * Build the CollectionTypeMap interface mapping collection handles to their types.
    */
   private buildCollectionTypeMap(handles: string[], typeNames: string[]): string {
-    const fields = handles.map((handle, i) => `  ${handle}: ${typeNames[i]}`)
+    const fields = handles.map((handle, i) => `  ${/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(handle) ? handle : JSON.stringify(handle)}: ${typeNames[i]}`)
 
     return [
-      'export interface CollectionTypeMap {',
+      'interface CollectionTypeMap {',
       ...fields,
       '}',
     ].join('\n')

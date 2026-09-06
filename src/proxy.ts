@@ -108,11 +108,28 @@ export async function proxy(request: NextRequest) {
     const selection = selectPublicSite(request)
     const redirect = await publicRedirectResponse(request, selection)
     if (redirect) return redirect
+    if (request.headers.get('x-madori-cache-bypass') === '1'
+      || !selection.matchedSite
+      || request.nextUrl.origin !== new URL(selection.contentSite.url).origin) {
+      return publicSiteResponse(request, selection)
+    }
     const cacheResponse = await handleStaticCache(
       request,
       appConfig.staticCache,
       appConfig.cp.path,
       selection.contentSite.handle,
+      async (signal) => {
+        const configuredOrigin = new URL(selection.contentSite.url).origin
+        const target = new URL(configuredOrigin)
+        target.pathname = request.nextUrl.pathname
+        target.search = request.nextUrl.search
+        return fetch(target, {
+          method: 'GET',
+          headers: { accept: 'text/html', 'x-madori-cache-bypass': '1' },
+          redirect: 'manual',
+          signal,
+        })
+      },
     )
     return cacheResponse ?? publicSiteResponse(request, selection)
   }

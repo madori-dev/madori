@@ -1,0 +1,17 @@
+import { validateFields } from '/Volumes/Personal/madori/src/lib/validation/rules.ts'
+import { evaluateCondition } from '/Volumes/Personal/madori/src/lib/blueprints/visibility.ts'
+import { rewriteConfigFile } from '/Volumes/Personal/madori/src/lib/settings/config.ts'
+import { MadoriConfigSchema } from '/Volumes/Personal/madori/src/lib/config/schema.ts'
+import { BlueprintRegistry } from '/Volumes/Personal/madori/src/lib/blueprints/registry.ts'
+
+const conditional = { type: 'text' as const, required: true, visibility: { field: 'enabled', operator: 'equals' as const, value: true } }
+console.log('Hidden required field:', { visible: evaluateCondition(conditional.visibility, {enabled:false}), validation: validateFields({details:conditional}, {enabled:false}) })
+console.log('Cleared optional number:', validateFields({count:{type:'number'}}, {count:null}))
+console.log('Required rule with absent value:', validateFields({title:{type:'text',validate:['required']}}, {}))
+console.log('Empty required select:', validateFields({choice:{type:'select',required:true}}, {choice:''}))
+console.log('Renamed config export retained:', rewriteConfigFile('const settings = {}\nexport default settings\n', MadoriConfigSchema.parse({})).includes('export default'))
+const registry = new BlueprintRegistry({} as never)
+const blueprint = (field: any) => ({handle:'audit',tabs:{main:{fields:[{handle:'value',field}]}}})
+console.log('Server rejects gallery:', registry.validateData(blueprint({type:'asset',options:{max_files:3}}),{value:['one.jpg','two.jpg']}))
+console.log('Server ignores max:3:', registry.validateData(blueprint({type:'text',validate:['max:3']}),{value:'far-too-long'}))
+console.log('Client respects max:3:', validateFields({value:{type:'text',validate:['max:3']}},{value:'far-too-long'}))

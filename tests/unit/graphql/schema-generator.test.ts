@@ -358,18 +358,18 @@ describe('SchemaGeneratorImpl', () => {
       expect(fieldType.ofType).toBe(GraphQLString)
     })
 
-    it('maps replicator to GraphQLString (JSON serialized)', () => {
+    it('maps replicator to JSON scalar', () => {
       const blueprint = makeBlueprint('post', [{ handle: 'blocks', type: 'replicator' }])
       const collection = makeCollection('blog', 'post')
       const type = generator.generateCollectionType(collection, blueprint)
-      expect(type.getFields().blocks.type).toBe(GraphQLString)
+      expect(type.getFields().blocks.type).toMatchObject({ name: 'JSON' })
     })
 
-    it('maps grid to GraphQLString (JSON serialized)', () => {
+    it('maps grid to JSON scalar', () => {
       const blueprint = makeBlueprint('post', [{ handle: 'table', type: 'grid' }])
       const collection = makeCollection('blog', 'post')
       const type = generator.generateCollectionType(collection, blueprint)
-      expect(type.getFields().table.type).toBe(GraphQLString)
+      expect(type.getFields().table.type).toMatchObject({ name: 'JSON' })
     })
 
     it('maps yaml to GraphQLString', () => {
@@ -512,7 +512,7 @@ describe('SchemaGeneratorImpl', () => {
       expect(setFields.count.type).toBe(GraphQLInt)
     })
 
-    it('falls back to GraphQLString when no fieldset provider is given', () => {
+    it('falls back to JSON scalar when no fieldset provider is given', () => {
       const generatorNoProvider = new SchemaGeneratorImpl()
       const blueprint = makeBlueprint('page', [
         { handle: 'blocks', type: 'replicator', options: { sets: ['hero'] } },
@@ -520,37 +520,37 @@ describe('SchemaGeneratorImpl', () => {
       const collection = makeCollection('page', 'page')
 
       const type = generatorNoProvider.generateCollectionType(collection, blueprint)
-      expect(type.getFields().blocks.type).toBe(GraphQLString)
+      expect(type.getFields().blocks.type).toMatchObject({ name: 'JSON' })
     })
 
-    it('falls back to GraphQLString when replicator has no sets in options', () => {
+    it('falls back to JSON scalar when replicator has no sets in options', () => {
       const blueprint = makeBlueprint('page', [
         { handle: 'blocks', type: 'replicator' },
       ])
       const collection = makeCollection('page', 'page')
 
       const type = generatorWithProvider.generateCollectionType(collection, blueprint)
-      expect(type.getFields().blocks.type).toBe(GraphQLString)
+      expect(type.getFields().blocks.type).toMatchObject({ name: 'JSON' })
     })
 
-    it('falls back to GraphQLString when sets array is empty', () => {
+    it('falls back to JSON scalar when sets array is empty', () => {
       const blueprint = makeBlueprint('page', [
         { handle: 'blocks', type: 'replicator', options: { sets: [] } },
       ])
       const collection = makeCollection('page', 'page')
 
       const type = generatorWithProvider.generateCollectionType(collection, blueprint)
-      expect(type.getFields().blocks.type).toBe(GraphQLString)
+      expect(type.getFields().blocks.type).toMatchObject({ name: 'JSON' })
     })
 
-    it('falls back to GraphQLString when set handles are not resolvable', () => {
+    it('falls back to JSON scalar when set handles are not resolvable', () => {
       const blueprint = makeBlueprint('page', [
         { handle: 'blocks', type: 'replicator', options: { sets: ['nonexistent'] } },
       ])
       const collection = makeCollection('page', 'page')
 
       const type = generatorWithProvider.generateCollectionType(collection, blueprint)
-      expect(type.getFields().blocks.type).toBe(GraphQLString)
+      expect(type.getFields().blocks.type).toMatchObject({ name: 'JSON' })
     })
 
     it('generates structured types for grid fields the same as replicator', () => {

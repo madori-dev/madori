@@ -8,7 +8,7 @@ import { PasswordAuthDriverFactory } from '@/lib/auth/drivers/password'
 import { compose } from '@/lib/auth/composer'
 import type { AuthConfig } from '@/lib/auth/composer'
 import { PermissionChecker } from '@/lib/auth/permissions'
-import { _setAuthServiceForTesting, _setComposedAuthForTesting, _setEntryHandlersForTesting, GET, POST, PUT, DELETE } from '@/app/(cp)/api/[...path]/route'
+import { _setAuthServiceForTesting, _setComposedAuthForTesting, _setEntryHandlersForTesting, _setContentEngineForTesting, GET, POST, PUT, DELETE } from '@/app/(cp)/api/[...path]/route'
 import { createEntryHandlers } from '@/app/(cp)/api/handlers/entries'
 import type { FileSystemAdapter } from '@/lib/fs/adapter'
 import type { ContentParser } from '@/lib/fs/parser'
@@ -187,6 +187,7 @@ permissions:
   afterEach(() => {
     _setAuthServiceForTesting(null)
     _setComposedAuthForTesting(null)
+    _setContentEngineForTesting(null)
   })
 
   async function createTestUser() {
@@ -530,7 +531,7 @@ created_at: "2024-01-01T00:00:00.000Z"
       }
 
       // Stubs for other ContentEngine methods (not used in entry routes)
-      async getCollection() { return null }
+      async getCollection() { return { title: 'Blog', handle: 'blog', blueprint: 'blog', defaultStatus: 'published' as const } }
       async listCollections() { return [] }
       async getTaxonomy() { return null }
       async listTaxonomies() { return [] }
@@ -556,6 +557,7 @@ created_at: "2024-01-01T00:00:00.000Z"
       mockContentEngine = new MockContentEngine()
       const handlers = createEntryHandlers(mockContentEngine as unknown as ContentEngine)
       _setEntryHandlersForTesting(handlers)
+      _setContentEngineForTesting(mockContentEngine as unknown as ContentEngine)
 
       // Login to get a token
       const loginRequest = makeRequest('POST', 'http://localhost:3000/cp/api/auth/login', {
@@ -667,6 +669,47 @@ created_at: "2024-01-01T00:00:00.000Z"
     })
 
     describe('POST /entries/:collection', () => {
+      async function removePublishPermission() {
+        await roleFs.writeFile('/resources/roles/admin.yaml', `handle: admin
+display: Administrator
+permissions:
+  - resource: entries
+    actions: [view, create, edit]
+`)
+      }
+
+      it('allows draft creation without publish permission', async () => {
+        await removePublishPermission()
+        const response = await POST(makeRequest('POST', 'http://localhost:3000/cp/api/entries/blog', {
+          title: 'Draft', slug: 'draft', status: 'draft',
+        }, { authorization: `Bearer ${token}` }), params(['entries', 'blog']))
+        expect(response.status).toBe(201)
+      })
+
+      it('denies published creation without publish permission', async () => {
+        await removePublishPermission()
+        const response = await POST(makeRequest('POST', 'http://localhost:3000/cp/api/entries/blog', {
+          title: 'Published', slug: 'published', status: 'published',
+        }, { authorization: `Bearer ${token}` }), params(['entries', 'blog']))
+        expect(response.status).toBe(403)
+      })
+
+      it('denies default-published creation without publish permission', async () => {
+        await removePublishPermission()
+        const response = await POST(makeRequest('POST', 'http://localhost:3000/cp/api/entries/blog', {
+          title: 'Default', slug: 'default',
+        }, { authorization: `Bearer ${token}` }), params(['entries', 'blog']))
+        expect(response.status).toBe(403)
+      })
+
+      it('denies published status hidden in metadata without publish permission', async () => {
+        await removePublishPermission()
+        const response = await POST(makeRequest('POST', 'http://localhost:3000/cp/api/entries/blog', {
+          title: 'Metadata', slug: 'metadata', data: { status: 'published' },
+        }, { authorization: `Bearer ${token}` }), params(['entries', 'blog']))
+        expect(response.status).toBe(403)
+      })
+
       it('returns 401 without authentication', async () => {
         const request = makeRequest('POST', 'http://localhost:3000/cp/api/entries/blog', {
           title: 'New Post',
@@ -763,6 +806,40 @@ created_at: "2024-01-01T00:00:00.000Z"
     })
 
     describe('PUT /entries/:collection/:slug', () => {
+      it('allows ordinary published-entry edits without publish permission', async () => {
+        await roleFs.writeFile('/resources/roles/admin.yaml', `handle: admin
+display: Administrator
+permissions:
+  - resource: entries
+    actions: [view, create, edit]
+`)
+        mockContentEngine.entries.set('blog/hello-world', {
+          title: 'Hello', slug: 'hello-world', status: 'published', content: '', data: {}, collection: 'blog',
+          createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z',
+        })
+        const response = await PUT(makeRequest('PUT', 'http://localhost:3000/cp/api/entries/blog/hello-world', {
+          title: 'Edited', contentHash: 'hash',
+        }, { authorization: `Bearer ${token}` }), params(['entries', 'blog', 'hello-world']))
+        expect(response.status).toBe(200)
+      })
+
+      it('denies unpublishing without publish permission', async () => {
+        await roleFs.writeFile('/resources/roles/admin.yaml', `handle: admin
+display: Administrator
+permissions:
+  - resource: entries
+    actions: [view, create, edit]
+`)
+        mockContentEngine.entries.set('blog/hello-world', {
+          title: 'Hello', slug: 'hello-world', status: 'published', content: '', data: {}, collection: 'blog',
+          createdAt: '2024-01-01T00:00:00.000Z', updatedAt: '2024-01-01T00:00:00.000Z',
+        })
+        const response = await PUT(makeRequest('PUT', 'http://localhost:3000/cp/api/entries/blog/hello-world', {
+          status: 'draft', contentHash: 'hash',
+        }, { authorization: `Bearer ${token}` }), params(['entries', 'blog', 'hello-world']))
+        expect(response.status).toBe(403)
+      })
+
       beforeEach(() => {
         mockContentEngine.entries.set('blog/hello-world', {
           title: 'Hello World',

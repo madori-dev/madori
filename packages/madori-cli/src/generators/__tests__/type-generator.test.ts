@@ -88,12 +88,12 @@ describe('TypeGenerator', () => {
       expect(generator.mapFieldToType({ type: 'multiselect' })).toBe('string[]')
     })
 
-    it('maps asset to MadoriAsset', () => {
-      expect(generator.mapFieldToType({ type: 'asset' })).toBe('MadoriAsset')
+    it('maps asset to raw reference values', () => {
+      expect(generator.mapFieldToType({ type: 'asset' })).toBe('string | string[]')
     })
 
-    it('maps entries to MadoriEntryRef[]', () => {
-      expect(generator.mapFieldToType({ type: 'entries' })).toBe('MadoriEntryRef[]')
+    it('maps entries to raw references', () => {
+      expect(generator.mapFieldToType({ type: 'entries' })).toBe('string[]')
     })
 
     it('maps taxonomy to string[]', () => {
@@ -130,7 +130,7 @@ describe('TypeGenerator', () => {
       expect(result).toContain("type: 'hero'")
       expect(result).toContain("type: 'cta'")
       expect(result).toContain('heading?: string')
-      expect(result).toContain('image?: MadoriAsset')
+      expect(result).toContain('image?: string | string[]')
       expect(result).toContain('text?: string')
       expect(result).toContain('url?: string')
     })
@@ -308,7 +308,7 @@ describe('TypeGenerator', () => {
       ]
       const barrel = generator.generateBarrel(files)
       expect(barrel).toContain("export * from './types/index.js'")
-      expect(barrel).toContain("export * from './schemas/index.js'")
+      expect(barrel).toContain("export * as schemas from './schemas/index.js'")
       expect(barrel).toContain("export * from './graphql/index.js'")
       expect(barrel).toContain("export * from './client.js'")
     })

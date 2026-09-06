@@ -11,6 +11,13 @@ const sharedConfig: NextConfig = {
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }]
   },
+  async rewrites() {
+    return {
+      beforeFiles: [
+        { source: '/assets/:path*', destination: '/api/public/assets/:path*' },
+      ],
+    }
+  },
 }
 
 const nextConfig: NextConfig = process.env.MADORI_E2E === '1'

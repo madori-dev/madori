@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { AssetOperations, type AssetUploadInput, type AssetMetadataUpdate } from '@/lib/content/assets'
-import { NotFoundError } from '@/lib/errors'
+import { AssetOperations, isActiveAssetPath, type AssetUploadInput, type AssetMetadataUpdate } from '@/lib/content/assets'
+import { ConflictError, NotFoundError } from '@/lib/errors'
 import {
   validateUploadFile,
   DEFAULT_UPLOAD_CONSTRAINTS,
@@ -38,6 +38,12 @@ export function createAssetHandlers(assetOps: AssetOperations, constraints: Uplo
         { status: 422 }
       )
     }
+    if (isActiveAssetPath(file.name)) {
+      return NextResponse.json(
+        { error: { code: 'VALIDATION_ERROR', message: 'Active HTML and script uploads are not allowed' } },
+        { status: 422 }
+      )
+    }
 
     const directory = formData.get('directory')
     const dirStr = typeof directory === 'string' ? directory : undefined
@@ -49,8 +55,15 @@ export function createAssetHandlers(assetOps: AssetOperations, constraints: Uplo
       type: file.type,
     }
 
-    const asset = await assetOps.uploadAsset(input, dirStr)
-    return NextResponse.json({ data: asset }, { status: 201 })
+    try {
+      const asset = await assetOps.uploadAsset(input, dirStr)
+      return NextResponse.json({ data: asset }, { status: 201 })
+    } catch (error) {
+      if (error instanceof ConflictError) {
+        return NextResponse.json({ error: { code: 'CONFLICT', message: error.message } }, { status: 409 })
+      }
+      throw error
+    }
   }
 
   async function handleUploadMultiple(request: NextRequest): Promise<NextResponse> {
@@ -81,6 +94,10 @@ export function createAssetHandlers(assetOps: AssetOperations, constraints: Uplo
         errors.push({ filename: file.name, error: validationError })
         continue
       }
+      if (isActiveAssetPath(file.name)) {
+        errors.push({ filename: file.name, error: { code: 'UPLOAD_FAILED', message: 'Active HTML and script uploads are not allowed', constraint: 'file_type' } })
+        continue
+      }
 
       const buffer = Buffer.from(await file.arrayBuffer())
       const input: AssetUploadInput = {
@@ -88,8 +105,16 @@ export function createAssetHandlers(assetOps: AssetOperations, constraints: Uplo
         content: buffer,
         type: file.type,
       }
-      const asset = await assetOps.uploadAsset(input, dirStr)
-      assets.push(asset)
+      try {
+        const asset = await assetOps.uploadAsset(input, dirStr)
+        assets.push(asset)
+      } catch (error) {
+        if (error instanceof ConflictError) {
+          errors.push({ filename: file.name, error: { code: 'UPLOAD_FAILED', message: error.message, constraint: 'file_type' } })
+          continue
+        }
+        throw error
+      }
     }
 
     if (errors.length > 0 && assets.length === 0) {

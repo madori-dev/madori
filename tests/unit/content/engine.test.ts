@@ -384,6 +384,28 @@ describe('MadoriContentEngine', () => {
       const input: EntryInput = { title: '', slug: 'test' }
       await expect(engineWithValidation.createEntry('blog', input)).rejects.toThrow(ValidationError)
     })
+
+    it('rejects system fields supplied through the metadata bag', async () => {
+      await expect(engine.createEntry('blog', {
+        title: 'Safe title',
+        slug: 'safe-post',
+        data: { status: 'published' },
+      })).rejects.toThrow(ValidationError)
+      expect(mockFs._files.has('/project/content/collections/blog/safe-post.md')).toBe(false)
+    })
+
+    it('serializes same-hash updates across independent engine instances', async () => {
+      const filePath = '/project/content/collections/blog/locked.md'
+      const raw = '---\ntitle: Locked\nslug: locked\nstatus: draft\ncreatedAt: 2024-01-01T00:00:00Z\nupdatedAt: 2024-01-01T00:00:00Z\n---\n\nBody\n'
+      mockFs._files.set(filePath, raw)
+      const second = new MadoriContentEngine(createMockConfig(), mockFs, createMockParser(), createMockCache(), mockBlueprintRegistry)
+      const hash = computeContentHash(raw)
+      const first = engine.updateEntry('blog', 'locked', { title: 'First' }, hash)
+      const secondResult = second.updateEntry('blog', 'locked', { title: 'Second' }, hash)
+      const results = await Promise.allSettled([first, secondResult])
+      const errors = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected').map((result) => result.reason)
+      expect(errors.some((error) => error instanceof ConflictError)).toBe(true)
+    })
   })
 
   describe('updateEntry', () => {

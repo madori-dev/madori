@@ -1,0 +1,28 @@
+Concurrent edits [ 'fulfilled', 'fulfilled' ] {
+  title: 'Original',
+  slug: 'post',
+  status: 'draft',
+  createdAt: 2026-09-06T11:16:20.872Z,
+  updatedAt: 2026-09-06T11:16:20.879Z,
+  left: 'edited',
+  right: 'original'
+}
+Reserved keys {
+  responseStatus: 'draft',
+  responseSlug: 'hidden',
+  disk: {
+    title: 'Shadow title',
+    slug: 'different',
+    status: 'published',
+    createdAt: 2026-09-06T11:16:20.881Z,
+    updatedAt: 2026-09-06T11:16:20.881Z
+  }
+}
+Moved alt undefined orphan true
+Upload collision replacement
+Secret persisted true
+Global read reports 1
+Global write reports 0
+Duplicate email lookup a-editor
+Session after password reset true
+Old session after id reuse [ 'admin' ]

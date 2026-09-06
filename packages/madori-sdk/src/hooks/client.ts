@@ -16,6 +16,14 @@ let hookConfig: ClientHookConfig = {
   apiEndpoint: '/api/public',
 }
 
+export function normalizePublicEntry<T>(value: unknown): T {
+  if (!value || typeof value !== 'object') return value as T
+  const entry = value as Record<string, unknown>
+  const data = entry.data
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return value as T
+  return { ...(data as Record<string, unknown>), ...entry } as T
+}
+
 /**
  * Configure the API endpoint used by client-side hooks.
  * Call this once at app initialization (e.g., in a layout or provider).
@@ -42,8 +50,16 @@ export function useMadoriEntry<T>(
   }
 
   const [data, setData] = useState<T | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
+  const requestKey = `${collection}:${slug}`
+  const [observedRequestKey, setObservedRequestKey] = useState(requestKey)
+  const [requestState, setRequestState] = useState({ key: requestKey, isLoading: true, error: null as Error | null })
+
+  // Reset request state during the render that observes a new key. This
+  // prevents a previously completed error from flashing on a repeated key.
+  if (observedRequestKey !== requestKey) {
+    setObservedRequestKey(requestKey)
+    setRequestState({ key: requestKey, isLoading: true, error: null })
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -57,23 +73,26 @@ export function useMadoriEntry<T>(
       })
       .then((json) => {
         if (!cancelled) {
-          setData((json as { data: T }).data)
-          setIsLoading(false)
+          setData(normalizePublicEntry<T>((json as { data: unknown }).data))
+          setRequestState({ key: requestKey, isLoading: false, error: null })
         }
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err : new Error(String(err)))
-          setIsLoading(false)
+          setRequestState({ key: requestKey, isLoading: false, error: err instanceof Error ? err : new Error(String(err)) })
         }
       })
 
     return () => {
       cancelled = true
     }
-  }, [collection, slug])
+  }, [collection, slug, requestKey])
 
-  return { data, isLoading, error }
+  return {
+    data,
+    isLoading: requestState.key !== requestKey || requestState.isLoading,
+    error: requestState.key === requestKey && !requestState.isLoading ? requestState.error : null,
+  }
 }
 
 /**
@@ -94,12 +113,20 @@ export function useMadoriEntries<T>(
   }
 
   const [data, setData] = useState<T[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<Error | null>(null)
   const limit = options?.limit
   const offset = options?.offset
   const sort = options?.sort
   const status = options?.status
+  const filter = options?.filter
+  const filterKey = JSON.stringify(filter ?? null)
+  const requestKey = JSON.stringify([collection, limit, offset, sort, status, filterKey])
+  const [observedRequestKey, setObservedRequestKey] = useState(requestKey)
+  const [requestState, setRequestState] = useState({ key: requestKey, isLoading: true, error: null as Error | null })
+
+  if (observedRequestKey !== requestKey) {
+    setObservedRequestKey(requestKey)
+    setRequestState({ key: requestKey, isLoading: true, error: null })
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -109,6 +136,7 @@ export function useMadoriEntries<T>(
     if (offset != null) params.set('offset', String(offset))
     if (sort) params.set('sort', sort)
     if (status) params.set('status', status)
+    if (filterKey !== 'null') params.set('filter', filterKey)
 
     const queryString = params.toString()
     const url = `${hookConfig.apiEndpoint}/entries/${collection}${queryString ? `?${queryString}` : ''}`
@@ -120,21 +148,24 @@ export function useMadoriEntries<T>(
       })
       .then((json) => {
         if (!cancelled) {
-          setData((json as { data: T[] }).data)
-          setIsLoading(false)
+          setData((json as { data: unknown[] }).data.map((entry) => normalizePublicEntry<T>(entry)))
+          setRequestState({ key: requestKey, isLoading: false, error: null })
         }
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err : new Error(String(err)))
-          setIsLoading(false)
+          setRequestState({ key: requestKey, isLoading: false, error: err instanceof Error ? err : new Error(String(err)) })
         }
       })
 
     return () => {
       cancelled = true
     }
-  }, [collection, limit, offset, sort, status])
+  }, [collection, limit, offset, sort, status, filterKey, requestKey])
 
-  return { data, isLoading, error }
+  return {
+    data,
+    isLoading: requestState.key !== requestKey || requestState.isLoading,
+    error: requestState.key === requestKey && !requestState.isLoading ? requestState.error : null,
+  }
 }

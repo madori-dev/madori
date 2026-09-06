@@ -1,0 +1,8 @@
+
+ RUN  v4.1.11 /Volumes/Personal/madori
+
+
+ Test Files  25 passed (25)
+      Tests  110 passed (110)
+   Start at  12:52:33
+   Duration  975ms (transform 710ms, setup 0ms, import 1.75s, tests 3.72s, environment 2ms)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { ContentStore } from '@/lib/content/store'
 import type { NavigationData } from '@/lib/content/store'
+import { MadoriError } from '@/lib/errors'
 
 export type ContentEntityType = 'taxonomies' | 'forms' | 'globals' | 'navigations'
 
@@ -166,6 +167,9 @@ export function createContentHandlers(contentStore: ContentStore) {
       if (error instanceof SyntaxError) {
         return jsonError('Invalid JSON in request body', 422)
       }
+      if (error instanceof MadoriError) {
+        return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: error.statusCode })
+      }
       return jsonError(
         `Filesystem error: ${error instanceof Error ? error.message : 'Unknown error'}`,
         500
@@ -214,6 +218,9 @@ export function createContentHandlers(contentStore: ContentStore) {
     } catch (error) {
       if (error instanceof SyntaxError) {
         return jsonError('Invalid JSON in request body', 422)
+      }
+      if (error instanceof MadoriError) {
+        return NextResponse.json({ error: { code: error.code, message: error.message } }, { status: error.statusCode })
       }
       return jsonError(
         `Filesystem error: ${error instanceof Error ? error.message : 'Unknown error'}`,

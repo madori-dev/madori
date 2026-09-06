@@ -1,0 +1,44 @@
+
+ RUN  v4.1.11 /Volumes/Personal/madori
+
+ ❯ tests/unit/seo/application-invalidation.test.ts (2 tests | 2 failed) 1047ms
+   × refreshes cached SEO after external content and route-definition edits 1032ms
+   × invalidates SEO synchronously when a definition mutation becomes durable 14ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/unit/seo/application-invalidation.test.ts > refreshes cached SEO after external content and route-definition edits
+AssertionError: expected 'Before' to be 'After' // Object.is equality
+
+Expected: "After"
+Received: "Before"
+
+ ❯ tests/unit/seo/application-invalidation.test.ts:43:97
+     41|   expect((await app.seoRuntime.sitemap('default')).urls[0].url).toBe('…
+     42|   await write('content/collections/blog/post.md', '---\ntitle: After\n…
+     43|   await vi.waitFor(async () => expect((await app.seoRuntime.resolveEnt…
+       |                                                                                                 ^
+     44|   await write('resources/collections/blog.yaml', 'title: Blog\nbluepri…
+     45|   await vi.waitFor(async () => expect((await app.seoRuntime.sitemap('d…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/unit/seo/application-invalidation.test.ts > invalidates SEO synchronously when a definition mutation becomes durable
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/unit/seo/application-invalidation.test.ts:53:37
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed (2)
+   Start at  12:31:49
+   Duration  1.65s (transform 285ms, setup 0ms, import 495ms, tests 1.05s, environment 0ms)

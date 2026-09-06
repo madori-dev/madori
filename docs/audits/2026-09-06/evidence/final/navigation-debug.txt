@@ -1,0 +1,117 @@
+$ playwright test tests/e2e/unsaved-navigation.spec.ts
+[WebServer] (node:52348) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ tsx tests/e2e/setup.ts
+[WebServer] (node:52367) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52373) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52374) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ next build
+[WebServer] (node:52392) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52392) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52487) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52514) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52512) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52505) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52504) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52509) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52513) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52507) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52506) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52511) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52508) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:52510) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] Turbopack build encountered 1 warning:
+[WebServer] ./src/lib/madori.ts:191:33
+[WebServer] Warning: Dynamic filesystem access causes tracing of the whole project
+[WebServer]   189 | ...eStaticCache = () => {
+[WebServer]   190 | ...taticCache.enabled) return
+[WebServer] > 191 | ...acheGeneration(path.resolve(projectRoot, config.staticCache.storagePath))
+[WebServer]       |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[WebServer]   192 | ...r => console.error('[madori:cache] Could not invalidate static responses', error))
+[WebServer]   193 | ...
+[WebServer]   194 | ...utation((mutation) => {
+[WebServer]
+[WebServer] Static analysis determined that this filesystem access causes the whole project to be traced and included in the output.
+[WebServer] This is usually unintentional and leads to all source files (including the public folder) to be deployed as part of the server code.
+[WebServer] This can slow down deployments or lead to failures when size limits are exceeded.
+[WebServer] To resolve this, you can
+[WebServer] - make sure the path is statically scoped to some subfolder, for example path.join(process.cwd(), 'data', bar), or
+[WebServer] - only use them in development, or
+[WebServer] - opt out by adding an ignore comment to the highlighted call: path.resolve(/*turbopackIgnore: true*/ ...), or
+[WebServer] - remove them.
+[WebServer]
+[WebServer] Import traces:
+[WebServer]   #1 [App Route]:
+[WebServer]     ./src/lib/madori.ts
+[WebServer]     ./src/app/robots.txt/route.ts
+[WebServer]
+[WebServer]   #2 [App Route]:
+[WebServer]     ./src/lib/madori.ts
+[WebServer]     ./src/lib/madori.ts
+[WebServer]     ./src/app/api/graphql/route.ts
+[WebServer]
+[WebServer]   #3 [Server Component]:
+[WebServer]     ./src/lib/madori.ts
+[WebServer]     ./src/components/site/DocsLayout.tsx
+[WebServer]     ./src/app/[...slug]/page.tsx
+[WebServer]
+[WebServer]
+[WebServer] (node:52515) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ next start --port 3100
+[WebServer] (node:52532) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 1 test using 1 worker
+
+(node:52538) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+BEFORE BACK { index: 1, guard: true }
+  ✘  1 [chromium] › tests/e2e/unsaved-navigation.spec.ts:3:5 › fallback unsaved guard cancels and accepts back and forward without losing edits (6.2s)
+
+
+  1) [chromium] › tests/e2e/unsaved-navigation.spec.ts:3:5 › fallback unsaved guard cancels and accepts back and forward without losing edits
+
+    Error: expect(page).toHaveURL(expected) failed
+
+    Expected pattern: /sitemap-entry$/
+    Received string:  "http://127.0.0.1:3100/cp/collections/e2e-articles"
+    Timeout: 5000ms
+
+    Call log:
+      - Expect "toHaveURL" with timeout 5000ms
+        14 × locator resolved to <html lang="en" class="biz_udpgothic_7f1875d5-module__BxNtOq__variable josefin_sans_8fbf8f3a-module__gu2Y9q__variable geist_mono_8d43a2aa-module__8Li5zG__variable antialiased">…</html>
+           - unexpected value "http://127.0.0.1:3100/cp/collections/e2e-articles"
+
+
+      20 |   page.once('dialog', async dialog => { dialogs.push(dialog.type()); await dialog.dismiss() })
+      21 |   await page.goBack()
+    > 22 |   await expect(page).toHaveURL(/sitemap-entry$/)
+         |                      ^
+      23 |   await expect(page.locator('#field-content')).toHaveValue('Fallback traversal change')
+      24 |   expect(dialogs).toEqual(['confirm'])
+      25 |
+        at /Volumes/Personal/madori/tests/e2e/unsaved-navigation.spec.ts:22:22
+
+    Error Context: test-results/unsaved-navigation-fallbac-bf402-orward-without-losing-edits-chromium/error-context.md
+
+  1 failed
+    [chromium] › tests/e2e/unsaved-navigation.spec.ts:3:5 › fallback unsaved guard cancels and accepts back and forward without losing edits
+[ELIFECYCLE] Command failed with exit code 1.

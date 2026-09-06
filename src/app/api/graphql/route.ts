@@ -4,13 +4,9 @@ import { loadConfig, resolveConfigPaths } from '@/lib/config/loader'
 import { SchemaGeneratorImpl } from '@/lib/graphql/schema-generator'
 import type { FieldsetProvider } from '@/lib/graphql/schema-generator'
 import { buildResolvers } from '@/lib/graphql/resolvers'
-import { BlueprintRegistry } from '@/lib/blueprints/registry'
-import { BlueprintLoader } from '@/lib/blueprints/loader'
 import { FieldsetResolver } from '@/lib/blueprints/fieldsets'
 import { NodeFileSystemAdapter } from '@/lib/fs/adapter'
 import { MarkdownYamlParser } from '@/lib/fs/parser'
-import { InMemoryContentCache } from '@/lib/cache/store'
-import { MadoriContentEngine } from '@/lib/content/engine'
 import { PermissionChecker } from '@/lib/auth/permissions'
 import { PermissionGuard } from '@/lib/auth/guard'
 import { PluginRegistry } from '@/lib/auth/registry'
@@ -25,35 +21,26 @@ import type { FieldDefinition } from '@/lib/blueprints/types'
 import type { GraphQLSchema } from 'graphql'
 import { getMadori } from '@/lib/madori'
 import type { SeoGraphQLPort } from '@/lib/seo/graphql'
+import { introspectionPolicy } from '@/lib/graphql/introspection'
 
 /**
- * Lazily initialized yoga instance.
- * On first request, loads config, creates instances, generates schema, and caches the yoga handler.
+ * Yoga handler is rebuilt per request so definition and blueprint changes are
+ * reflected immediately while content reads use the application singleton.
  */
-let yogaInstance: ReturnType<typeof createYoga<GraphQLContext>> | null = null
 
 async function getYoga() {
-  if (yogaInstance) return yogaInstance
-
   // Load and resolve config
   const config = await loadConfig()
   const resolvedConfig = resolveConfigPaths(config, process.cwd())
+  const madori = await getMadori()
 
   // Create core dependencies
   const fs = new NodeFileSystemAdapter()
   const parser = new MarkdownYamlParser()
-  const cache = new InMemoryContentCache()
-  const blueprintLoader = new BlueprintLoader(fs, parser, resolvedConfig.resourcesPath)
-  const blueprintRegistry = new BlueprintRegistry(blueprintLoader)
+  const blueprintRegistry = madori.blueprintRegistry
 
   // Create content engine
-  const contentEngine = new MadoriContentEngine(
-    resolvedConfig,
-    fs,
-    parser,
-    cache,
-    blueprintRegistry
-  )
+  const contentEngine = madori.contentEngine
 
   // Generate GraphQL schema from blueprints and collection configs
   // Pre-resolve fieldsets so replicator/grid fields get structured types
@@ -107,7 +94,6 @@ async function getYoga() {
   // Create PermissionGuard for GraphQL resolver access control
   const permissionChecker = new PermissionChecker(fs, parser, resolvedConfig.resourcesPath)
   const guard = new PermissionGuard(permissionChecker, { permissions: new Map() })
-  const madori = await getMadori()
   const seoPort: SeoGraphQLPort | undefined = config.seo.enabled ? {
     getSite: site => madori.seoRepository.getSite(site),
     getSection: (section, handle) => madori.seoRepository.getSection(section, handle),
@@ -174,7 +160,9 @@ async function getYoga() {
   }
 
   // Create yoga instance
-  yogaInstance = createYoga<GraphQLContext>({
+  return createYoga<GraphQLContext>({
+    plugins: [introspectionPolicy(config.graphql.introspection !== false)],
+    graphiql: config.graphql.introspection !== false,
     schema,
     graphqlEndpoint: resolvedConfig.graphql.path,
     fetchAPI: { Response },
@@ -212,7 +200,6 @@ async function getYoga() {
     },
   })
 
-  return yogaInstance
 }
 
 /**
@@ -221,9 +208,11 @@ async function getYoga() {
 export async function GET(request: Request) {
   const config = await loadConfig()
   if (config.graphql?.enabled === false) return new Response(null, { status: 404 })
-  // GraphiQL is an introspection surface. Keep GET disabled when configured
-  // off; normal query execution remains available through POST.
-  if (config.graphql?.introspection === false) return new Response(null, { status: 404 })
+  // Hide GraphiQL when introspection is disabled, while still allowing
+  // ordinary GET queries. Yoga applies introspection validation after parsing.
+  if (config.graphql?.introspection === false && !new URL(request.url).searchParams.has('query')) {
+    return new Response(null, { status: 404 })
+  }
   const yoga = await getYoga()
   return yoga.handle(request)
 }
@@ -234,10 +223,6 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const config = await loadConfig()
   if (config.graphql?.enabled === false) return new Response(null, { status: 404 })
-  if (config.graphql?.introspection === false) {
-    const body = await request.clone().text()
-    if (/__schema|__type/.test(body)) return new Response(null, { status: 403 })
-  }
   const yoga = await getYoga()
   return yoga.handle(request)
 }

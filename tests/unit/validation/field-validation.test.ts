@@ -10,10 +10,49 @@ import type { FieldConfig } from '@/lib/blueprints/types'
  */
 
 describe('Field-level validation error display', () => {
+  it('does not turn optional fields with defaults into required fields', () => {
+    expect(validateFields({ summary: { type: 'text', default: 'Summary' } }, { summary: '' }).valid).toBe(true)
+    expect(validateFields({ links: { type: 'entries', default: [] } }, { links: [] }).valid).toBe(true)
+  })
+
+  it('enforces required independently of a permissive minimum rule', () => {
+    expect(validateFields({ title: { type: 'text', required: true, validate: ['min:0'] } }, { title: '' }).valid).toBe(false)
+  })
+
+  it('rejects malformed block lists while allowing empty optional lists', () => {
+    const fields: Record<string, FieldConfig> = { body: { type: 'blocks' } }
+    for (const body of ['text', 4, {}, ['text']]) {
+      expect(validateFields(fields, { body }).valid).toBe(false)
+    }
+    expect(validateFields(fields, { body: [] }).valid).toBe(true)
+    expect(validateFields(fields, { body: [{ _type: 'text', text: 'Body' }] }).valid).toBe(true)
+  })
+
+  it('treats hidden required fields as inactive and empty optional numbers as clearable', () => {
+    const result = validateFields({
+      enabled: { type: 'toggle' },
+      hidden: { type: 'text', required: true, visibility: { field: 'enabled', operator: 'equals', value: true } },
+      amount: { type: 'number' },
+    }, { enabled: false, amount: undefined })
+    expect(result.valid).toBe(true)
+  })
+
+  it('enforces asset min/max cardinality in shared validation', () => {
+    const result = validateFields({ gallery: { type: 'asset', options: { min_files: 2, max_files: 3 } } }, { gallery: ['one'] })
+    expect(result.valid).toBe(false)
+    expect(result.errors.gallery.length).toBeGreaterThan(0)
+  })
+
+  it('enforces explicit required rules and meaningful empty collections', () => {
+    expect(validateFields({ title: { type: 'text', validate: ['required'] } }, { title: '' }).valid).toBe(false)
+    expect(validateFields({ choice: { type: 'select', required: true, options: { options: ['one'] } } }, { choice: '' }).valid).toBe(false)
+    expect(validateFields({ gallery: { type: 'asset', required: true, options: { min_files: 0, max_files: 3 } } }, { gallery: [] }).valid).toBe(false)
+  })
   it('accepts structured TipTap JSON while requiring non-empty content', () => {
     const fields: Record<string, FieldConfig> = { content: { type: 'tiptap', required: true } }
-    expect(validateFields(fields, { content: { type: 'doc', content: [{ type: 'paragraph' }] } }).valid).toBe(true)
+    expect(validateFields(fields, { content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Body' }] }] } }).valid).toBe(true)
     expect(validateFields(fields, { content: '' }).errors.content).toContain('This field is required')
+    expect(validateFields(fields, { content: { type: 'doc', content: [{ type: 'paragraph' }] } }).errors.content).toContain('This field is required')
   })
 
   describe('validateFields returns field-keyed errors', () => {

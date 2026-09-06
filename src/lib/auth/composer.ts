@@ -25,6 +25,30 @@ export interface ComposedAuthService {
   deleteUser(id: string): Promise<void>
 }
 
+const authLifecycle = Symbol('authLifecycle')
+const lifecycleLocks = new Map<string | symbol, Promise<void>>()
+
+async function withLifecycleLock<T>(userId: string | symbol, operation: () => Promise<T>): Promise<T> {
+  const previous = lifecycleLocks.get(userId) ?? Promise.resolve()
+  let release!: () => void
+  const current = new Promise<void>((resolve) => { release = resolve })
+  lifecycleLocks.set(userId, current)
+  await previous
+  try {
+    return await operation()
+  } finally {
+    release()
+    if (lifecycleLocks.get(userId) === current) lifecycleLocks.delete(userId)
+  }
+}
+
+async function revokeSessions(store: SessionStore, userId: string): Promise<void> {
+  if (!store.revokeUserSessions) {
+    throw new Error('Configured session store does not support user session revocation')
+  }
+  await store.revokeUserSessions(userId)
+}
+
 /**
  * Composes a working auth service from one AuthDriver, one SessionStore,
  * and one UserProvider resolved from the PluginRegistry.
@@ -45,15 +69,19 @@ export function compose(registry: PluginRegistry, config: AuthConfig): ComposedA
 
   return {
     async login(identifier, credentials) {
-      const userId = await driver.validateCredentials(identifier, credentials)
-      const session = await store.createSession(userId)
+      return withLifecycleLock(authLifecycle, async () => {
+        const userId = await driver.validateCredentials(identifier, credentials)
+        return withLifecycleLock(userId, async () => {
+          const session = await store.createSession(userId)
 
-      // Update last login timestamp
-      await provider.update(userId, {
-        lastLogin: new Date().toISOString(),
+          // Update last login timestamp
+          await provider.update(userId, {
+            lastLogin: new Date().toISOString(),
+          })
+
+          return session
+        })
       })
-
-      return session
     },
 
     async logout(token) {
@@ -81,11 +109,22 @@ export function compose(registry: PluginRegistry, config: AuthConfig): ComposedA
     },
 
     async updateUser(id, input) {
-      return provider.update(id, input)
+      if (input.password === undefined) return provider.update(id, input)
+      return withLifecycleLock(authLifecycle, async () => {
+        return withLifecycleLock(id, async () => {
+          await revokeSessions(store, id)
+          return provider.update(id, input)
+        })
+      })
     },
 
     async deleteUser(id) {
-      return provider.delete(id)
+      return withLifecycleLock(authLifecycle, async () => {
+        return withLifecycleLock(id, async () => {
+          await revokeSessions(store, id)
+          return provider.delete(id)
+        })
+      })
     },
   }
 }

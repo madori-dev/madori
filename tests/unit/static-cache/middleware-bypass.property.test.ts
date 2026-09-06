@@ -1,3 +1,8 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { afterAll } from 'vitest'
+const cacheDirectory = mkdtempSync(`${tmpdir()}/madori-cache-test-`)
+afterAll(() => rmSync(cacheDirectory, { recursive: true, force: true }))
 import { describe, it, expect } from 'vitest'
 import type { NextRequest } from 'next/server'
 import * as fc from 'fast-check'
@@ -52,7 +57,7 @@ describe('Property 4: Cache bypass when disabled', () => {
     return {
       enabled: false,
       driver: 'application',
-      storagePath: 'storage/static-cache/',
+      storagePath: cacheDirectory,
       exclude: [],
       queryStrings: 'ignore',
       warmOnInvalidate: false,

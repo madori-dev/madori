@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { registerHistoryGuard } from './history-position'
 
 /**
  * Hook that detects unsaved form changes and warns users before navigating away.
@@ -44,6 +45,8 @@ export function useUnsavedChanges(
   const [isDirty, setIsDirty] = useState(false)
   const savedSnapshotRef = useRef<string>('')
   const initializedRef = useRef(false)
+  const fallbackGuardRef = useRef(false)
+  const fallbackIndexRef = useRef<number | null>(null)
 
   // Serialize values for comparison (handles nested objects, order-independent)
   const serialize = useCallback((values: Record<string, unknown>): string => {
@@ -91,6 +94,92 @@ export function useUnsavedChanges(
 
     window.addEventListener('beforeunload', handleBeforeUnload)
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+  }, [isDirty, enabled, message])
+
+  // Chromium's Navigation API runs before framework popstate handlers. Limit
+  // this guard to traversals: router.push/replace is guarded by the anchor
+  // handler (and saves may redirect while dirty state is being cleared).
+  useEffect(() => {
+    if (!isDirty || !enabled) return
+    const navigation = (window as Window & { navigation?: { addEventListener: (type: string, listener: (event: { canIntercept?: boolean; destination?: { sameDocument?: boolean }; navigationType?: string; preventDefault: () => void }) => void, options?: boolean) => void; removeEventListener: (type: string, listener: unknown, options?: boolean) => void } }).navigation
+    if (!navigation) return
+    const handleNavigate = (event: { canIntercept?: boolean; destination?: { sameDocument?: boolean }; navigationType?: string; preventDefault: () => void }) => {
+      if (event.navigationType !== 'traverse' || event.canIntercept === false || event.destination?.sameDocument === false) return
+      if (!window.confirm(message)) event.preventDefault()
+    }
+    navigation.addEventListener('navigate', handleNavigate, true)
+    return () => navigation.removeEventListener('navigate', handleNavigate, true)
+  }, [isDirty, enabled, message])
+
+  useEffect(() => {
+    if (!isDirty || !enabled) return
+    const navigation = (window as Window & { navigation?: unknown }).navigation
+    if (navigation) return
+
+    let restoring = false
+    const currentState = (window.history.state ?? {}) as Record<string, unknown>
+    const currentIndex = typeof currentState.__madoriHistoryIndex === 'number'
+      ? currentState.__madoriHistoryIndex
+      : 0
+    fallbackGuardRef.current = true
+    fallbackIndexRef.current = currentIndex
+    window.history.replaceState({ ...currentState, __madoriHistoryIndex: currentIndex, __madoriDirtyGuard: true }, '', window.location.href)
+
+    function handlePopState(event: PopStateEvent) {
+      const targetState = (event.state ?? {}) as Record<string, unknown>
+      const targetIndex = typeof targetState.__madoriHistoryIndex === 'number'
+        ? targetState.__madoriHistoryIndex
+        : currentIndex - 1
+      if (restoring && targetIndex === currentIndex) {
+        restoring = false
+        event.stopImmediatePropagation()
+        event.preventDefault()
+        return
+      }
+      if (!fallbackGuardRef.current) return
+      if (window.confirm(message)) {
+        // Traversal already happened. Let Next consume this popstate once.
+        fallbackGuardRef.current = false
+        fallbackIndexRef.current = targetIndex
+      } else {
+        // Capture before Next's router popstate listener so cancelled traversal
+        // leaves editor mounted at its current history entry.
+        event.stopImmediatePropagation()
+        event.preventDefault()
+        restoring = true
+        window.history.go(currentIndex - targetIndex)
+      }
+    }
+    const unregister = registerHistoryGuard(handlePopState)
+    return () => {
+      unregister()
+      if (fallbackGuardRef.current) {
+        const state = (window.history.state ?? {}) as Record<string, unknown>
+        const { __madoriDirtyGuard: _guard, ...cleanState } = state
+        window.history.replaceState(cleanState, '', window.location.href)
+      }
+      fallbackGuardRef.current = false
+      fallbackIndexRef.current = null
+    }
+  }, [isDirty, enabled, message])
+
+  // beforeunload does not cover Next client-side links. Guard same-origin
+  // anchors so sidebar, breadcrumbs, and back links all use one confirmation.
+  useEffect(() => {
+    if (!isDirty || !enabled) return
+    function handleClick(event: MouseEvent) {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+      const target = event.target instanceof Element ? event.target.closest('a[href]') : null
+      if (!(target instanceof HTMLAnchorElement) || target.target === '_blank') return
+      const url = new URL(target.href, window.location.href)
+      if (url.origin !== window.location.origin || (url.pathname === window.location.pathname && url.search === window.location.search)) return
+      if (!window.confirm(message)) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    }
+    document.addEventListener('click', handleClick, true)
+    return () => document.removeEventListener('click', handleClick, true)
   }, [isDirty, enabled, message])
 
   const markSaved = useCallback(() => {

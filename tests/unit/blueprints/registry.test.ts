@@ -175,7 +175,7 @@ describe('BlueprintRegistry', () => {
 
       const schema = registry.generateZodSchema(blueprint)
       expect(schema.safeParse({ tags: ['a', 'b'] }).success).toBe(true)
-      expect(schema.safeParse({ tags: [] }).success).toBe(true)
+      expect(schema.safeParse({ tags: [] }).success).toBe(false)
       expect(schema.safeParse({ tags: 'not-array' }).success).toBe(false)
     })
 
@@ -368,7 +368,7 @@ describe('BlueprintRegistry', () => {
 
       const schema = registry.generateZodSchema(blueprint)
       expect(schema.safeParse({ body: '# Hello\n\nWorld' }).success).toBe(true)
-      expect(schema.safeParse({ body: '' }).success).toBe(true) // markdown allows empty string
+      expect(schema.safeParse({ body: '' }).success).toBe(false)
       expect(schema.safeParse({ body: 123 }).success).toBe(false)
     })
 
@@ -386,6 +386,7 @@ describe('BlueprintRegistry', () => {
 
       const schema = registry.generateZodSchema(blueprint)
       expect(schema.safeParse({ content: '<p>Hello</p>' }).success).toBe(true)
+      expect(schema.safeParse({ content: { type: 'doc', content: [{ type: 'paragraph' }] } }).success).toBe(false)
       expect(schema.safeParse({ content: 123 }).success).toBe(false)
     })
 

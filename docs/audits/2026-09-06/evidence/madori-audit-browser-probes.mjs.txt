@@ -1,0 +1,34 @@
+import { createRequire } from 'node:module'
+import { writeFile, unlink } from 'node:fs/promises'
+const require = createRequire('/Volumes/Personal/madori/package.json')
+const { chromium } = require('@playwright/test')
+const browser = await chromium.launch({headless:true})
+const page = await browser.newPage()
+const origin='http://127.0.0.1:3101'
+try {
+  await page.goto(origin+'/cp/login')
+  await page.locator('#email:visible').fill('e2e@example.test')
+  await page.locator('#password:visible').fill('e2e-password')
+  await page.getByRole('button',{name:'Sign in'}).click()
+  await page.waitForURL(origin+'/cp')
+  await page.goto(origin+'/cp/collections/e2e-assigned/roundtrip')
+  const field=page.locator('section').filter({has:page.getByRole('heading',{name:'Details'})}).locator('input')
+  await field.fill('Unsaved audit edit')
+  await page.getByText('Unsaved changes',{exact:false}).waitFor()
+  let dialogs=0
+  page.on('dialog', async dialog=>{dialogs++;await dialog.dismiss()})
+  await page.getByRole('link',{name:'Collections',exact:true}).first().click()
+  await page.waitForURL(origin+'/cp/collections')
+  console.log('Dirty navigation:',{url:page.url(),confirmationDialogs:dialogs})
+  const persisted=await page.evaluate(()=>fetch('/api/entries/e2e-assigned/roundtrip').then(r=>r.json()))
+  console.log('Discarded summary:',persisted.data.data.summary)
+  const upload=await page.evaluate(async()=>{
+    const form=new FormData();form.append('file',new File(['audit harmless upload'],'audit-upload.txt',{type:'text/plain'}))
+    const response=await fetch('/api/assets/upload',{method:'POST',body:form});return {status:response.status,body:await response.json()}
+  })
+  console.log('Upload result:',JSON.stringify(upload))
+  console.log('Public uploaded file status:',(await page.request.get(origin+'/assets/audit-upload.txt')).status())
+  const target='/Volumes/Personal/madori/public/audit-created-after-start.txt'
+  try {await writeFile(target,'Harmless audit probe');console.log('Default public directory new-file status:',(await page.request.get(origin+'/audit-created-after-start.txt')).status())}
+  finally {await unlink(target).catch(()=>{})}
+} finally {await browser.close()}

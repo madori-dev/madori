@@ -32,7 +32,8 @@ export class SchemaGenerator implements SchemaGeneratorInterface {
         const zodExpr = this.mapFieldToZod(fd.field)
         const optional = fd.field.required === true ? '' : '.optional()'
         const validations = this.buildValidations(fd.field)
-        return `  ${fd.handle}: ${zodExpr}${validations}${optional},`
+        const property = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(fd.handle) ? fd.handle : JSON.stringify(fd.handle)
+        return `  ${property}: ${zodExpr}${validations}${optional},`
       })
       .join('\n')
 
@@ -280,7 +281,8 @@ export class SchemaGenerator implements SchemaGeneratorInterface {
     const exports = schemaFiles
       .map((f) => {
         const name = f.filename.replace('schemas/', '').replace('.ts', '')
-        return `export * from './${name}.js'`
+        const exportedName = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name) ? name : JSON.stringify(name)
+        return `export * as ${exportedName} from './${name}.js'`
       })
       .join('\n')
 
